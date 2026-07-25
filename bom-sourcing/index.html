@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BOM Sourcing — Codification &amp; Vérification Qualité — v1.0 — 25/07/2026</title>
+<title>BOM Sourcing — Codification &amp; Vérification Qualité — v1.1 — 25/07/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
 :root {
@@ -593,6 +593,63 @@ tr:hover td { background: var(--surface2); }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+<!-- ===== ACCES PROTO PROCESS ===== -->
+<style>
+#pp-gate{position:fixed;inset:0;z-index:99999;background:#0a0c12;display:flex;align-items:center;justify-content:center;padding:20px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif}
+#pp-gate.pp-hidden{display:none}
+#pp-gate .pp-card{background:#1a2030;border:1px solid #262e42;border-radius:10px;padding:26px;max-width:380px;width:100%}
+#pp-gate .pp-t{font-size:13px;font-weight:500;margin-bottom:14px}
+#pp-gate .pp-t .a{color:#fff}#pp-gate .pp-t .b{color:#444;margin:0 3px}#pp-gate .pp-t .c{color:#F07B1F}
+#pp-gate .pp-p{font-size:12.5px;color:#94a3b8;line-height:1.55;margin-bottom:16px}
+#pp-in{width:100%;background:#161b27;border:1px solid #262e42;border-radius:6px;color:#e2e8f0;padding:9px 11px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box}
+#pp-in:focus{border-color:#F07B1F}
+#pp-btn{width:100%;margin-top:12px;padding:9px;background:#F07B1F;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
+#pp-err{font-size:12px;color:#f09595;margin-top:9px;min-height:16px}
+</style>
+<div id="pp-gate" class="pp-hidden">
+  <div class="pp-card">
+    <div class="pp-t"><span class="a">PROTO PROCESS</span><span class="b">/</span><span class="c">Acces</span></div>
+    <div class="pp-p">Saisissez le code d'acces interne. Il ne vous sera demande qu'une fois sur cet appareil.</div>
+    <input id="pp-in" type="password" placeholder="Code d'acces" autocomplete="off">
+    <div id="pp-err"></div>
+    <button id="pp-btn">Valider</button>
+  </div>
+</div>
+<script>
+(function(){
+  var KEY='pp_access_code', HDR='X-PP-Auth', HOST='protoprocess.app.n8n.cloud';
+  function get(){try{return localStorage.getItem(KEY)||''}catch(e){return ''}}
+  function set(v){try{localStorage.setItem(KEY,v)}catch(e){}}
+  function del(){try{localStorage.removeItem(KEY)}catch(e){}}
+  var gate=document.getElementById('pp-gate'), inp=document.getElementById('pp-in'),
+      btn=document.getElementById('pp-btn'), err=document.getElementById('pp-err');
+  function show(m){ err.textContent=m||''; gate.classList.remove('pp-hidden'); setTimeout(function(){try{inp.focus()}catch(e){}},50); }
+  function hide(){ gate.classList.add('pp-hidden'); }
+  btn.addEventListener('click',function(){
+    var v=(inp.value||'').trim();
+    if(!v){ err.textContent='Code requis.'; return; }
+    set(v); inp.value=''; err.textContent=''; hide();
+  });
+  inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ btn.click(); } });
+  var _f=window.fetch;
+  window.fetch=function(input,init){
+    if(typeof input==='string' && input.indexOf(HOST)!==-1){
+      init=init||{};
+      try{ var h=new Headers(init.headers||{}); h.set(HDR,get()); init.headers=h; }catch(e){}
+      return _f.call(this,input,init).then(function(r){
+        if(r && r.status===403){ del(); show("Code d'acces refuse. Ressaisissez-le."); }
+        return r;
+      });
+    }
+    return _f.call(this,input,init);
+  };
+  if(!get()){ show(); }
+  window.ppChangerCode=function(){ del(); show(); };
+})();
+</script>
+<!-- ===== FIN ACCES ===== -->
+
 
 <header>
   <div class="logo">
@@ -600,7 +657,7 @@ tr:hover td { background: var(--surface2); }
     <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">BOM Sourcing</span></span>
   </div>
   <div class="header-chips" id="header-chips"></div>
-  <span class="hdr-note" id="hdr-version">v1.0 — 25/07/2026</span>
+  <span class="hdr-note" id="hdr-version">v1.1 — 25/07/2026</span>
   <div style="display:flex;gap:8px;align-items:center;">
     <a href="bom-analyzer.html" style="font-size:12px;color:var(--text2);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-history" aria-hidden="true"></i> BOM Analyzer (legacy)</a>
     <button onclick="document.getElementById('help-overlay').style.display='flex'" style="background:none;border:1px solid var(--border);border-radius:var(--radius);padding:5px 12px;cursor:pointer;font-size:12px;color:var(--text2);font-family:var(--sans);display:inline-flex;align-items:center;gap:5px;"><i class="ti ti-help" aria-hidden="true"></i> Guide</button>
@@ -964,7 +1021,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "1.0";
+const APP_VERSION = "1.1";
 const APP_DATE = "25/07/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
