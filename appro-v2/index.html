@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proto Process — Appro V2 — v2.0 — 25/07/2026</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<style>
+:root {
+  --pp-orange: #F07B1F;
+  --pp-blue: #5BC4D8;
+  --ok-bg: #EAF3DE; --ok-t: #3B6D11; --ok-b: #97C459;
+  --wa-bg: #FAEEDA; --wa-t: #854F0B; --wa-b: #EF9F27;
+  --er-bg: #FCEBEB; --er-t: #A32D2D; --er-b: #F09595;
+
+  --page-bg: #0a0c12;
+  --surface-0: #12151e;
+  --surface-1: #161b27;
+  --surface-2: #1a2030;
+  --border: #262e42;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--page-bg); }
+body { font-family: var(--font-sans); font-size: 13px; color: var(--text-primary); padding: 24px; }
+.wrap { max-width: 1180px; margin: 0 auto; }
+
+.app { background: var(--surface-0); border-radius: 12px; border: 0.5px solid var(--border); overflow: hidden; }
+.hdr { background: #0f1117; padding: 0 20px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+.hdr-note { font-size: 11px; color: #64748b; font-family: Consolas, monospace; }
+.logo { display: flex; align-items: center; gap: 10px; }
+.lt { color: #fff; font-size: 13px; font-weight: 500; }
+.ls { color: #444; margin: 0 3px; }
+.lo { color: var(--pp-orange); font-size: 13px; font-weight: 500; }
+.hstats { display: flex; gap: 18px; }
+.hs { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #888; }
+.hs strong { font-size: 15px; font-weight: 500; }
+.hs.ok strong { color: #86c564; }
+.hs.wa strong { color: #eab676; }
+.hs.er strong { color: #f09595; }
+
+.tabs { background: #161b27; display: flex; border-bottom: 0.5px solid #2a3347; }
+.tab { padding: 11px 18px; font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 6px; border-bottom: 2px solid transparent; cursor: pointer; user-select: none; }
+.tab:hover { color: #94a3b8; }
+.tab.on { color: var(--pp-orange); border-bottom-color: var(--pp-orange); }
+.bdg { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; font-size: 10px; font-weight: 500; }
+.bdg.er { background: var(--er-bg); color: var(--er-t); }
+.bdg.wa { background: var(--wa-bg); color: var(--wa-t); }
+
+.page { display: none; }
+.page.on { display: block; }
+
+.tb { padding: 11px 20px; display: flex; gap: 9px; align-items: center; background: var(--surface-1); border-bottom: 0.5px solid var(--border); flex-wrap: wrap; }
+.srch { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 7px; background: var(--surface-2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 7px 11px; color: var(--text-muted); }
+.srch input { background: none; border: none; outline: none; color: var(--text-primary); font-size: 12px; font-family: var(--font-sans); flex: 1; }
+.srch input::placeholder { color: var(--text-muted); }
+.flt { display: flex; align-items: center; gap: 5px; background: var(--surface-2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 7px 11px; font-size: 12px; color: var(--text-secondary); cursor: pointer; user-select: none; }
+.flt.on { background: #2a1f10; border-color: #7a4a10; color: var(--pp-orange); }
+.flt select { background: none; border: none; outline: none; color: inherit; font-size: 12px; font-family: var(--font-sans); cursor: pointer; }
+.flt select option { background: var(--surface-2); color: var(--text-primary); }
+
+.alrt { background: var(--er-bg); border: 0.5px solid var(--er-b); border-radius: var(--radius); padding: 8px 13px; display: flex; align-items: center; gap: 7px; margin: 11px 20px 4px; font-size: 12px; color: var(--er-t); }
+.cnt { font-size: 11px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); padding: 9px 20px 5px; }
+.stitle { font-size: 11px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); margin: 14px 20px 7px; display: flex; align-items: center; gap: 7px; }
+.stitle::after { content: ''; flex: 1; height: 0.5px; background: var(--border); }
+.body { padding: 0 20px 18px; }
+
+.card { background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+.card.er { border-left: 3px solid var(--er-t); }
+.card.wa { border-left: 3px solid var(--wa-t); }
+.card.ok { border-left: 3px solid var(--ok-t); }
+.card.pp { border-left: 3px solid var(--pp-orange); }
+.ch { padding: 11px 15px; display: flex; align-items: center; gap: 11px; cursor: pointer; }
+.ch:hover { background: rgba(255,255,255,.02); }
+.fb { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px; letter-spacing: .04em; white-space: nowrap; }
+.f-rs { background: #3a1a1a; color: #f87171; }
+.f-dk { background: #1a2e1a; color: #4ade80; }
+.f-fn { background: #1a3a5c; color: #60a5fa; }
+.f-mo { background: #3a2a00; color: #fbbf24; }
+.f-tm { background: #2a1a3a; color: #c084fc; }
+.f-sf { background: #2a1a00; color: var(--pp-orange); }
+.f-iv { background: #1f2a1a; color: #86c564; }
+.f-xx { background: var(--surface-1); color: var(--text-secondary); }
+.ci { flex: 1; min-width: 0; }
+.cso { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.cm { font-size: 11px; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pw { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.pb { width: 60px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.pf { height: 100%; border-radius: 2px; }
+.pf.ok { background: var(--ok-t); }
+.pf.wa { background: var(--wa-t); }
+.pf.er { background: var(--er-t); }
+.pf.pp { background: var(--pp-orange); }
+.pp2 { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.chv { color: var(--text-muted); font-size: 13px; flex-shrink: 0; }
+.pill { font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
+.p-ok { background: var(--ok-bg); color: var(--ok-t); border: 0.5px solid var(--ok-b); }
+.p-wa { background: var(--wa-bg); color: var(--wa-t); border: 0.5px solid var(--wa-b); }
+.p-er { background: var(--er-bg); color: var(--er-t); border: 0.5px solid var(--er-b); }
+.p-gy { background: var(--surface-1); color: var(--text-secondary); border: 0.5px solid var(--border); }
+
+.cbdy { border-top: 0.5px solid var(--border); display: none; }
+.card.open .cbdy { display: block; }
+.card.open .chv::before { content: "\ea62"; }
+.bls { padding: 8px 15px; background: var(--surface-1); border-bottom: 0.5px solid var(--border); display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.bld { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.bld.ok { background: var(--ok-t); }
+.bld.er { background: var(--er-t); }
+.bld.pp { background: var(--pp-orange); }
+.bll { font-size: 11px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; }
+.bli { font-size: 11px; color: var(--text-muted); }
+.blt { font-size: 11px; color: var(--pp-blue); display: flex; align-items: center; gap: 4px; }
+.bls-r { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+.lt2 { width: 100%; border-collapse: collapse; }
+.lt2 th { padding: 6px 15px; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); background: var(--surface-1); border-bottom: 0.5px solid var(--border); text-align: left; }
+.lt2 td { padding: 8px 15px; border-bottom: 0.5px solid var(--border); font-size: 12px; vertical-align: middle; }
+.lt2 tr:last-child td { border-bottom: none; }
+.ipn { font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
+.mpn2 { font-size: 12px; color: var(--text-secondary); margin-top: 2px; font-family: var(--font-mono); }
+.qn { font-family: var(--font-mono); font-size: 12px; text-align: center; }
+.ac { display: flex; gap: 5px; justify-content: flex-end; }
+.ab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: var(--radius); font-size: 11px; border: 0.5px solid; cursor: pointer; background: transparent; font-family: var(--font-sans); }
+.ab-pb { border-color: #E8788A; color: #F5A0AE; }
+.ab-oc { border-color: var(--border); color: var(--text-secondary); }
+.ab-stock { border-color: #6ED89A; color: #7EE8AA; }
+.cft { padding: 9px 15px; background: var(--surface-1); border-top: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.cfm { font-size: 11px; color: var(--text-muted); }
+.cfb { display: flex; gap: 7px; }
+.btn-s { display: inline-flex; align-items: center; gap: 5px; padding: 6px 13px; background: transparent; color: var(--text-secondary); border: 0.5px solid var(--border); border-radius: var(--radius); font-size: 12px; cursor: pointer; font-family: var(--font-sans); }
+
+.empty { padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 12px; }
+.empty i { font-size: 28px; display: block; margin-bottom: 8px; opacity: .5; }
+.loading { padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 12px; }
+.errbox { margin: 11px 20px 4px; padding: 10px 13px; background: var(--er-bg); border: 0.5px solid var(--er-b); border-radius: var(--radius); color: var(--er-t); font-size: 12px; }
+
+.stub-note { margin: 14px 20px; padding: 10px 13px; background: #2a1f10; border: 0.5px solid #7a4a10; border-radius: var(--radius); color: var(--pp-orange); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+
+.qcell { text-align: center; }
+.qatt { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.qwrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+input[type="number"] { width: 64px; background: var(--surface-1); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 5px 6px; color: var(--text-primary); font-family: var(--font-mono); font-size: 12px; text-align: center; outline: none; -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+input[type="number"]:focus { border-color: var(--pp-blue); }
+input[type="number"].qok { border-color: var(--ok-t); background: rgba(59,109,17,.08); }
+input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,45,.08); }
+.etag { font-family: var(--font-mono); font-size: 10px; color: var(--er-t); font-weight: 600; }
+.marquage { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--pp-orange); background: #2a1f10; padding: 1px 5px; border-radius: 3px; }
+.stkinfo { font-family: var(--font-mono); font-size: 10px; color: var(--wa-t); background: var(--wa-bg); padding: 1px 5px; border-radius: 3px; }
+.btn-p { display: inline-flex; align-items: center; gap: 5px; padding: 6px 13px; background: var(--pp-orange); color: #fff; border: none; border-radius: var(--radius); font-size: 12px; font-weight: 500; cursor: pointer; font-family: var(--font-sans); }
+.btn-p:disabled { opacity: .5; cursor: not-allowed; }
+
+.ov { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 200; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.ov.open { opacity: 1; pointer-events: all; }
+.modal { background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 22px; max-width: 460px; width: 90%; transform: scale(.96); transition: transform .2s; }
+.ov.open .modal { transform: scale(1); }
+.modal h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--er-t); display: flex; align-items: center; gap: 7px; }
+.modal p { font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.6; }
+.mecarts { background: var(--surface-1); border-radius: var(--radius); padding: 10px; margin-bottom: 14px; max-height: 200px; overflow-y: auto; }
+.ml { font-family: var(--font-mono); font-size: 11px; padding: 4px 0; border-bottom: 0.5px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
+.ml:last-child { border-bottom: none; }
+.mbtns { display: flex; gap: 8px; justify-content: flex-end; }
+
+#toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; z-index: 999; max-width: 340px; }
+#toast.show { opacity: 1; transform: translateY(0); }
+#toast.tok { border-color: var(--ok-b); color: var(--ok-t); }
+#toast.terr { border-color: var(--er-b); color: var(--er-t); }
+#toast.twarn { border-color: var(--wa-b); color: var(--wa-t); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="app">
+    <div class="hdr">
+      <div class="logo">
+        <img src="../shared/picto-pp.png" alt="Proto Process" width="26" height="26" style="object-fit:contain" onerror="this.style.display='none'">
+        <span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">Appro V2</span>
+        <span class="hdr-note" id="hdr-version" style="margin-left:8px">v2.0 — 25/07/2026</span>
+      </div>
+      <div class="hstats">
+        <div class="hs er"><strong id="stat-alertes">—</strong> alertes</div>
+        <div class="hs wa"><strong id="stat-encours">—</strong> en cours</div>
+        <div class="hs ok"><strong id="stat-expedies">—</strong> expédiés</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab" data-tab="reception"><i class="ti ti-package" aria-hidden="true"></i> Réception <span class="bdg er" id="rec-badge"></span></div>
+      <div class="tab on" data-tab="suivi"><i class="ti ti-timeline" aria-hidden="true"></i> Suivi commandes <span class="bdg er" id="tab-badge-suivi"></span></div>
+      <div class="tab" data-tab="qualite"><i class="ti ti-shield-check" aria-hidden="true"></i> Qualité</div>
+    </div>
+
+    <!-- ============== ONGLET SUIVI COMMANDES (fonctionnel) ============== -->
+    <div class="page on" id="page-suivi">
+      <div class="tb">
+        <div class="srch"><i class="ti ti-search" style="font-size:14px" aria-hidden="true"></i><input id="suivi-search" type="text" placeholder="Rechercher SO, fournisseur, IPN, MPN…"></div>
+        <div class="flt" id="suivi-flt-alertes"><i class="ti ti-alert-triangle" style="font-size:13px" aria-hidden="true"></i> Alertes d'abord</div>
+        <div class="flt"><i class="ti ti-building-store" style="font-size:13px" aria-hidden="true"></i>
+          <select id="suivi-flt-fournisseur"><option value="">Fournisseur</option></select>
+        </div>
+        <div class="flt" id="suivi-refresh"><i class="ti ti-refresh" style="font-size:13px" aria-hidden="true"></i> Actualiser</div>
+      </div>
+      <div id="suivi-alert-banner"></div>
+      <div class="body" id="suivi-body">
+        <div class="loading"><i class="ti ti-loader-2" aria-hidden="true"></i> Chargement…</div>
+      </div>
+    </div>
+
+    <!-- ============== ONGLET RÉCEPTION (fonctionnel) ============== -->
+    <div class="page" id="page-reception">
+      <div class="tb">
+        <div class="srch"><i class="ti ti-search" style="font-size:14px" aria-hidden="true"></i><input id="rec-search" type="text" placeholder="Rechercher SO, fournisseur, IPN, MPN…"></div>
+        <div class="flt" id="rec-flt-alertes"><i class="ti ti-bell" style="font-size:13px" aria-hidden="true"></i> Alertes seules</div>
+        <div class="flt"><i class="ti ti-building-store" style="font-size:13px" aria-hidden="true"></i>
+          <select id="rec-flt-fournisseur"><option value="">Fournisseur</option></select>
+        </div>
+        <div class="flt" id="rec-refresh"><i class="ti ti-refresh" style="font-size:13px" aria-hidden="true"></i> Actualiser</div>
+      </div>
+      <div id="rec-alert-banner"></div>
+      <div class="cnt" id="rec-count"></div>
+      <div class="body" id="rec-body">
+        <div class="loading"><i class="ti ti-loader-2" aria-hidden="true"></i> Chargement…</div>
+      </div>
+    </div>
+
+    <!-- ============== ONGLET QUALITÉ (fonctionnel) ============== -->
+    <div class="page" id="page-qualite">
+      <div class="tb">
+        <div class="srch"><i class="ti ti-search" style="font-size:14px" aria-hidden="true"></i><input id="qual-search" type="text" placeholder="Rechercher SO, fournisseur, référence…"></div>
+        <div class="flt on" id="qual-flt-non-cloturees"><i class="ti ti-clock" style="font-size:13px" aria-hidden="true"></i> Non clôturées</div>
+        <div class="flt"><i class="ti ti-building-store" style="font-size:13px" aria-hidden="true"></i>
+          <select id="qual-flt-fournisseur"><option value="">Fournisseur</option></select>
+        </div>
+        <div class="flt"><i class="ti ti-tag" style="font-size:13px" aria-hidden="true"></i>
+          <select id="qual-flt-codenc"><option value="">Code NC</option></select>
+        </div>
+        <div class="flt" id="qual-refresh"><i class="ti ti-refresh" style="font-size:13px" aria-hidden="true"></i> Actualiser</div>
+        <div class="flt" id="qual-nouvelle" style="color:var(--pp-orange);border-color:#7a4a10"><i class="ti ti-plus" style="font-size:13px" aria-hidden="true"></i> Déclarer un problème</div>
+        <div class="flt" id="qual-reset" style="color:var(--er-t);border-color:var(--er-b)"><i class="ti ti-refresh-alert" style="font-size:13px" aria-hidden="true"></i> Réinitialiser les stats</div>
+      </div>
+      <div class="body" id="qual-body" style="padding-top:14px">
+        <div class="loading"><i class="ti ti-loader-2" aria-hidden="true"></i> Chargement…</div>
+      </div>
+    </div>
+
+  </div>
+  <div style="text-align:center;margin-top:14px;font-size:11px;color:var(--text-muted)" id="footer-note">Données live via webhooks n8n</div>
+</div>
+
+
+<div class="ov" id="ov-ecart">
+  <div class="modal">
+    <h3><i class="ti ti-alert-triangle" aria-hidden="true"></i> Écart détecté</h3>
+    <p>Ces quantités ne correspondent pas à l'attendu. Un email sera envoyé à prod.methodes@proto-process.fr et l'écart sera enregistré dans le master.</p>
+    <div class="mecarts" id="ecart-liste"></div>
+    <div class="mbtns">
+      <button class="btn-s" onclick="fermerModalEcart()">Annuler</button>
+      <button class="btn-p" style="background:var(--er-t)" onclick="confirmerEcart()"><i class="ti ti-send" aria-hidden="true"></i> Confirmer et signaler</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov" id="ov-declarer">
+  <div class="modal" style="max-width:420px">
+    <h3 style="color:var(--pp-orange)"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Déclarer un problème</h3>
+    <p>Les champs auto-remplis viennent du contexte — complétez les impacts.</p>
+    <div style="background:var(--surface-1);border-radius:var(--radius);padding:9px 12px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div><div style="font-size:10px;color:var(--text-muted);margin-bottom:2px">SO</div><div style="font-size:11px;font-weight:500" id="decl-so">—</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);margin-bottom:2px">Fournisseur</div><div style="font-size:11px;font-weight:500" id="decl-fournisseur">—</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);margin-bottom:2px">N° commande</div><div style="font-size:11px;font-weight:500" id="decl-commande">—</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);margin-bottom:2px">Référence</div><div style="font-size:11px;font-weight:500" id="decl-ref">—</div></div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Code NC</div>
+      <select id="decl-codenc" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-sans)">
+        <option>Retard de livraison</option><option>PCB</option><option>Erreur réf.</option><option>Quantité NC</option>
+        <option>Emballage MSL NC</option><option>NC Qualité</option><option>Stock fourn NC</option>
+      </select>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Impact production</div>
+      <select id="decl-impactprod" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-sans)">
+        <option>pas d'impact</option><option>Prod décalée / stoppée</option><option>Montage Reprise</option>
+        <option>Retard expé</option><option>Montage non conforme IPC</option><option>PCB HS</option>
+      </select>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Impact client</div>
+      <select id="decl-impactclient" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-sans)">
+        <option>pas d'impact</option><option>Retard livraison</option><option>Réclamation client</option>
+        <option>Non conforme IPC</option><option>Carte HS</option>
+      </select>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Problème</div>
+      <textarea id="decl-probleme" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-sans);resize:none;height:56px"></textarea>
+    </div>
+    <div class="mbtns">
+      <button class="btn-s" onclick="fermerModalDeclarer()">Annuler</button>
+      <button class="btn-p" onclick="soumettreDeclaration()"><i class="ti ti-send" aria-hidden="true"></i> Envoyer dans F22</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov" id="ov-stock">
+  <div class="modal" style="max-width:420px">
+    <h3 style="color:#7EE8AA"><i class="ti ti-package" aria-hidden="true"></i> Mettre en stock</h3>
+    <p id="stock-statut-existe" style="color:var(--text-secondary)">Vérification…</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">IPN</div>
+        <input id="stock-ipn" type="text" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-mono)">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">MPN</div>
+        <input id="stock-mpn" type="text" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-mono)">
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Fabricant</div>
+      <div id="stock-fab-wrap"><input id="stock-fab" type="text" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-sans)"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Quantité</div>
+        <input id="stock-qte" type="number" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-mono)">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">UdM</div>
+        <input id="stock-udm" type="text" value="pcs" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-sans)">
+      </div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Emplacement</div>
+      <div id="stock-emplacement-wrap"><div class="loading" style="padding:8px 0"><i class="ti ti-loader-2" aria-hidden="true"></i> Chargement…</div></div>
+    </div>
+    <div class="mbtns">
+      <button class="btn-s" onclick="fermerModalStock()">Annuler</button>
+      <button class="btn-p" style="background:#3BA85F" onclick="soumettreStock()"><i class="ti ti-check" aria-hidden="true"></i> Mettre en stock</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ---------- version ---------- */
+// Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
+// Un seul endroit a modifier a chaque mise a jour ; se repercute
+// automatiquement dans le titre d'onglet et le badge d'en-tete.
+const APP_VERSION = "2.0";
+const APP_DATE = "25/07/2026";
+document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
+document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
+
+const WEBHOOK_SUIVI = 'https://protoprocess.app.n8n.cloud/webhook/v2-get-suivi';
+
+const FOURNISSEUR_BADGE = {
+  'digikey': 'f-dk', 'farnell': 'f-fn', 'mouser': 'f-mo',
+  'rs components': 'f-rs', 'tme': 'f-tm',
+  'safe-pcb': 'f-sf', 'ellipse': 'f-sf', 'inventory': 'f-iv'
+};
+function badgeClass(fournisseur) {
+  const k = (fournisseur || '').toLowerCase().trim();
+  return FOURNISSEUR_BADGE[k] || 'f-xx';
+}
+
+function fmtDate(v) {
+  if (!v) return '';
+  const s = String(v);
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return s;
+}
+
+let SUIVI_DATA = null;
+
+async function chargerSuivi() {
+  const body = document.getElementById('suivi-body');
+  const banner = document.getElementById('suivi-alert-banner');
+  body.innerHTML = '<div class="loading"><i class="ti ti-loader-2" aria-hidden="true"></i> Chargement…</div>';
+  banner.innerHTML = '';
+  try {
+    const res = await fetch(WEBHOOK_SUIVI);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    SUIVI_DATA = data;
+    peuplerFiltreFournisseur(data.commandes || []);
+    renderSuivi();
+  } catch (err) {
+    body.innerHTML = `<div class="errbox"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Impossible de charger les données (${err.message}). Vérifie que le workflow n8n est actif.</div>`;
+  }
+}
+
+function peuplerFiltreFournisseur(commandes) {
+  const sel = document.getElementById('suivi-flt-fournisseur');
+  const existants = new Set(Array.from(sel.options).map(o => o.value).filter(Boolean));
+  const fournisseurs = Array.from(new Set(commandes.map(c => c.fournisseur).filter(Boolean))).sort();
+  fournisseurs.forEach(f => {
+    if (!existants.has(f)) {
+      const opt = document.createElement('option');
+      opt.value = f; opt.textContent = f;
+      sel.appendChild(opt);
+    }
+  });
+}
+
+function ligneStatutPill(statut) {
+  const s = (statut || '').trim();
+  if (s === 'Expédié' || s === 'Reçu') return `<span class="pill p-ok"><i class="ti ti-check" style="font-size:10px" aria-hidden="true"></i> ${s}</span>`;
+  if (s === 'Backorder') return `<span class="pill p-wa"><i class="ti ti-clock" style="font-size:10px" aria-hidden="true"></i> Backorder</span>`;
+  if (s === 'Retard') return `<span class="pill p-er"><i class="ti ti-clock-exclamation" style="font-size:10px" aria-hidden="true"></i> Retard</span>`;
+  return `<span class="pill p-gy">${s || 'Commandé'}</span>`;
+}
+
+function calculerProgression(cmd) {
+  let total = 0, avance = 0;
+  (cmd.bls || []).forEach(bl => (bl.lignes || []).forEach(l => {
+    total++;
+    if (l.statut_ligne === 'Expédié' || l.statut_ligne === 'Reçu') avance++;
+  }));
+  return { total, avance };
+}
+
+const WEBHOOK_AJOUTER_FOURNISSEUR = 'https://protoprocess.app.n8n.cloud/webhook/v2-ajouter-fournisseur';
+
+async function validerFournisseur(domaine, fournisseurPropose, btn) {
+  if (!domaine) { toast("Domaine expéditeur inconnu — impossible de valider.", 'terr'); return; }
+  const nom = window.prompt(`Confirmer le nom du fournisseur pour le domaine "${domaine}" :`, fournisseurPropose || '');
+  if (!nom) return;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i>';
+  try {
+    const res = await fetch(WEBHOOK_AJOUTER_FOURNISSEUR, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domaine, fournisseur: nom })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    toast(data.ajoute ? `✓ ${nom} ajouté pour ${domaine}` : `${domaine} était déjà connu`, 'tok');
+    chargerSuivi();
+  } catch (err) {
+    toast('Erreur : ' + err.message, 'terr');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> Valider fournisseur';
+  }
+}
+
+function renderCarteCommande(cmd) {
+  const badge = badgeClass(cmd.fournisseur);
+  const { total, avance } = calculerProgression(cmd);
+  const pct = total > 0 ? Math.round((avance / total) * 100) : 0;
+
+  let cardClass = 'ok', pillHtml = `<span class="pill p-ok"><i class="ti ti-check" style="font-size:10px" aria-hidden="true"></i> ${cmd.statut_global || 'En cours'}</span>`, pfClass = 'ok';
+  if (cmd.en_retard) {
+    cardClass = 'er'; pfClass = 'er';
+    pillHtml = `<span class="pill p-er"><i class="ti ti-clock-exclamation" style="font-size:10px" aria-hidden="true"></i> Retard J+${cmd.jours_retard}</span>`;
+  } else if (cmd.statut_global === 'Backorder') {
+    cardClass = 'wa'; pfClass = 'wa';
+    pillHtml = `<span class="pill p-wa"><i class="ti ti-clock" style="font-size:10px" aria-hidden="true"></i> Backorder</span>`;
+  } else if (cmd.statut_global === 'Expédié') {
+    cardClass = 'ok'; pfClass = 'ok';
+  } else {
+    cardClass = 'pp'; pfClass = 'pp';
+    pillHtml = `<span class="pill p-gy">${cmd.statut_global || 'Commandé'}</span>`;
+  }
+
+  const metaBits = [cmd.client, cmd.ref_carte, cmd.date_commande ? ('Commandé le ' + fmtDate(cmd.date_commande)) : null].filter(Boolean).join(' · ');
+
+  const blsHtml = (cmd.bls || []).map(bl => {
+    const blOk = bl.statut_bl === 'Expédié' || bl.statut_bl === 'Reçu';
+    const blDot = blOk ? 'ok' : (cmd.en_retard ? 'er' : 'pp');
+    const infoParts = [];
+    if (bl.date_expedition) infoParts.push('Expédié le ' + fmtDate(bl.date_expedition));
+    infoParts.push((bl.lignes || []).length + ' ligne' + ((bl.lignes || []).length > 1 ? 's' : ''));
+    const trackingHtml = bl.n_tracking ? `<span class="blt"><i class="ti ti-truck" style="font-size:12px" aria-hidden="true"></i> ${bl.n_tracking}</span>` : '';
+
+    const lignesHtml = (bl.lignes || []).map(l => `
+      <tr>
+        <td><div class="ipn">${l.ipn || l.mpn || ''}</div><div class="mpn2">${l.mpn || ''}</div></td>
+        <td class="qn">${l.qte_commandee || ''}</td>
+        <td class="qn" style="${l.qte_recue ? '' : 'color:var(--text-muted)'}">${l.qte_recue || '—'}</td>
+        <td style="font-size:11px;color:var(--text-secondary)">${fmtDate(l.date_ar)}</td>
+        <td>${ligneStatutPill(l.statut_ligne)}</td>
+        <td><div class="ac">
+          <button class="ab ab-pb" onclick='ouvrirPopupDeclaration({so: ${JSON.stringify(cmd.so)}, fournisseur: ${JSON.stringify(cmd.fournisseur)}, num_commande: ${JSON.stringify(cmd.num_commande_fournisseur || "")}, reference: ${JSON.stringify(l.ipn || l.mpn || "")}, probleme: ${JSON.stringify((l.ipn || l.mpn || "") + " — problème signalé depuis Suivi")}, retard: ${cmd.en_retard ? "true" : "false"}})' title="Déclarer un problème"><i class="ti ti-alert-triangle" style="font-size:11px" aria-hidden="true"></i> Pb</button>
+        </div></td>
+      </tr>`).join('');
+
+    return `
+      <div class="bls">
+        <span class="bld ${blDot}"></span><span class="bll">${bl.n_bl ? ('BL ' + bl.n_bl) : 'Sans BL'}</span>
+        <span class="bli">${infoParts.join(' · ')}</span>
+        <div class="bls-r">${trackingHtml}<span class="pill ${blOk ? 'p-ok' : 'p-gy'}">${bl.statut_bl || 'Commandé'}</span></div>
+      </div>
+      <table class="lt2">
+        <thead><tr><th>IPN / MPN</th><th style="text-align:center">Commandé</th><th style="text-align:center">Reçu</th><th>Date AR</th><th>Statut</th><th style="text-align:right">Actions</th></tr></thead>
+        <tbody>${lignesHtml || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:14px">Aucune ligne détaillée</td></tr>'}</tbody>
+      </table>`;
+  }).join('');
+
+  return `
+    <div class="card ${cardClass}">
+      <div class="ch" onclick="this.closest('.card').classList.toggle('open')">
+        <span class="fb ${badge}">${(cmd.fournisseur || 'INCONNU').toUpperCase()}</span>
+        <div class="ci">
+          <div class="cso">${cmd.so || '(SO inconnu)'} ${pillHtml}${cmd.fournisseur_a_valider ? ' <span class="pill p-wa"><i class="ti ti-help-circle" style="font-size:10px" aria-hidden="true"></i> Fournisseur à valider</span>' : ''}</div>
+          <div class="cm">${metaBits || '—'}</div>
+        </div>
+        <div class="pw"><div class="pb"><div class="pf ${pfClass}" style="width:${pct}%"></div></div><span class="pp2">${avance}/${total || '—'}</span></div>
+        <i class="ti ti-chevron-down chv" aria-hidden="true"></i>
+      </div>
+      <div class="cbdy">
+        ${blsHtml || '<div style="padding:14px 15px;color:var(--text-muted);font-size:12px">Aucun bon de livraison enregistré pour l&#39;instant.</div>'}
+        <div class="cft">
+          <span class="cfm">${cmd.num_commande_fournisseur ? ('N° commande ' + cmd.num_commande_fournisseur) : 'N° commande inconnu'}${cmd.date_reference ? (' · Prévu le ' + fmtDate(cmd.date_reference)) : ''}</span>
+          ${cmd.fournisseur_a_valider ? `<button class="btn-p" style="background:var(--wa-t)" onclick='validerFournisseur(${JSON.stringify(cmd.domaine_expediteur)}, ${JSON.stringify(cmd.fournisseur)}, this)'><i class="ti ti-check" aria-hidden="true"></i> Valider fournisseur</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderSuivi() {
+  if (!SUIVI_DATA) return;
+  const body = document.getElementById('suivi-body');
+  const banner = document.getElementById('suivi-alert-banner');
+  const searchTerm = document.getElementById('suivi-search').value.trim().toLowerCase();
+  const fournisseurFilter = document.getElementById('suivi-flt-fournisseur').value;
+  const alertesDabord = document.getElementById('suivi-flt-alertes').classList.contains('on');
+
+  let commandes = (SUIVI_DATA.commandes || []).filter(c => c.so !== '_placeholder_');
+
+  if (searchTerm) {
+    commandes = commandes.filter(c => {
+      const haystack = [c.so, c.fournisseur, c.ref_carte, c.client].join(' ').toLowerCase();
+      const inLignes = (c.bls || []).some(bl => (bl.lignes || []).some(l =>
+        (l.ipn || '').toLowerCase().includes(searchTerm) || (l.mpn || '').toLowerCase().includes(searchTerm)
+      ));
+      return haystack.includes(searchTerm) || inLignes;
+    });
+  }
+  if (fournisseurFilter) commandes = commandes.filter(c => c.fournisseur === fournisseurFilter);
+
+  const retards = commandes.filter(c => c.en_retard);
+  const backorders = commandes.filter(c => !c.en_retard && c.statut_global === 'Backorder');
+  const enCours = commandes.filter(c => !c.en_retard && c.statut_global !== 'Backorder');
+
+  document.getElementById('stat-alertes').textContent = retards.length;
+  document.getElementById('stat-encours').textContent = backorders.length + enCours.length;
+  document.getElementById('stat-expedies').textContent = commandes.filter(c => c.statut_global === 'Expédié').length;
+  document.getElementById('tab-badge-suivi').textContent = retards.length || '';
+  document.getElementById('tab-badge-suivi').style.display = retards.length ? 'inline-flex' : 'none';
+
+  banner.innerHTML = retards.length
+    ? `<div class="alrt"><i class="ti ti-alert-triangle" style="font-size:14px" aria-hidden="true"></i> ${retards.length} commande${retards.length > 1 ? 's' : ''} en retard — date promise dépassée sans expédition confirmée</div>`
+    : '';
+
+  if (!commandes.length) {
+    body.innerHTML = '<div class="empty"><i class="ti ti-inbox" aria-hidden="true"></i>Aucune commande ne correspond à ces critères.</div>';
+    return;
+  }
+
+  let html = '';
+  if (alertesDabord) {
+    if (retards.length) html += `<div class="stitle"><i class="ti ti-alert-triangle" style="color:var(--er-t);font-size:13px" aria-hidden="true"></i> Retards — ${retards.length}</div><div class="body" style="padding:0 0 4px">` + retards.map(renderCarteCommande).join('') + '</div>';
+    if (backorders.length) html += `<div class="stitle"><i class="ti ti-clock" style="color:var(--wa-t);font-size:13px" aria-hidden="true"></i> Backorders — ${backorders.length}</div><div class="body" style="padding:0 0 4px">` + backorders.map(renderCarteCommande).join('') + '</div>';
+    if (enCours.length) html += `<div class="stitle"><i class="ti ti-refresh" style="color:var(--text-muted);font-size:13px" aria-hidden="true"></i> En cours — ${enCours.length}</div><div class="body" style="padding:0 0 4px">` + enCours.map(renderCarteCommande).join('') + '</div>';
+  } else {
+    html = '<div class="body" style="padding-top:14px">' + commandes.map(renderCarteCommande).join('') + '</div>';
+  }
+  body.innerHTML = html;
+}
+
+// ============== ONGLET RÉCEPTION ==============
+const WEBHOOK_RECEPTION = 'https://protoprocess.app.n8n.cloud/webhook/v2-get-reception';
+const WEBHOOK_VALIDER = 'https://protoprocess.app.n8n.cloud/webhook/v2-valider-reception';
+
+let RECEPTION_DATA = [];
+const RECEPTION_ETAT = {};
+let ECART_EN_ATTENTE = null;
+
+function cardKeyReception(c) {
+  return (c.so + '_' + c.fournisseur).replace(/[^a-z0-9]/gi, '_');
+}
+
+function parseDatePrevuReception(str) {
+  if (!str || str === '—') return null;
+  const s = str.toString().trim();
+  let m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+  m = s.match(/(\d{1,2})\/(\d{1,2})(?!\/)/);
+  if (m) return new Date(new Date().getFullYear(), parseInt(m[2]) - 1, parseInt(m[1]));
+  return null;
+}
+
+function statutReception(c) {
+  const dateRef = parseDatePrevuReception(c.datePrevu);
+  const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
+  const enRetard = !!(dateRef && aujourdhui > dateRef);
+  const joursRetard = enRetard ? Math.floor((aujourdhui - dateRef) / 86400000) : null;
+  return { enRetard, joursRetard };
+}
+
+async function chargerReception() {
+  const body = document.getElementById('rec-body');
+  body.innerHTML = '<div class="loading"><i class="ti ti-loader-2" aria-hidden="true"></i> Chargement… (peut prendre 20-30s, une GSheet par affaire)</div>';
+  try {
+    const res = await fetch(WEBHOOK_RECEPTION);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    RECEPTION_DATA = data.colis || [];
+    peuplerFiltreFournisseurReception(RECEPTION_DATA);
+    renderReception();
+  } catch (err) {
+    body.innerHTML = `<div class="errbox"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Impossible de charger les données (${err.message}).</div>`;
+  }
+}
+
+function peuplerFiltreFournisseurReception(colis) {
+  const sel = document.getElementById('rec-flt-fournisseur');
+  const existants = new Set(Array.from(sel.options).map(o => o.value).filter(Boolean));
+  const fournisseurs = Array.from(new Set(colis.map(c => c.fournisseur).filter(Boolean))).sort();
+  fournisseurs.forEach(f => {
+    if (!existants.has(f)) {
+      const opt = document.createElement('option');
+      opt.value = f; opt.textContent = f;
+      sel.appendChild(opt);
+    }
+  });
+}
+
+function getRecuActuel(cardId, idx, ligne) {
+  const key = cardId + '_' + idx;
+  if (RECEPTION_ETAT[key] !== undefined) return RECEPTION_ETAT[key];
+  return ligne.recuAffiche != null ? ligne.recuAffiche : 0;
+}
+
+function renderLigneReception(c, cardId, idx) {
+  const l = c.lignes[idx];
+  const recu = getRecuActuel(cardId, idx, l);
+  const ok = recu >= l.attendu;
+  const touche = RECEPTION_ETAT[cardId + '_' + idx] !== undefined;
+  const rowClass = touche ? (ok ? '' : 'style="background:rgba(163,45,45,.04)"') : '';
+  const estInventory = (l.fournisseur || '').toLowerCase() === 'inventory';
+
+  const mpnEnc = encodeURIComponent(l.mpn || l.ipn || '');
+  const dsUrl = 'https://www.google.com/search?q=' + mpnEnc + '+datasheet+filetype:pdf';
+
+  const badgeConfiance = (!touche && l.source_prefill === 'email')
+    ? `<span class="stkinfo" style="color:var(--ok-t);background:rgba(59,109,17,.12)" title="${l.confirme_email_date ? 'Confirm\u00e9 par email le ' + l.confirme_email_date : 'Confirm\u00e9 par email'}">✉️ confirmé</span>`
+    : (!touche && l.source_prefill === 'estimation')
+      ? `<span class="stkinfo" style="color:var(--wa-t)" title="Aucune donn\u00e9e r\u00e9elle disponible \u2014 valeur suppos\u00e9e \u00e0 v\u00e9rifier">? à vérifier</span>`
+      : '';
+
+  const sousLigne = [
+    (l.ipn && l.mpn && l.mpn !== l.ipn) ? l.mpn : '',
+    (!estInventory && l.fournisseurRef) ? l.fournisseurRef : ''
+  ].filter(Boolean).join(' · ');
+
+  return `
+    <tr id="rl-${cardId}-${idx}" ${rowClass}>
+      <td><div class="ipn">${l.ipn || l.mpn}${l.stkPP && l.stkPP > 0 ? ` <span class="stkinfo" title="Stock disponible">📦 ${l.stkPP}</span>` : ''}</div>${sousLigne ? `<div class="mpn2">${sousLigne}</div>` : ''}</td>
+      <td class="qcell"><span class="qatt">${l.attendu}</span></td>
+      <td class="qcell"><span style="color:var(--text-muted);font-family:var(--font-mono);font-size:12px">${l.besoin || '—'}</span></td>
+      <td class="qcell"><div class="qwrap">
+        <input type="number" class="${touche ? (ok ? 'qok' : 'qerr') : ''}" value="${recu}" id="qi-${cardId}-${idx}"
+          onchange="chgQtyReception('${cardId}', ${idx}, this.value, ${l.attendu})">
+        ${touche && !ok ? `<span class="etag">Δ ${recu - l.attendu}</span>` : ''}
+        ${badgeConfiance}
+      </div></td>
+      <td class="qcell">${touche ? (ok ? '<span style="color:var(--ok-t)">✓</span>' : '<span style="color:var(--er-t)">✗</span>') : '<span style="color:var(--text-muted);font-size:11px">—</span>'}</td>
+      <td><div class="ac">
+        <button class="ab ab-oc" onclick="window.open('${dsUrl}','_blank')" title="Datasheet"><i class="ti ti-file-text" style="font-size:11px" aria-hidden="true"></i> DS</button>
+        <button class="ab ab-oc" onclick="window.open('https://octopart.com/search?q=${mpnEnc}','_blank')" title="Octopart"><i class="ti ti-search" style="font-size:11px" aria-hidden="true"></i> Octopart</button>
+        <button class="ab ab-pb" onclick='ouvrirPopupDeclaration({so: ${JSON.stringify(c.so)}, fournisseur: ${JSON.stringify(l.fournisseur)}, num_commande: "", reference: ${JSON.stringify(l.ipn || l.mpn || "")}, probleme: ${JSON.stringify((l.ipn || l.mpn || "") + " — problème signalé depuis Réception")}})' title="Déclarer un problème"><i class="ti ti-alert-triangle" style="font-size:11px" aria-hidden="true"></i> Pb</button>
+        <button class="ab ab-stock" onclick='ouvrirPopupStock(${JSON.stringify({ipn: l.ipn, mpn: l.mpn, attendu: l.attendu, cardId: cardId, idx: idx, fabSuggere: l.fabSuggere || "", fabricantsPossibles: l.fabricantsPossibles || []})})' title="Mettre en stock"><i class="ti ti-package" style="font-size:11px" aria-hidden="true"></i> Add Stock</button>
+      </div></td>
+    </tr>`;
+}
+
+function renderCarteReception(c) {
+  const cardId = cardKeyReception(c);
+  const { enRetard, joursRetard } = statutReception(c);
+  const badge = badgeClass(c.fournisseur);
+  const total = c.lignes.length;
+  let recues = 0;
+  c.lignes.forEach((l, idx) => { if (getRecuActuel(cardId, idx, l) >= l.attendu) recues++; });
+  const pct = total > 0 ? Math.round((recues / total) * 100) : 0;
+
+  let cardClass = 'wa', pfClass = 'wa', pillHtml = `<span class="pill p-wa"><i class="ti ti-clock" style="font-size:10px" aria-hidden="true"></i> En attente</span>`;
+  if (c.isInventory) {
+    cardClass = 'pp'; pfClass = 'pp';
+    pillHtml = `<span class="pill p-gy">Stock à sortir</span>`;
+  } else if (enRetard) {
+    cardClass = 'er'; pfClass = 'er';
+    pillHtml = `<span class="pill p-er"><i class="ti ti-clock-exclamation" style="font-size:10px" aria-hidden="true"></i> Retard J+${joursRetard}</span>`;
+  } else if (pct === 100) {
+    cardClass = 'ok'; pfClass = 'ok';
+    pillHtml = `<span class="pill p-ok"><i class="ti ti-check" style="font-size:10px" aria-hidden="true"></i> Prêt à valider</span>`;
+  }
+
+  const metaBits = [c.client, c.carte, c.datePrevu && c.datePrevu !== '—' ? ('Prévu le ' + c.datePrevu) : null].filter(Boolean).join(' · ');
+  const lignesHtml = c.lignes.map((l, idx) => renderLigneReception(c, cardId, idx)).join('');
+  const lienAppro = c.urlAppro ? `<a href="${c.urlAppro}" target="_blank" style="color:var(--pp-blue);text-decoration:none;font-size:11px;margin-left:8px"><i class="ti ti-external-link" style="font-size:10px" aria-hidden="true"></i> GSheet</a>` : '';
+
+  return `
+    <div class="card ${cardClass}" id="card-${cardId}">
+      <div class="ch" onclick="this.closest('.card').classList.toggle('open')">
+        <span class="fb ${badge}">${(c.fournisseur || 'INCONNU').toUpperCase()}</span>
+        <div class="ci">
+          <div class="cso">${c.so} ${pillHtml}</div>
+          <div class="cm">${metaBits || '—'}</div>
+        </div>
+        <div class="pw"><div class="pb"><div class="pf ${pfClass}" style="width:${pct}%"></div></div><span class="pp2">${recues}/${total}</span></div>
+        <i class="ti ti-chevron-down chv" aria-hidden="true"></i>
+      </div>
+      <div class="cbdy">
+        ${c.lignesCompletes > 0 ? `<div style="padding:6px 15px;font-size:11px;color:var(--text-muted);background:rgba(59,109,17,.04);border-bottom:0.5px solid var(--border)">✓ ${c.lignesCompletes} ligne${c.lignesCompletes > 1 ? 's' : ''} déjà complète${c.lignesCompletes > 1 ? 's' : ''} (masquée${c.lignesCompletes > 1 ? 's' : ''})</div>` : ''}
+        <table class="lt2">
+          <thead><tr><th>IPN</th><th style="text-align:center">Attendu</th><th style="text-align:center">Besoin</th><th style="text-align:center">Reçu</th><th style="text-align:center">Statut</th><th style="text-align:right">Ressources</th></tr></thead>
+          <tbody>${lignesHtml}</tbody>
+        </table>
+        <div class="cft">
+          <span class="cfm">${c.statut || ''}${lienAppro}</span>
+          <button class="btn-p" id="vbtn-${cardId}" onclick="validerReceptionClick('${cardId}')"><i class="ti ti-check" aria-hidden="true"></i> Valider la réception</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function chgQtyReception(cardId, idx, val, attendu) {
+  const v = parseInt(val) || 0;
+  RECEPTION_ETAT[cardId + '_' + idx] = v;
+  const ok = v >= attendu;
+  const row = document.getElementById('rl-' + cardId + '-' + idx);
+  const inp = document.getElementById('qi-' + cardId + '-' + idx);
+  if (inp) inp.className = ok ? 'qok' : 'qerr';
+  if (row) row.style.background = ok ? '' : 'rgba(163,45,45,.04)';
+}
+
+function renderReception() {
+  const body = document.getElementById('rec-body');
+  const banner = document.getElementById('rec-alert-banner');
+  const cnt = document.getElementById('rec-count');
+  const searchTerm = document.getElementById('rec-search').value.trim().toLowerCase();
+  const fournisseurFilter = document.getElementById('rec-flt-fournisseur').value;
+  const alertesSeules = document.getElementById('rec-flt-alertes').classList.contains('on');
+
+  let colis = RECEPTION_DATA.slice();
+
+  if (searchTerm) {
+    colis = colis.filter(c => {
+      const haystack = [c.so, c.fournisseur, c.client, c.carte].join(' ').toLowerCase();
+      const inLignes = (c.lignes || []).some(l => (l.ipn || '').toLowerCase().includes(searchTerm) || (l.mpn || '').toLowerCase().includes(searchTerm));
+      return haystack.includes(searchTerm) || inLignes;
+    });
+  }
+  if (fournisseurFilter) colis = colis.filter(c => c.fournisseur === fournisseurFilter);
+
+  const retards = colis.filter(c => !c.isInventory && statutReception(c).enRetard);
+  if (alertesSeules) colis = colis.filter(c => c.isInventory || statutReception(c).enRetard);
+
+  document.getElementById('stat-alertes').textContent = retards.length;
+  const recBadge = document.getElementById('rec-badge');
+  recBadge.textContent = retards.length || '';
+  recBadge.style.display = retards.length ? 'inline-flex' : 'none';
+
+  banner.innerHTML = retards.length
+    ? `<div class="alrt"><i class="ti ti-alert-triangle" style="font-size:14px" aria-hidden="true"></i> ${retards.length} colis en retard — J+7 dépassé sans réception confirmée</div>`
+    : '';
+
+  cnt.textContent = colis.length + ' colis en cours de réception';
+
+  if (!colis.length) {
+    body.innerHTML = '<div class="empty"><i class="ti ti-inbox" aria-hidden="true"></i>Aucun colis ne correspond à ces critères.</div>';
+    return;
+  }
+  body.innerHTML = colis.map(renderCarteReception).join('');
+}
+
+function validerReceptionClick(cardId) {
+  const c = RECEPTION_DATA.find(x => cardKeyReception(x) === cardId);
+  if (!c) return;
+  const lignes = c.lignes.map((l, idx) => ({ ipn: l.ipn, mpn: l.mpn, fournisseur: l.fournisseur, attendu: l.attendu, recu: getRecuActuel(cardId, idx, l) }));
+  const ecarts = lignes.filter(l => l.recu < l.attendu);
+
+  if (ecarts.length > 0) {
+    ECART_EN_ATTENTE = { cardId, c, lignes, ecarts };
+    document.getElementById('ecart-liste').innerHTML = ecarts.map(e =>
+      `<div class="ml"><span>${e.ipn || e.mpn}</span><span>Attendu: ${e.attendu} · Reçu: <strong style="color:var(--er-t)">${e.recu}</strong></span></div>`
+    ).join('');
+    document.getElementById('ov-ecart').classList.add('open');
+  } else {
+    finaliserReception(cardId, c, lignes, []);
+  }
+}
+
+function fermerModalEcart() {
+  document.getElementById('ov-ecart').classList.remove('open');
+  ECART_EN_ATTENTE = null;
+}
+
+function confirmerEcart() {
+  if (!ECART_EN_ATTENTE) return;
+  const { cardId, c, lignes, ecarts } = ECART_EN_ATTENTE;
+  fermerModalEcart();
+  finaliserReception(cardId, c, lignes, ecarts);
+}
+
+async function finaliserReception(cardId, c, lignes, ecarts) {
+  const btn = document.getElementById('vbtn-' + cardId);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Enregistrement…'; }
+  try {
+    const res = await fetch(WEBHOOK_VALIDER, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ so: c.so, client: c.client, carte: c.carte, lignes, ecarts })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    RECEPTION_DATA = RECEPTION_DATA.filter(x => cardKeyReception(x) !== cardId);
+    renderReception();
+    toast(ecarts.length > 0 ? `⚠ Réception validée avec ${ecarts.length} écart(s)` : `✓ ${c.so} — ${c.fournisseur} réceptionné`, ecarts.length > 0 ? 'twarn' : 'tok');
+  } catch (err) {
+    toast('Erreur : ' + err.message, 'terr');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> Valider la réception'; }
+  }
+}
+
+function toast(msg, cls) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + cls;
+  setTimeout(() => { t.className = ''; }, 3500);
+}
+
+document.getElementById('rec-search').addEventListener('input', renderReception);
+document.getElementById('rec-flt-fournisseur').addEventListener('change', renderReception);
+document.getElementById('rec-flt-alertes').addEventListener('click', function () { this.classList.toggle('on'); renderReception(); });
+document.getElementById('rec-refresh').addEventListener('click', chargerReception);
+
+chargerReception();
+
+document.getElementById('suivi-search').addEventListener('input', renderSuivi);
+document.getElementById('suivi-flt-fournisseur').addEventListener('change', renderSuivi);
+document.getElementById('suivi-flt-alertes').addEventListener('click', function () {
+  this.classList.toggle('on');
+  renderSuivi();
+});
+document.getElementById('suivi-refresh').addEventListener('click', chargerSuivi);
+
+// ============== POPUP ADD STOCK ==============
+const WEBHOOK_EMPLACEMENTS = 'https://protoprocess.app.n8n.cloud/webhook/v2-emplacements-stock';
+const WEBHOOK_VERIFIER_STOCK = 'https://protoprocess.app.n8n.cloud/webhook/v2-verifier-stock';
+const WEBHOOK_METTRE_EN_STOCK = 'https://protoprocess.app.n8n.cloud/webhook/v2-mettre-en-stock';
+
+let STOCK_EMPLACEMENTS_CACHE = null;
+let STOCK_CONTEXTE = null;
+
+async function chargerEmplacementsStock() {
+  if (STOCK_EMPLACEMENTS_CACHE) return STOCK_EMPLACEMENTS_CACHE;
+  try {
+    const res = await fetch(WEBHOOK_EMPLACEMENTS);
+    const data = await res.json();
+    STOCK_EMPLACEMENTS_CACHE = data.emplacements || [];
+  } catch (e) {
+    STOCK_EMPLACEMENTS_CACHE = [];
+  }
+  return STOCK_EMPLACEMENTS_CACHE;
+}
+
+async function ouvrirPopupStock(ctx) {
+  STOCK_CONTEXTE = ctx;
+  const inputEl = document.getElementById('qi-' + ctx.cardId + '-' + ctx.idx);
+  const recuActuel = inputEl ? (parseInt(inputEl.value) || 0) : 0;
+  const surplus = Math.max(0, recuActuel - (ctx.attendu || 0));
+
+  document.getElementById('stock-ipn').value = ctx.ipn || '';
+  document.getElementById('stock-mpn').value = ctx.mpn || '';
+  document.getElementById('stock-qte').value = surplus || '';
+  document.getElementById('stock-udm').value = 'pcs';
+  document.getElementById('stock-statut-existe').textContent = 'Vérification…';
+  document.getElementById('stock-fab-wrap').innerHTML = '<div class="loading" style="padding:8px 0"><i class="ti ti-loader-2" aria-hidden="true"></i> …</div>';
+  document.getElementById('stock-emplacement-wrap').innerHTML = '<div class="loading" style="padding:8px 0"><i class="ti ti-loader-2" aria-hidden="true"></i> Chargement…</div>';
+  document.getElementById('ov-stock').classList.add('open');
+
+  const [emplacements, verif] = await Promise.all([
+    chargerEmplacementsStock(),
+    (async () => {
+      try {
+        const params = new URLSearchParams({ ipn: ctx.ipn || '', mpn: ctx.mpn || '' });
+        const res = await fetch(WEBHOOK_VERIFIER_STOCK + '?' + params.toString());
+        return await res.json();
+      } catch (e) { return { existe: false, lieu: '', fab: '' }; }
+    })()
+  ]);
+
+  // Priorité du fabricant : toujours celui de l'appro/Luminovo (Approved parts) en premier —
+  // c'est celui que Luminovo reconnaîtra pour matcher le stock plus tard. Le fabricant déjà
+  // enregistré en stock n'est utilisé qu'en dernier recours (aucune autre source disponible),
+  // pour corriger progressivement d'éventuelles erreurs de frappe historiques dans STK PP.
+  const fabWrap = document.getElementById('stock-fab-wrap');
+  const possibles = ctx.fabricantsPossibles || [];
+  const styleBase = "width:100%;padding:6px 9px;border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-sans);border:0.5px solid";
+  if (ctx.fabSuggere) {
+    fabWrap.innerHTML = `<input id="stock-fab" type="text" value="${ctx.fabSuggere}" style="${styleBase} var(--ok-b)" title="Déduit automatiquement du MPN dans la GSheet appro (prioritaire sur le stock existant)">`;
+  } else if (possibles.length > 1) {
+    fabWrap.innerHTML = `<select id="stock-fab" style="${styleBase} var(--wa-b)">` +
+      `<option value="">— choisir —</option>` +
+      possibles.map(f => `<option value="${f}"${f === verif.fab ? ' selected' : ''}>${f}</option>`).join('') +
+      `</select>`;
+  } else if (possibles.length === 1) {
+    fabWrap.innerHTML = `<input id="stock-fab" type="text" value="${possibles[0]}" style="${styleBase} var(--border)">`;
+  } else if (verif.fab) {
+    fabWrap.innerHTML = `<input id="stock-fab" type="text" value="${verif.fab}" style="${styleBase} var(--border)" title="Repris du stock existant — non trouvé dans l'appro">`;
+  } else {
+    fabWrap.innerHTML = `<input id="stock-fab" type="text" placeholder="Non trouvé — saisie libre" style="${styleBase} var(--border)">`;
+  }
+
+  document.getElementById('stock-statut-existe').textContent = verif.existe
+    ? `✓ Article déjà en stock (actuellement ${verif.qte_actuelle ?? '?'} en "${verif.lieu}")`
+    : 'Nouvel article — sélectionnez un emplacement';
+
+  const wrap = document.getElementById('stock-emplacement-wrap');
+  wrap.innerHTML = `<select id="stock-emplacement" style="width:100%;padding:6px 9px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--surface-1);color:var(--text-primary);font-size:12px;font-family:var(--font-sans)">` +
+    emplacements.map(e => `<option value="${e}"${e === verif.lieu ? ' selected' : ''}>${e}</option>`).join('') +
+    `</select>`;
+}
+
+function fermerModalStock() {
+  document.getElementById('ov-stock').classList.remove('open');
+  STOCK_CONTEXTE = null;
+}
+
+async function soumettreStock() {
+  const payload = {
+    ipn: document.getElementById('stock-ipn').value.trim(),
+    mpn: document.getElementById('stock-mpn').value.trim(),
+    fab: document.getElementById('stock-fab').value.trim(),
+    qte: parseFloat(document.getElementById('stock-qte').value) || 0,
+    udm: document.getElementById('stock-udm').value.trim() || 'pcs',
+    emplacement: document.getElementById('stock-emplacement') ? document.getElementById('stock-emplacement').value : ''
+  };
+  if (!payload.ipn && !payload.mpn) { toast('IPN ou MPN requis', 'terr'); return; }
+  if (!payload.qte || payload.qte <= 0) { toast('Quantité invalide', 'terr'); return; }
+  if (!payload.emplacement) { toast('Emplacement requis', 'terr'); return; }
+
+  fermerModalStock();
+  try {
+    const res = await fetch(WEBHOOK_METTRE_EN_STOCK, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    toast(data.action === 'create' ? `✓ Nouvelle ligne créée dans le stock (${payload.qte} ${payload.udm})` : `✓ Stock incrémenté de ${payload.qte} ${payload.udm}`, 'tok');
+  } catch (err) {
+    toast('Erreur : ' + err.message, 'terr');
+  }
+}
+
+// ============== ONGLET QUALITÉ ==============
+const WEBHOOK_QUALITE = 'https://protoprocess.app.n8n.cloud/webhook/v2-get-qualite';
+const WEBHOOK_DECLARER_PB = 'https://protoprocess.app.n8n.cloud/webhook/v2-declarer-pb';
+const WEBHOOK_CLOTURER = 'https://protoprocess.app.n8n.cloud/webhook/v2-cloturer-reclamation';
+
+let QUALITE_DATA = { reclamations: [], stats: {} };
+let DECLARATION_CONTEXTE = null;
+
+async function chargerQualite() {
+  const body = document.getElementById('qual-body');
+  body.innerHTML = '<div class="loading"><i class="ti ti-loader-2" aria-hidden="true"></i> Chargement…</div>';
+  try {
+    const res = await fetch(WEBHOOK_QUALITE);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    QUALITE_DATA = await res.json();
+    peuplerFiltresQualite(QUALITE_DATA.reclamations || []);
+    renderQualite();
+  } catch (err) {
+    body.innerHTML = `<div class="errbox"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Impossible de charger les données (${err.message}).</div>`;
+  }
+}
+
+function peuplerFiltresQualite(reclamations) {
+  const selF = document.getElementById('qual-flt-fournisseur');
+  const selC = document.getElementById('qual-flt-codenc');
+  const existF = new Set(Array.from(selF.options).map(o => o.value).filter(Boolean));
+  const existC = new Set(Array.from(selC.options).map(o => o.value).filter(Boolean));
+  Array.from(new Set(reclamations.map(r => r.fournisseur).filter(Boolean))).sort().forEach(f => {
+    if (!existF.has(f)) { const o = document.createElement('option'); o.value = f; o.textContent = f; selF.appendChild(o); }
+  });
+  Array.from(new Set(reclamations.map(r => r.code_nc).filter(Boolean))).sort().forEach(c => {
+    if (!existC.has(c)) { const o = document.createElement('option'); o.value = c; o.textContent = c; selC.appendChild(o); }
+  });
+}
+
+function renderQualite() {
+  const body = document.getElementById('qual-body');
+  const stats = QUALITE_DATA.stats || {};
+  const searchTerm = document.getElementById('qual-search').value.trim().toLowerCase();
+  const nonClotureesSeules = document.getElementById('qual-flt-non-cloturees').classList.contains('on');
+  const fournisseurFilter = document.getElementById('qual-flt-fournisseur').value;
+  const codeNcFilter = document.getElementById('qual-flt-codenc').value;
+
+  let reclamations = (QUALITE_DATA.reclamations || []).slice();
+  if (searchTerm) {
+    reclamations = reclamations.filter(r => [r.so, r.detail, r.fournisseur, r.num_commande, r.probleme].join(' ').toLowerCase().includes(searchTerm));
+  }
+  if (nonClotureesSeules) reclamations = reclamations.filter(r => !r.cloturee);
+  if (fournisseurFilter) reclamations = reclamations.filter(r => r.fournisseur === fournisseurFilter);
+  if (codeNcFilter) reclamations = reclamations.filter(r => r.code_nc === codeNcFilter);
+
+  let html = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+    <div style="background:var(--surface-1);border-radius:var(--radius);padding:12px 15px"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Non clôturées</div><div style="font-size:20px;font-weight:500;color:var(--er-t)">${stats.non_cloturees ?? '—'}</div></div>
+    <div style="background:var(--surface-1);border-radius:var(--radius);padding:12px 15px"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Ce mois</div><div style="font-size:20px;font-weight:500;color:var(--wa-t)">${stats.ce_mois ?? '—'}</div></div>
+    <div style="background:var(--surface-1);border-radius:var(--radius);padding:12px 15px"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Clôturées</div><div style="font-size:20px;font-weight:500;color:var(--ok-t)">${stats.cloturees ?? '—'}</div></div>
+    <div style="background:var(--surface-1);border-radius:var(--radius);padding:12px 15px"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Fournisseur à risque</div><div style="font-size:14px;font-weight:500;padding-top:4px">${stats.fournisseur_risque || '—'}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${stats.fournisseur_risque_count ? stats.fournisseur_risque_count + ' réclamation(s)' : ''}</div></div>
+  </div>`;
+
+  if (!reclamations.length) {
+    html += '<div class="empty"><i class="ti ti-inbox" aria-hidden="true"></i>Aucune réclamation ne correspond à ces critères.</div>';
+    body.innerHTML = html;
+    return;
+  }
+
+  html += `<table class="rtbl"><thead><tr><th>Date</th><th>SO</th><th>Fournisseur</th><th>N° commande</th><th>Problème</th><th>Code NC</th><th>Impact prod.</th><th>Statut</th><th></th></tr></thead><tbody>`;
+  reclamations.forEach(r => {
+    const badge = badgeClass(r.fournisseur);
+    html += `<tr>
+      <td class="mu">${r.date}</td>
+      <td><span class="ref">${r.so}</span>${r.detail ? '<div class="mu" style="margin-top:2px">' + r.detail + '</div>' : ''}</td>
+      <td><span class="fb ${badge}">${(r.fournisseur || '').toUpperCase()}</span></td>
+      <td class="mu">${r.num_commande || ''}</td>
+      <td style="font-size:11px;max-width:220px">${r.probleme || ''}</td>
+      <td><span class="pill ${r.code_nc === 'Retard de livraison' ? 'p-er' : 'p-wa'}">${r.code_nc || ''}</span></td>
+      <td><span class="pill p-gy">${r.impact_prod || ''}</span></td>
+      <td><span class="pill ${r.cloturee ? 'p-ok' : 'p-er'}">${r.cloturee ? 'Clôturée' : 'Ouverte'}</span></td>
+      <td><div class="ac">
+        <a class="rbt ed" style="text-decoration:none" href="https://docs.google.com/spreadsheets/d/16VNvdUbq4z5jaiC_ACPQ_25CSN6P5BPHK9PIYYZbKs0/edit" target="_blank"><i class="ti ti-edit" style="font-size:11px" aria-hidden="true"></i> Éditer</a>
+        ${!r.cloturee ? `<button class="rbt cl" onclick="cloturerReclamation(${r.row_number}, this)"><i class="ti ti-check" style="font-size:11px" aria-hidden="true"></i> Clôturer</button>` : ''}
+      </div></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  body.innerHTML = html;
+}
+
+async function cloturerReclamation(rowNumber, btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i>';
+  try {
+    const res = await fetch(WEBHOOK_CLOTURER, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row_number: rowNumber })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const r = QUALITE_DATA.reclamations.find(x => x.row_number === rowNumber);
+    if (r) r.cloturee = true;
+    QUALITE_DATA.stats.non_cloturees = (QUALITE_DATA.stats.non_cloturees || 1) - 1;
+    QUALITE_DATA.stats.cloturees = (QUALITE_DATA.stats.cloturees || 0) + 1;
+    renderQualite();
+    toast('✓ Réclamation clôturée', 'tok');
+  } catch (err) {
+    toast('Erreur : ' + err.message, 'terr');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-check" style="font-size:11px" aria-hidden="true"></i> Clôturer';
+  }
+}
+
+function ouvrirPopupDeclaration(ctx) {
+  DECLARATION_CONTEXTE = ctx || {};
+  document.getElementById('decl-so').textContent = ctx.so || '—';
+  document.getElementById('decl-fournisseur').textContent = ctx.fournisseur || '—';
+  document.getElementById('decl-commande').textContent = ctx.num_commande || '—';
+  document.getElementById('decl-ref').textContent = ctx.reference || '—';
+  document.getElementById('decl-probleme').value = ctx.probleme || '';
+  document.getElementById('decl-codenc').value = ctx.retard ? 'Retard de livraison' : 'PCB';
+  document.getElementById('decl-impactprod').value = "pas d'impact";
+  document.getElementById('decl-impactclient').value = "pas d'impact";
+  document.getElementById('ov-declarer').classList.add('open');
+}
+
+function fermerModalDeclarer() {
+  document.getElementById('ov-declarer').classList.remove('open');
+  DECLARATION_CONTEXTE = null;
+}
+
+async function soumettreDeclaration() {
+  const ctx = DECLARATION_CONTEXTE || {};
+  const payload = {
+    so: ctx.so || '',
+    num_commande: ctx.num_commande || '',
+    fournisseur: ctx.fournisseur || '',
+    probleme: document.getElementById('decl-probleme').value,
+    code_nc: document.getElementById('decl-codenc').value,
+    impact_prod: document.getElementById('decl-impactprod').value,
+    impact_client: document.getElementById('decl-impactclient').value
+  };
+  fermerModalDeclarer();
+  try {
+    const res = await fetch(WEBHOOK_DECLARER_PB, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    toast('✓ Réclamation envoyée dans F22', 'tok');
+    if (document.getElementById('page-qualite').classList.contains('on')) chargerQualite();
+  } catch (err) {
+    toast('Erreur : ' + err.message, 'terr');
+  }
+}
+
+const WEBHOOK_NOUVELLE_ANNEE = 'https://protoprocess.app.n8n.cloud/webhook/v2-nouvelle-annee-qualite';
+
+async function reinitialiserStats() {
+  const confirmation = window.confirm(
+    "Ça va créer un nouvel onglet pour l'année suivante dans F22 (copie de l'onglet actif, en-têtes et formats conservés, lignes vidées) et archiver l'année en cours.\n\nCette action ne peut pas être annulée facilement. Continuer ?"
+  );
+  if (!confirmation) return;
+
+  const btn = document.getElementById('qual-reset');
+  btn.style.pointerEvents = 'none';
+  btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> En cours…';
+  try {
+    const res = await fetch(WEBHOOK_NOUVELLE_ANNEE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.success) {
+      toast(`✓ Nouvel onglet créé : ${data.nouvel_onglet}`, 'tok');
+      chargerQualite();
+    } else {
+      toast(data.raison || "L'onglet existe déjà", 'twarn');
+    }
+  } catch (err) {
+    toast('Erreur : ' + err.message, 'terr');
+  } finally {
+    btn.style.pointerEvents = '';
+    btn.innerHTML = '<i class="ti ti-refresh-alert" style="font-size:13px" aria-hidden="true"></i> Réinitialiser les stats';
+  }
+}
+
+document.getElementById('qual-search').addEventListener('input', renderQualite);
+document.getElementById('qual-flt-fournisseur').addEventListener('change', renderQualite);
+document.getElementById('qual-flt-codenc').addEventListener('change', renderQualite);
+document.getElementById('qual-flt-non-cloturees').addEventListener('click', function () { this.classList.toggle('on'); renderQualite(); });
+document.getElementById('qual-refresh').addEventListener('click', chargerQualite);
+document.getElementById('qual-nouvelle').addEventListener('click', () => ouvrirPopupDeclaration({}));
+document.getElementById('qual-reset').addEventListener('click', reinitialiserStats);
+
+chargerQualite();
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+    tab.classList.add('on');
+    document.getElementById('page-' + tab.dataset.tab).classList.add('on');
+  });
+});
+
+chargerSuivi();
+</script>
+</body>
+</html>
