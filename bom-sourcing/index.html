@@ -1037,8 +1037,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "1.2";
-const APP_DATE = "25/07/2026";
+const APP_VERSION = "1.3";
+const APP_DATE = "27/07/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1408,6 +1408,8 @@ function loadStockData(csvText) {
     if (ipn) stockByIPN[ipn] = qty;
     if (mpn) stockByMPN[mpn] = qty;
   });
+  // Le stock a change : l'index normalise et les recherches memorisees deviennent caducs.
+  if (typeof _viderIndexFlou === 'function') _viderIndexFlou();
 }
 
 function populateClientSelect() {
@@ -1659,21 +1661,35 @@ function getStockInfo(ipn, mpn, manufacturerFree) {
 // à redescendre si les vraies correspondances (fautes de frappe) commencent à disparaître.
 const FUZZY_MIN_SCORE = 0.82;
 
-function levenshtein(a, b) {
+// Distance d'edition BORNEE (Ukkonen) : on ne calcule que la bande diagonale de largeur k
+// et on abandonne des que la distance minimale possible depasse k. Pour toute distance <= k
+// le resultat est exact ; au-dela on renvoie k+1, ce qui suffit puisque le seul usage est la
+// comparaison a un seuil. Verifie identique a la version complete sur 16 cas reels (27/07).
+// Motif du changement : la version complete coutait ~4 s par rendu du tableau sur une BOM
+// de 91 lignes contre ~4000 references de stock, ce qui figeait l'onglet (ecran noir signale
+// par l'equipe le 27/07 au clic sur "Utiliser la qte en stock").
+function levenshteinMax(a, b, k) {
   a = a || ''; b = b || '';
   const m = a.length, n = b.length;
-  if (!m) return n;
-  if (!n) return m;
-  const dp = [];
-  for (let i=0;i<=m;i++) dp.push(new Array(n+1).fill(0));
-  for (let i=0;i<=m;i++) dp[i][0]=i;
-  for (let j=0;j<=n;j++) dp[0][j]=j;
-  for (let i=1;i<=m;i++) {
-    for (let j=1;j<=n;j++) {
-      dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  if (!m) return n > k ? k + 1 : n;
+  if (!n) return m > k ? k + 1 : m;
+  if (Math.abs(m - n) > k) return k + 1;
+  let prev = new Array(n + 1), cur = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    let best = cur[0];
+    const lo = Math.max(1, i - k), hi = Math.min(n, i + k);
+    if (lo > 1) cur[lo - 1] = k + 1;
+    for (let j = lo; j <= hi; j++) {
+      cur[j] = a[i-1] === b[j-1] ? prev[j-1] : 1 + Math.min(prev[j], cur[j-1], prev[j-1]);
+      if (cur[j] < best) best = cur[j];
     }
+    if (best > k) return k + 1;
+    for (let j = hi + 1; j <= n; j++) cur[j] = k + 1;
+    const t = prev; prev = cur; cur = t;
   }
-  return dp[m][n];
+  return prev[n];
 }
 
 // Parse un IPN résistance ou condensateur selon la convention Proto Process :
@@ -1722,52 +1738,104 @@ function rcCompatible(searchKey, candidateKey) {
 
 // Réutilise la liste de suffixes de conditionnement déjà définie pour la codification IPN
 // (textarea #rule-suffixes), pour ne pas pénaliser un match sur "BAS16" vs "BAS16,215" par ex.
+// Les expressions regulieres de suffixes sont compilees UNE fois et reutilisees. Avant, elles
+// etaient reconstruites a chaque appel, avec une lecture du DOM a chaque fois : ~3,5 s par rendu
+// du tableau a elles seules (mesure du 27/07), en plus du cout de la distance d'edition.
+let _suffixesSource = null;   // contenu brut du textarea au moment de la compilation
+let _suffixesRegex = [];      // expressions compilees correspondantes
+
+function _compilerSuffixes() {
+  let brut = '';
+  try { brut = document.getElementById('rule-suffixes')?.value || ''; } catch(e) {}
+  if (brut === _suffixesSource) return;          // deja compile pour ce contenu
+  _suffixesSource = brut;
+  _suffixesRegex = brut.split(/[,;\n]/)
+    .map(s => s.trim().toUpperCase().replace(/^[#\-\/]+/,''))
+    .filter(Boolean)
+    .map(s => new RegExp('[#\\-/,]?' + s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '$'));
+  _viderIndexFlou();                              // les cles normalisees deviennent caduques
+}
+
 function stripPackagingSuffixes(str) {
   str = (str||'').toUpperCase().trim();
   if (!str) return str;
-  let suffixesRaw = '';
-  try { suffixesRaw = document.getElementById('rule-suffixes')?.value || ''; } catch(e) {}
-  const suffixes = suffixesRaw.split(/[,;\n]/).map(s=>s.trim().toUpperCase().replace(/^[#\-\/]+/,'')).filter(Boolean);
-  suffixes.forEach(suf => {
-    if (!suf) return;
-    const escaped = suf.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    str = str.replace(new RegExp('[#\\-/,]?' + escaped + '$'), '');
-  });
+  _compilerSuffixes();
+  for (const re of _suffixesRegex) str = str.replace(re, '');
   return str.replace(/[\s\-_,]/g,'');
 }
 
-function fuzzyScore(a, b) {
-  const rc = rcCompatible(a, b);
+// Score de proximite entre une reference cherchee et une cle de stock DEJA normalisee.
+// Renvoie 0 des que le seuil est hors d'atteinte : la valeur exacte d'un score sous le seuil
+// n'est jamais utilisee (on ne fait que filtrer puis trier les retenus).
+function fuzzyScoreNorm(aBrut, aNorm, bBrut, bNorm) {
+  const rc = rcCompatible(aBrut, bBrut);
   if (rc === true) return 1;   // même valeur + même boîtier, tension/tolérance compatibles
   if (rc === false) return 0;  // R/C reconnus des deux côtés mais valeur ou boîtier différents -> exclu
-  // sinon (pas un R/C des deux côtés) : matching flou générique par distance d'édition
-  const na = stripPackagingSuffixes(a), nb = stripPackagingSuffixes(b);
-  if (!na || !nb) return 0;
-  const maxLen = Math.max(na.length, nb.length);
+  if (!aNorm || !bNorm) return 0;
+  const maxLen = Math.max(aNorm.length, bNorm.length);
   if (!maxLen) return 0;
-  return 1 - levenshtein(na, nb) / maxLen;
+  const k = Math.floor((1 - FUZZY_MIN_SCORE) * maxLen);
+  const d = levenshteinMax(aNorm, bNorm, k);
+  if (d > k) return 0;
+  return 1 - d / maxLen;
 }
 
+// Conserve pour compatibilite si une autre partie du code l'appelle encore.
+function fuzzyScore(a, b) {
+  return fuzzyScoreNorm(a, stripPackagingSuffixes(a), b, stripPackagingSuffixes(b));
+}
+
+// ---- Index du stock et memoire des recherches ----------------------------------------
+// Le stock est normalise UNE fois (et non a chaque comparaison), et le resultat de chaque
+// recherche est memorise. Sans cela, chaque redessin du tableau relancait la recherche
+// complete pour toutes les lignes sans stock : ~8 s par clic sur une BOM de 91 lignes,
+// soit un onglet fige (ecran noir signale par l'equipe le 27/07).
+let _indexFlou = null;        // [{key, qty, source, norm}]
+let _memoireFlou = new Map(); // cle cherchee -> candidats retenus
+
+function _viderIndexFlou() {
+  _indexFlou = null;
+  _memoireFlou = new Map();
+}
+
+function _construireIndexFlou() {
+  if (_indexFlou) return _indexFlou;
+  _compilerSuffixes();
+  const idx = [];
+  Object.keys(stockByIPN).forEach(k => idx.push({ key:k, qty:stockByIPN[k], source:'IPN', norm:stripPackagingSuffixes(k) }));
+  Object.keys(stockByMPN).forEach(k => idx.push({ key:k, qty:stockByMPN[k], source:'MPN', norm:stripPackagingSuffixes(k) }));
+  _indexFlou = idx;
+  return idx;
+}
 
 // Ne renvoie que les candidats qui franchissent FUZZY_MIN_SCORE, jusqu'à `limit` — peut
 // renvoyer 0 candidat si rien n'est assez proche. N'inclut pas les correspondances exactes
 // (déjà gérées ailleurs).
 function findFuzzyStockCandidates(searchKey, limit) {
   if (!searchKey) return [];
+  const memo = _memoireFlou.get(searchKey);
+  if (memo) return memo;
+
+  const idx = _construireIndexFlou();
+  const aNorm = stripPackagingSuffixes(searchKey);
+  const retenus = [];
+  for (const e of idx) {
+    if (e.key === searchKey) continue;
+    const sc = fuzzyScoreNorm(searchKey, aNorm, e.key, e.norm);
+    if (sc >= FUZZY_MIN_SCORE) retenus.push({ key:e.key, qty:e.qty, source:e.source, score:sc });
+  }
+  retenus.sort((a,b) => b.score - a.score);
+
   const seen = new Set();
-  const candidates = [];
-  Object.keys(stockByIPN).forEach(k => { if (k!==searchKey) candidates.push({key:k, qty:stockByIPN[k], source:'IPN', score:fuzzyScore(searchKey,k)}); });
-  Object.keys(stockByMPN).forEach(k => { if (k!==searchKey) candidates.push({key:k, qty:stockByMPN[k], source:'MPN', score:fuzzyScore(searchKey,k)}); });
-  candidates.sort((a,b)=>b.score-a.score);
   const out = [];
-  for (const c of candidates) {
-    if (c.score < FUZZY_MIN_SCORE) break; // trié décroissant : rien d'intéressant après
-    const dk = c.key+'|'+c.qty;
+  for (const c of retenus) {
+    const dk = c.key + '|' + c.qty;
     if (seen.has(dk)) continue;
     seen.add(dk);
     out.push(c);
-    if (out.length>=limit) break;
+    if (out.length >= limit) break;
   }
+  _memoireFlou.set(searchKey, out);
   return out;
 }
 
@@ -1889,11 +1957,25 @@ async function analyzeBOM() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows: payloadRows })
     });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    if (!resp.ok) {
+      // n8n renvoie le motif reel dans le corps de la reponse : on le lit au lieu de
+      // n'afficher qu'un code HTTP muet (retour terrain du 27/07 : "HTTP 500" sans rien d'autre).
+      let motif = '';
+      try {
+        const brut = await resp.text();
+        try {
+          const j = JSON.parse(brut);
+          motif = j.message || j.error || j.hint || brut;
+        } catch(_) { motif = brut; }
+      } catch(_) {}
+      motif = (motif || '').replace(/\s+/g, ' ').trim();
+      if (motif.length > 600) motif = motif.slice(0, 600) + '…';
+      throw new Error('HTTP ' + resp.status + (motif ? '\n\n' + motif : ''));
+    }
     webhookResults = await resp.json();
   } catch(e) {
     document.getElementById('bom-loading').style.display='none';
-    alert("Erreur lors de l'appel au service de codification N8N : " + e.message);
+    alert("Erreur lors de l'appel au service de codification N8N :\n\n" + e.message);
     return;
   }
 
