@@ -185,9 +185,10 @@ td.num input{text-align:right}
       </div>
       <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <button class="btn-p" id="bCreer" disabled>Créer le PO dans Odoo</button>
-        <span class="badge b-warn">Création non branchée — brique 4 à construire</span>
+        <span id="etatCreation" class="muted"></span>
       </div>
       <div class="hint" id="preCheck" style="margin-top:10px"></div>
+      <div id="resultatPO" style="margin-top:12px"></div>
     </div>
 
   </div>
@@ -195,12 +196,13 @@ td.num input{text-align:right}
 
 <script>
 "use strict";
-const APP_VERSION = "v1.0", APP_DATE = "31/07/2026";
+const APP_VERSION = "v1.1", APP_DATE = "31/07/2026";
 const BASE = "https://protoprocess.app.n8n.cloud";
 const MODE_TEST = new URLSearchParams(location.search).get("test") === "1";
 const PREFIX = MODE_TEST ? "/webhook-test/" : "/webhook/";
 const URL_LECTURE = BASE + PREFIX + "po-devis-lecture";
 const URL_SOCIETES = BASE + PREFIX + "po-societes";
+const URL_CREER = BASE + PREFIX + "po-creer";
 const CLE = "pp_auth";
 
 document.title = "PO Odoo — " + APP_VERSION;
@@ -622,6 +624,8 @@ $("rech").oninput = () => {
 };
 
 /* ---------- conditions avant création ---------- */
+let creationFaite = false;
+
 function preCheck() {
   const manque = [];
   if (!choisi) manque.push("choisir le fournisseur");
@@ -631,9 +635,116 @@ function preCheck() {
     manque.push("compléter les références, quantités et prix des lignes retenues");
   }
   const el = $("preCheck");
-  el.textContent = manque.length
-    ? "Avant de pouvoir créer le PO : " + manque.join(", ") + "."
-    : "Tout est prêt côté vérification. La création dans Odoo sera possible une fois la brique 4 branchée.";
+  el.textContent = creationFaite
+    ? "Ce devis a déjà donné lieu à une commande. Rechargez la page pour en traiter un autre."
+    : (manque.length
+      ? "Avant de pouvoir créer le PO : " + manque.join(", ") + "."
+      : "Tout est prêt. Le PO sera créé en brouillon : il faudra l'envoyer depuis Odoo.");
+  $("bCreer").disabled = creationFaite || manque.length > 0;
+}
+
+/* ---------- création du PO ---------- */
+function corpsCommande(forcer) {
+  return {
+    partner_id: choisi.id,
+    partner_ref: $("fRef").value.trim() || null,
+    so: $("fSo").value.split("+").map(s => s.trim()).filter(Boolean),
+    forcer: forcer === true,
+    lignes: lignesUI.filter(l => l.retenue).map(l => ({
+      reference: l.reference,
+      designation: l.designation,
+      quantite: l.quantite,
+      prix_unitaire: l.prix_unitaire
+    }))
+  };
+}
+
+async function creerPO(forcer) {
+  // Un double clic creerait deux commandes, et un PO ne se supprime pas.
+  $("bCreer").disabled = true;
+  vide($("etatCreation"));
+  const sp = document.createElement("span"); sp.className = "spin";
+  $("etatCreation").append(sp, document.createTextNode(" Création dans Odoo…"));
+  vide($("resultatPO"));
+
+  try {
+    const r = await fetch(URL_CREER, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-PP-Auth": auth()},
+      body: JSON.stringify(corpsCommande(forcer))
+    });
+    const brut = await r.text();
+    let d = null;
+    try { d = JSON.parse(brut); } catch (e) { d = null; }
+
+    if (r.status === 409 && d && d.collisions) { doublon(d); return; }
+    if (!r.ok) throw new Error("Le serveur a répondu " + r.status + ". " + brut.slice(0, 300));
+    if (!d || !d.cree) throw new Error("Réponse inattendue : " + brut.slice(0, 300));
+
+    creationFaite = true;
+    succes(d);
+  } catch (e) {
+    vide($("etatCreation"));
+    const s = document.createElement("span"); s.style.color = "var(--red)";
+    s.textContent = "Création impossible. " + e.message;
+    $("etatCreation").appendChild(s);
+  } finally {
+    preCheck();
+  }
+}
+
+$("bCreer").onclick = () => creerPO(false);
+
+function succes(d) {
+  vide($("etatCreation"));
+  const box = $("resultatPO"); vide(box);
+
+  const c = document.createElement("div");
+  c.className = "sug" + (d.alertes && d.alertes.length ? " none" : "");
+  const w = document.createElement("div"); w.className = "who";
+  const n = document.createElement("div"); n.className = "n";
+  n.textContent = d.po_name + " créé en brouillon";
+  const m = document.createElement("div"); m.className = "m";
+  m.textContent = d.fournisseur + " · " + d.nb_lignes + " lignes · " +
+    eur(d.montant_ht) + " HT · " + eur(d.montant_ttc) + " TTC · " + d.taxe_motif;
+  w.append(n, m); c.appendChild(w); box.appendChild(c);
+
+  if (d.alertes && d.alertes.length) {
+    const ul = document.createElement("ul"); ul.className = "alist";
+    d.alertes.forEach(t => {
+      const li = document.createElement("li"); li.className = "a"; li.textContent = t;
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  }
+
+  const p = document.createElement("div"); p.className = "hint";
+  p.textContent = "Le PO est en demande de prix : ouvrez-le dans Odoo pour le confirmer et l'envoyer au fournisseur.";
+  box.appendChild(p);
+}
+
+function doublon(d) {
+  vide($("etatCreation"));
+  const box = $("resultatPO"); vide(box);
+
+  const c = document.createElement("div"); c.className = "sug none";
+  const w = document.createElement("div"); w.className = "who";
+  const n = document.createElement("div"); n.className = "n"; n.textContent = "Commande déjà passée ?";
+  const m = document.createElement("div"); m.className = "m"; m.textContent = d.message;
+  w.append(n, m);
+  const b = document.createElement("button"); b.className = "btn-s"; b.textContent = "Créer quand même";
+  b.onclick = () => creerPO(true);
+  c.append(w, b); box.appendChild(c);
+
+  const ul = document.createElement("ul"); ul.className = "alist";
+  d.collisions.forEach(x => {
+    const li = document.createElement("li"); li.className = "w";
+    li.textContent = x.po + " — " + (x.partner_ref || "sans référence") +
+      " — " + x.etat + (x.date ? " — " + String(x.date).slice(0, 10) : "");
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
+  preCheck();
 }
 </script>
 </body>
