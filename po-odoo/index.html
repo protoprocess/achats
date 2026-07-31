@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PO Odoo — v1.0</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#0a0c12; --surface:#1a2030; --surface2:#161b27; --border:#262e42; --border2:#333d55;
+  --text:#e2e8f0; --text2:#94a3b8; --text3:#64748b;
+  --blue:#F07B1F; --blue-bg:#2a1f10; --pp-blue:#5BC4D8;
+  --green:#86c564; --green-bg:#EAF3DE; --green-badge:#3B6D11;
+  --amber:#eab676; --amber-bg:#FAEEDA; --amber-badge:#854F0B;
+  --red:#f09595;   --red-bg:#FCEBEB;   --red-badge:#A32D2D;
+  --radius:6px; --radius-lg:10px;
+  --mono:"SF Mono","Cascadia Code",Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.5}
+header{background:#0f1117;height:52px;display:flex;align-items:center;gap:10px;padding:0 18px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20}
+.logo-text{display:flex;align-items:center;gap:0;font-size:13px;font-weight:500}
+.logo-text .lt{color:#fff}.logo-text .ls{color:#444;margin:0 3px}.logo-text .lo{color:var(--blue)}
+.vbadge{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text3);border:1px solid var(--border);border-radius:20px;padding:3px 10px}
+.vbadge.test{color:var(--amber);border-color:var(--amber)}
+main{max-width:min(96vw,1800px);margin:0 auto;padding:18px}
+h2{font-size:13px;font-weight:600;margin:0 0 10px;letter-spacing:.02em}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:14px}
+.muted{color:var(--text2)}.dim{color:var(--text3)}
+.mono{font-family:var(--mono)}
+.btn-p{padding:7px 15px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:500;cursor:pointer}
+.btn-p:disabled{background:var(--surface2);color:var(--text3);cursor:not-allowed}
+.btn-s{padding:7px 14px;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;cursor:pointer}
+.btn-s:hover{border-color:var(--border2);color:var(--text)}
+input,textarea,select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:7px 10px;font-size:12px;font-family:inherit}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px;border-color:transparent}
+textarea{width:100%;min-height:90px;font-family:var(--mono);font-size:11px;resize:vertical}
+.drop{border:1.5px dashed var(--border2);border-radius:var(--radius-lg);padding:26px;text-align:center;color:var(--text2);cursor:pointer;transition:.12s}
+.drop:hover,.drop.over{border-color:var(--blue);background:var(--blue-bg);color:var(--text)}
+.drop i{font-size:26px;display:block;margin-bottom:8px;color:var(--blue)}
+.files{list-style:none;padding:0;margin:12px 0 0}
+.files li{display:flex;align-items:center;gap:9px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;font-size:12px}
+.files .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files .rm{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:0 2px}
+.files .rm:hover{color:var(--red)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
+.b-ok{background:var(--green-bg);color:var(--green-badge)}
+.b-warn{background:var(--amber-bg);color:var(--amber-badge)}
+.b-err{background:var(--red-bg);color:var(--red-badge)}
+.b-info{background:var(--blue-bg);color:var(--blue)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-weight:500;color:var(--text3);padding:7px 9px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+td{padding:7px 9px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td input{width:100%;padding:5px 7px;font-family:var(--mono);font-size:12px}
+td.num input{text-align:right}
+.src{font-family:var(--mono);font-size:10.5px;color:var(--text3);white-space:pre-wrap;word-break:break-word;line-height:1.45}
+.tot{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:var(--radius);margin-bottom:14px;font-size:12.5px}
+.tot.ok{background:var(--surface2);box-shadow:inset 3px 0 0 var(--green-badge)}
+.tot.ko{background:var(--surface2);box-shadow:inset 3px 0 0 var(--red-badge)}
+.tot.na{background:var(--surface2);box-shadow:inset 3px 0 0 var(--amber-badge)}
+.tot b{font-family:var(--mono);font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.field label{display:block;font-size:11px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.field input{width:100%}
+.hint{font-size:11px;color:var(--text3);margin-top:4px}
+.alist{list-style:none;padding:0;margin:0}
+.alist li{padding:7px 11px;border-radius:var(--radius);margin-bottom:6px;font-size:12px;background:var(--surface2)}
+.alist li.a{box-shadow:inset 3px 0 0 var(--red-badge)}
+.alist li.w{box-shadow:inset 3px 0 0 var(--amber-badge)}
+.sug{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius);box-shadow:inset 3px 0 0 var(--green-badge);margin-bottom:10px;flex-wrap:wrap}
+.sug.none{box-shadow:inset 3px 0 0 var(--amber-badge)}
+.who{flex:1;min-width:200px}
+.who .n{font-weight:600;font-size:13px}
+.who .m{font-size:11px;color:var(--text2);margin-top:2px}
+.res{max-height:270px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius);margin-top:8px}
+.res div{padding:8px 11px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px}
+.res div:last-child{border-bottom:none}
+.res div:hover{background:var(--blue-bg)}
+.res .c{font-family:var(--mono);color:var(--text3);font-size:11px}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+.hidden{display:none}
+.rowhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.rowhead h2{margin:0}
+.summary{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-bottom:12px}
+.summary b{color:var(--text);font-family:var(--mono)}
+</style>
+</head>
+<body>
+<header>
+  <img src="../shared/picto-pp.png" alt="Proto Process" width="24" height="24" style="object-fit:contain" onerror="this.style.display='none'">
+  <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">PO Odoo</span></span>
+  <span class="vbadge" id="vbadge"></span>
+</header>
+
+<main>
+
+  <div class="card hidden" id="cAuth">
+    <h2>Clé d'accès</h2>
+    <p class="muted" style="margin-top:0">Les webhooks n8n exigent la clé <span class="mono">X-PP-Auth</span>. Elle est conservée dans ce navigateur uniquement.</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="password" id="iAuth" placeholder="Clé X-PP-Auth" style="flex:1;max-width:340px">
+      <button class="btn-p" id="bAuth">Enregistrer</button>
+    </div>
+  </div>
+
+  <div class="card" id="cDepot">
+    <div class="rowhead">
+      <h2>1 · Le devis fournisseur</h2>
+      <button class="btn-s hidden" id="bRouvrir" style="margin-left:auto">Modifier</button>
+    </div>
+    <div id="depotCorps">
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choisir des fichiers">
+        <i class="ti ti-file-upload"></i>
+        Glissez le devis ici, ou cliquez pour choisir<br>
+        <span class="dim">PDF, images, Excel — plusieurs fichiers acceptés</span>
+      </div>
+      <input type="file" id="file" multiple accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.xls,.xlsx,.xlsm,.csv" class="hidden">
+      <ul class="files" id="liste"></ul>
+      <div style="margin-top:14px">
+        <label class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">ou collez le devis reçu par mail</label>
+        <textarea id="colle" placeholder="Collez ici le corps du message ou le tableau de prix…"></textarea>
+      </div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px">
+        <button class="btn-p" id="bLire">Lire le devis</button>
+        <span id="etat" class="muted"></span>
+      </div>
+    </div>
+    <div id="depotResume" class="muted hidden"></div>
+  </div>
+
+  <div id="zoneResultat" class="hidden">
+
+    <div class="card">
+      <h2>2 · Ce que la lecture a trouvé</h2>
+      <div id="totBanner"></div>
+      <div class="summary" id="resume"></div>
+      <ul class="alist" id="anomalies"></ul>
+      <ul class="alist" id="avertissements"></ul>
+    </div>
+
+    <div class="card">
+      <h2>3 · Le fournisseur</h2>
+      <div id="sugZone"></div>
+      <div style="margin-top:10px">
+        <input type="text" id="rech" placeholder="Chercher une société par nom, code ou domaine…" style="width:100%;max-width:520px">
+        <div class="res hidden" id="resultats"></div>
+      </div>
+      <div class="hint">Le fournisseur retenu est celui qui recevra la commande. Rien n'est présélectionné sans preuve : une correspondance de nom seule ne suffit pas.</div>
+    </div>
+
+    <div class="card">
+      <h2>4 · Les lignes à commander</h2>
+      <table>
+        <thead><tr>
+          <th style="width:34px"></th>
+          <th style="width:150px">Référence</th>
+          <th style="width:78px">Quantité</th>
+          <th style="width:104px">Prix unitaire</th>
+          <th style="width:92px">Total</th>
+          <th>Extrait du devis</th>
+        </tr></thead>
+        <tbody id="lignes"></tbody>
+      </table>
+      <div class="hint">Chaque ligne est affichée à côté du texte dont elle est tirée. Décochez une ligne pour l'exclure de la commande ; corrigez une quantité ou un prix et le recoupement du total se recalcule.</div>
+    </div>
+
+    <div class="card">
+      <h2>5 · La commande</h2>
+      <div class="grid">
+        <div class="field">
+          <label for="fRef">Référence fournisseur</label>
+          <input type="text" id="fRef">
+          <div class="hint">Numéros de devis, séparés par « + » si le PO en couvre plusieurs.</div>
+        </div>
+        <div class="field">
+          <label for="fSo">Affaire(s) couverte(s)</label>
+          <input type="text" id="fSo" placeholder="SO2607-410 + SO2607-412">
+          <div class="hint">Reporté dans « Document d'origine ». Séparez par « + ».</div>
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button class="btn-p" id="bCreer" disabled>Créer le PO dans Odoo</button>
+        <span class="badge b-warn">Création non branchée — brique 4 à construire</span>
+      </div>
+      <div class="hint" id="preCheck" style="margin-top:10px"></div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+"use strict";
+const APP_VERSION = "v1.0", APP_DATE = "31/07/2026";
+const BASE = "https://protoprocess.app.n8n.cloud";
+const MODE_TEST = new URLSearchParams(location.search).get("test") === "1";
+const PREFIX = MODE_TEST ? "/webhook-test/" : "/webhook/";
+const URL_LECTURE = BASE + PREFIX + "po-devis-lecture";
+const URL_SOCIETES = BASE + PREFIX + "po-societes";
+const CLE = "pp_auth";
+
+document.title = "PO Odoo — " + APP_VERSION;
+const vb = document.getElementById("vbadge");
+vb.textContent = APP_VERSION + " — " + APP_DATE + (MODE_TEST ? " · TEST" : "");
+if (MODE_TEST) vb.classList.add("test");
+
+const $ = id => document.getElementById(id);
+const vide = el => { while (el.firstChild) el.removeChild(el.firstChild); };
+const eur = n => (n === null || n === undefined || !isFinite(n)) ? "—" : n.toLocaleString("fr-FR", {minimumFractionDigits:2, maximumFractionDigits:4}) + " €";
+
+let fichiers = [];      // {nom, media_type, donnees_base64}  ou  {nom, texte}
+let lecture = null;     // réponse de la brique 1
+let registre = null;    // réponse de la brique 2
+let choisi = null;      // société retenue
+let lignesUI = [];      // état éditable des lignes
+
+/* ---------- clé d'accès ---------- */
+function auth() { return localStorage.getItem(CLE) || ""; }
+if (!auth()) $("cAuth").classList.remove("hidden");
+$("bAuth").onclick = () => {
+  const v = $("iAuth").value.trim();
+  if (!v) { $("iAuth").focus(); return; }
+  localStorage.setItem(CLE, v);
+  $("cAuth").classList.add("hidden");
+  chargerRegistre();
+};
+
+/* ---------- dépôt de fichiers ---------- */
+const drop = $("drop"), inputFile = $("file");
+drop.onclick = () => inputFile.click();
+drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputFile.click(); } };
+["dragenter","dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => ajouter(e.dataTransfer.files));
+inputFile.onchange = () => { ajouter(inputFile.files); inputFile.value = ""; };
+
+const MIME = {pdf:"application/pdf", png:"image/png", jpg:"image/jpeg", jpeg:"image/jpeg", gif:"image/gif", webp:"image/webp"};
+const TABLEUR = ["xls","xlsx","xlsm","csv","ods"];
+
+async function ajouter(fl) {
+  for (const f of Array.from(fl)) {
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    try {
+      if (TABLEUR.indexOf(ext) >= 0) {
+        fichiers.push({ nom: f.name, texte: await tableurEnTexte(f) });
+      } else if (MIME[ext]) {
+        fichiers.push({ nom: f.name, media_type: MIME[ext], donnees_base64: await base64(f) });
+      } else {
+        alert("Type non pris en charge : " + f.name + "\nFormats acceptés : PDF, image, tableur.");
+      }
+    } catch (err) {
+      alert("Lecture impossible de " + f.name + " : " + err.message);
+    }
+  }
+  dessinerFichiers();
+}
+
+function base64(f) {
+  return new Promise((ok, ko) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(",")[1]);
+    r.onerror = () => ko(new Error("fichier illisible"));
+    r.readAsDataURL(f);
+  });
+}
+
+// Un tableur n'est pas transmissible au modèle : il est converti en texte ici,
+// dans le navigateur, plutôt que d'ajouter un étage de traitement binaire dans n8n.
+async function tableurEnTexte(f) {
+  const buf = await f.arrayBuffer();
+  const wb = XLSX.read(buf, {type:"array"});
+  const out = [];
+  wb.SheetNames.forEach(nom => {
+    const lignes = XLSX.utils.sheet_to_json(wb.Sheets[nom], {header:1, blankrows:false, defval:""});
+    if (!lignes.length) return;
+    out.push("=== Feuille : " + nom + " ===");
+    lignes.forEach(l => out.push(l.map(c => String(c === null ? "" : c)).join(" | ")));
+  });
+  if (!out.length) throw new Error("aucune donnée lisible");
+  return out.join("\n");
+}
+
+function dessinerFichiers() {
+  const ul = $("liste"); vide(ul);
+  fichiers.forEach((f, i) => {
+    const li = document.createElement("li");
+    const ic = document.createElement("i");
+    ic.className = "ti " + (f.texte ? "ti-table" : (f.media_type === "application/pdf" ? "ti-file-type-pdf" : "ti-photo"));
+    ic.style.color = "var(--blue)";
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = f.nom;
+    const tg = document.createElement("span"); tg.className = "badge b-info";
+    tg.textContent = f.texte ? "converti en texte" : "envoyé tel quel";
+    const rm = document.createElement("button"); rm.className = "rm"; rm.textContent = "×";
+    rm.setAttribute("aria-label", "Retirer " + f.nom);
+    rm.onclick = () => { fichiers.splice(i, 1); dessinerFichiers(); };
+    li.append(ic, nm, tg, rm); ul.appendChild(li);
+  });
+}
+
+/* ---------- registre des sociétés ---------- */
+async function chargerRegistre() {
+  if (!auth()) return;
+  try {
+    const r = await fetch(URL_SOCIETES, {headers:{"X-PP-Auth": auth()}});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    registre = await r.json();
+  } catch (e) {
+    registre = null;
+    console.error("Registre indisponible", e);
+  }
+}
+chargerRegistre();
+
+/* ---------- lecture du devis ---------- */
+$("bLire").onclick = async () => {
+  const texte = $("colle").value.trim();
+  const textesFichiers = fichiers.filter(f => f.texte).map(f => "=== " + f.nom + " ===\n" + f.texte).join("\n\n");
+  const corpsTexte = [texte, textesFichiers].filter(Boolean).join("\n\n");
+  const docs = fichiers.filter(f => f.donnees_base64).map(f => ({nom:f.nom, media_type:f.media_type, donnees_base64:f.donnees_base64}));
+
+  if (!corpsTexte && !docs.length) { $("etat").textContent = "Déposez un fichier ou collez le texte du devis."; return; }
+  if (!auth()) { $("cAuth").classList.remove("hidden"); $("iAuth").focus(); return; }
+
+  $("bLire").disabled = true;
+  vide($("etat"));
+  const sp = document.createElement("span"); sp.className = "spin";
+  $("etat").append(sp, document.createTextNode(" Lecture en cours, une trentaine de secondes…"));
+
+  try {
+    const r = await fetch(URL_LECTURE, {
+      method:"POST",
+      headers:{"Content-Type":"application/json", "X-PP-Auth": auth()},
+      body: JSON.stringify({texte: corpsTexte, fichiers: docs})
+    });
+    const brut = await r.text();
+    if (!r.ok) throw new Error("Le serveur a répondu " + r.status + ". " + brut.slice(0, 300));
+    lecture = JSON.parse(brut);
+    if (!lecture || !lecture.ok) throw new Error("Réponse inattendue du serveur.");
+    afficher();
+  } catch (e) {
+    vide($("etat"));
+    const s = document.createElement("span"); s.style.color = "var(--red)";
+    s.textContent = "Lecture impossible. " + e.message;
+    $("etat").appendChild(s);
+  } finally {
+    $("bLire").disabled = false;
+  }
+};
+
+/* ---------- affichage du résultat ---------- */
+function afficher() {
+  vide($("etat"));
+  $("zoneResultat").classList.remove("hidden");
+  replierDepot();
+
+  lignesUI = lecture.lignes.map(l => ({
+    retenue: true,
+    reference: l.reference,
+    designation: l.designation,
+    quantite: l.quantite,
+    prix_unitaire: l.prix_unitaire,
+    extrait_source: l.extrait_source
+  }));
+
+  const em = lecture.emetteur || {};
+  const res = $("resume"); vide(res);
+  [["Émetteur", em.nom || "non identifié"],
+   ["Devis", (lecture.numeros_devis || []).join(" + ") || "—"],
+   ["Lignes", String(lecture.nb_lignes)],
+   ["Devise", lecture.devise || "—"]].forEach(([k, v]) => {
+    const s = document.createElement("span");
+    const b = document.createElement("b"); b.textContent = v;
+    s.append(document.createTextNode(k + " : "), b);
+    res.appendChild(s);
+  });
+
+  listePuces($("anomalies"), lecture.anomalies || [], "a");
+  listePuces($("avertissements"), lecture.avertissements || [], "w");
+
+  $("fRef").value = (lecture.numeros_devis || []).join(" + ");
+  dessinerLignes();
+  rapprocher();
+  preCheck();
+}
+
+function listePuces(ul, items, cls) {
+  vide(ul);
+  items.forEach(t => {
+    const li = document.createElement("li"); li.className = cls; li.textContent = t;
+    ul.appendChild(li);
+  });
+}
+
+function replierDepot() {
+  $("depotCorps").classList.add("hidden");
+  $("bRouvrir").classList.remove("hidden");
+  const r = $("depotResume"); r.classList.remove("hidden");
+  const n = fichiers.length, t = $("colle").value.trim().length;
+  r.textContent = (n ? n + " fichier" + (n > 1 ? "s" : "") : "aucun fichier") + (t ? " et " + t + " caractères collés" : "");
+}
+$("bRouvrir").onclick = () => {
+  $("depotCorps").classList.remove("hidden");
+  $("bRouvrir").classList.add("hidden");
+  $("depotResume").classList.add("hidden");
+};
+
+/* ---------- lignes éditables ---------- */
+function dessinerLignes() {
+  const tb = $("lignes"); vide(tb);
+  lignesUI.forEach((l, i) => {
+    const tr = document.createElement("tr");
+
+    const tdC = document.createElement("td");
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = l.retenue;
+    cb.style.width = "auto"; cb.setAttribute("aria-label", "Retenir la ligne " + (i + 1));
+    cb.onchange = () => { l.retenue = cb.checked; tr.style.opacity = cb.checked ? "1" : ".42"; totaux(); };
+    tdC.appendChild(cb);
+
+    const tdR = document.createElement("td");
+    const ir = document.createElement("input"); ir.type = "text"; ir.value = l.reference;
+    ir.oninput = () => { l.reference = ir.value; };
+    const dg = document.createElement("div"); dg.className = "dim"; dg.style.fontSize = "10.5px";
+    dg.style.marginTop = "3px"; dg.textContent = l.designation || "";
+    tdR.append(ir, dg);
+
+    const tdQ = document.createElement("td"); tdQ.className = "num";
+    const iq = document.createElement("input"); iq.type = "number"; iq.min = "0"; iq.step = "1";
+    iq.value = l.quantite === null ? "" : l.quantite;
+    iq.oninput = () => { l.quantite = iq.value === "" ? null : Number(iq.value); totaux(); };
+    tdQ.appendChild(iq);
+
+    const tdP = document.createElement("td"); tdP.className = "num";
+    const ip = document.createElement("input"); ip.type = "number"; ip.min = "0"; ip.step = "0.0001";
+    ip.value = l.prix_unitaire === null ? "" : l.prix_unitaire;
+    ip.oninput = () => { l.prix_unitaire = ip.value === "" ? null : Number(ip.value); totaux(); };
+    tdP.appendChild(ip);
+
+    const tdT = document.createElement("td"); tdT.className = "num mono"; tdT.id = "tl" + i;
+    tdT.style.paddingTop = "12px"; tdT.textContent = eur(totalLigne(l));
+
+    const tdS = document.createElement("td");
+    const sp = document.createElement("div"); sp.className = "src"; sp.textContent = l.extrait_source || "—";
+    tdS.appendChild(sp);
+
+    tr.append(tdC, tdR, tdQ, tdP, tdT, tdS);
+    tb.appendChild(tr);
+  });
+  totaux();
+}
+
+function totalLigne(l) {
+  if (l.quantite === null || l.prix_unitaire === null) return null;
+  if (!isFinite(l.quantite) || !isFinite(l.prix_unitaire)) return null;
+  return Math.round(l.quantite * l.prix_unitaire * 100) / 100;
+}
+
+// Le recoupement se recalcule à chaque correction : c'est ce qui rend le témoin utile
+// pendant la relecture, et pas seulement au moment de la lecture initiale.
+function totaux() {
+  let somme = 0, incomplete = false;
+  lignesUI.forEach((l, i) => {
+    const t = totalLigne(l);
+    const c = $("tl" + i); if (c) c.textContent = eur(t);
+    if (!l.retenue) return;
+    if (t === null) incomplete = true; else somme += t;
+  });
+  somme = Math.round(somme * 100) / 100;
+
+  const annonce = lecture.total_ht_annonce;
+  const b = $("totBanner"); vide(b);
+  const d = document.createElement("div");
+  const toutes = lignesUI.every(l => l.retenue);
+
+  let cls, txt;
+  if (annonce === null || annonce === undefined) {
+    cls = "na";
+    txt = "Aucun total imprimé sur le devis : le recoupement automatique est impossible. Vérifiez chaque prix à la main.";
+  } else if (!toutes) {
+    cls = "na";
+    txt = "Lignes exclues de la commande : le total ne peut plus être comparé au devis (" + eur(annonce) + ").";
+  } else {
+    const ecart = Math.round((somme - annonce) * 100) / 100;
+    if (Math.abs(ecart) <= 0.02) {
+      cls = "ok";
+      txt = "Le total des lignes correspond au montant imprimé sur le devis.";
+    } else {
+      cls = "ko";
+      txt = "Écart de " + eur(ecart) + " avec le total imprimé sur le devis (" + eur(annonce) + "). Une ligne est probablement mal lue — ou le devis exclut le port de son total. Vérifiez avant de créer le PO.";
+    }
+  }
+  d.className = "tot " + cls;
+  const gros = document.createElement("b"); gros.textContent = eur(somme);
+  const lbl = document.createElement("span"); lbl.className = "muted";
+  lbl.textContent = "total des lignes, hors port et frais";
+  const msg = document.createElement("span"); msg.style.marginLeft = "auto"; msg.style.textAlign = "right";
+  msg.style.maxWidth = "62%"; msg.textContent = txt;
+  d.append(gros, lbl, msg);
+  b.appendChild(d);
+  preCheck();
+}
+
+/* ---------- rapprochement fournisseur ---------- */
+const normVat = v => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const normDom = v => String(v || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].trim();
+const normNom = v => String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+function rapprocher() {
+  const z = $("sugZone"); vide(z);
+  if (!registre || !Array.isArray(registre.societes)) {
+    encart(z, "none", "Registre des sociétés indisponible", "Impossible de joindre Odoo. Rechargez la page, ou choisissez le fournisseur à la main quand le registre répondra.");
+    return;
+  }
+  const em = lecture.emetteur || {};
+  const tva = normVat(em.tva);
+  const doms = (em.domaines || []).map(normDom).filter(Boolean);
+  const nom = normNom(em.nom);
+
+  const trouves = [];
+  registre.societes.forEach(s => {
+    const preuves = [];
+    if (tva && s.vat_exclusif && s.vat_exclusif === tva) preuves.push({f:true, t:"numéro de TVA " + em.tva});
+    const dc = (s.domaines_exclusifs || []).filter(d => doms.indexOf(d) >= 0);
+    if (dc.length) preuves.push({f:true, t:"domaine " + dc[0]});
+    if (nom && s.nom_normalise === nom) preuves.push({f:false, t:"nom identique"});
+    else if (nom && s.nom_normalise && (s.nom_normalise.indexOf(nom) >= 0 || nom.indexOf(s.nom_normalise) >= 0)) preuves.push({f:false, t:"nom proche"});
+    if (preuves.length) trouves.push({s:s, preuves:preuves, fort:preuves.some(p => p.f)});
+  });
+
+  const forts = trouves.filter(t => t.fort);
+  if (forts.length === 1) {
+    proposer(z, forts[0]);
+  } else if (forts.length > 1) {
+    encart(z, "none", "Plusieurs sociétés correspondent", forts.length + " fiches portent un identifiant du devis. Choisissez ci-dessous.");
+    listerCandidats(forts);
+  } else if (trouves.length) {
+    encart(z, "none", "Aucune correspondance certaine",
+      "Le nom ressemble à " + trouves.length + " fiche" + (trouves.length > 1 ? "s" : "") + ", mais aucun domaine ni numéro de TVA ne concorde. À confirmer à la main.");
+    listerCandidats(trouves);
+  } else {
+    encart(z, "none", "Fournisseur inconnu du registre",
+      (em.nom ? "« " + em.nom + " » n'a pas de fiche société correspondante dans Odoo." : "L'émetteur du devis n'a pas été identifié.") +
+      " Cherchez-la ci-dessous, ou créez-la dans Odoo avant de continuer.");
+  }
+}
+
+function encart(z, cls, titre, message) {
+  const d = document.createElement("div"); d.className = "sug " + cls;
+  const w = document.createElement("div"); w.className = "who";
+  const n = document.createElement("div"); n.className = "n"; n.textContent = titre;
+  const m = document.createElement("div"); m.className = "m"; m.textContent = message;
+  w.append(n, m); d.appendChild(w); z.appendChild(d);
+}
+
+function proposer(z, t) {
+  const d = document.createElement("div"); d.className = "sug";
+  const w = document.createElement("div"); w.className = "who";
+  const n = document.createElement("div"); n.className = "n"; n.textContent = t.s.nom;
+  const m = document.createElement("div"); m.className = "m";
+  m.textContent = "Reconnue par : " + t.preuves.map(p => p.t).join(", ") +
+    " · " + (t.s.code || "sans code") + (t.s.ville ? " · " + t.s.ville : "");
+  w.append(n, m);
+  const b = document.createElement("button"); b.className = "btn-p"; b.textContent = "Retenir ce fournisseur";
+  b.onclick = () => retenir(t.s);
+  d.append(w, b); z.appendChild(d);
+}
+
+function listerCandidats(liste) {
+  const box = $("resultats"); vide(box); box.classList.remove("hidden");
+  liste.slice(0, 40).forEach(t => box.appendChild(ligneResultat(t.s, t.preuves.map(p => p.t).join(", "))));
+}
+
+function ligneResultat(s, motif) {
+  const d = document.createElement("div");
+  const n = document.createElement("span"); n.textContent = s.nom;
+  const c = document.createElement("span"); c.className = "c";
+  c.textContent = "  " + (s.code || "—") + (s.ville ? " · " + s.ville : "") + (motif ? " · " + motif : "");
+  d.append(n, c);
+  d.onclick = () => retenir(s);
+  return d;
+}
+
+function retenir(s) {
+  choisi = s;
+  const z = $("sugZone"); vide(z);
+  const d = document.createElement("div"); d.className = "sug";
+  const w = document.createElement("div"); w.className = "who";
+  const n = document.createElement("div"); n.className = "n"; n.textContent = s.nom;
+  const m = document.createElement("div"); m.className = "m";
+  m.textContent = "Fournisseur retenu · " + (s.code || "sans code") + " · fiche Odoo n° " + s.id;
+  w.append(n, m);
+  const b = document.createElement("button"); b.className = "btn-s"; b.textContent = "Changer";
+  b.onclick = () => { choisi = null; rapprocher(); preCheck(); };
+  d.append(w, b); z.appendChild(d);
+  $("resultats").classList.add("hidden");
+  $("rech").value = "";
+  preCheck();
+}
+
+$("rech").oninput = () => {
+  const q = normNom($("rech").value);
+  const box = $("resultats");
+  if (!q || !registre) { box.classList.add("hidden"); return; }
+  const qd = normDom($("rech").value);
+  const hits = registre.societes.filter(s =>
+    s.nom_normalise.indexOf(q) >= 0 ||
+    (s.code && normNom(s.code).indexOf(q) >= 0) ||
+    (s.domaines || []).some(d => d.indexOf(qd) >= 0)
+  ).slice(0, 40);
+  vide(box);
+  if (!hits.length) {
+    const d = document.createElement("div"); d.className = "dim";
+    d.textContent = "Aucune société ne correspond. Créez-la dans Odoo, puis rechargez cette page.";
+    box.appendChild(d);
+  } else {
+    hits.forEach(s => box.appendChild(ligneResultat(s, "")));
+  }
+  box.classList.remove("hidden");
+};
+
+/* ---------- conditions avant création ---------- */
+function preCheck() {
+  const manque = [];
+  if (!choisi) manque.push("choisir le fournisseur");
+  const retenues = lignesUI.filter(l => l.retenue);
+  if (!retenues.length) manque.push("retenir au moins une ligne");
+  if (retenues.some(l => !l.reference || l.quantite === null || l.prix_unitaire === null)) {
+    manque.push("compléter les références, quantités et prix des lignes retenues");
+  }
+  const el = $("preCheck");
+  el.textContent = manque.length
+    ? "Avant de pouvoir créer le PO : " + manque.join(", ") + "."
+    : "Tout est prêt côté vérification. La création dans Odoo sera possible une fois la brique 4 branchée.";
+}
+</script>
+</body>
+</html>
