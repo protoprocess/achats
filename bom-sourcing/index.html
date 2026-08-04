@@ -839,6 +839,17 @@ tr:hover td { background: var(--surface2); }
       </div>
       </div>
 
+      <!-- CONSIGNE — toute analyse est deposee en base et y reste 72 h, meme si
+           l'affichage a echoue (coupure de la connexion pendant l'attente). -->
+      <div id="consigne-bar" style="margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); flex-wrap:wrap;">
+          <i class="ti ti-archive" style="color:var(--text3); font-size:15px;" aria-hidden="true"></i>
+          <span style="font-size:12px; color:var(--text3); flex:1;">Mes analyses récentes — conservées 72 h</span>
+          <button class="btn sm" onclick="chargerConsigne()"><i class="ti ti-refresh" aria-hidden="true"></i> Afficher</button>
+        </div>
+        <div id="consigne-liste" style="display:none; margin-top:8px;"></div>
+      </div>
+
       <!-- Résumé compact affiché une fois la BOM analysée, remplace la zone d'import ci-dessus -->
       <div id="bom-import-summary" style="display:none; margin-bottom:12px; padding:9px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); align-items:center; gap:10px; flex-wrap:wrap;">
         <i class="ti ti-file-check" style="color:var(--text2); font-size:15px;" aria-hidden="true"></i>
@@ -1037,8 +1048,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "1.3";
-const APP_DATE = "27/07/2026";
+const APP_VERSION = "1.4";
+const APP_DATE = "04/08/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1950,12 +1961,18 @@ async function analyzeBOM() {
     'Aggregated qty': findCol(row,['aggregated qty','qty','quantity','qté'])
   }));
 
+  // Numero de ticket genere AVANT l'envoi : c'est lui qui permet de retrouver
+  // l'analyse en consigne si la reponse n'arrive jamais jusqu'ici.
+  const ticket = nouveauTicket();
+  const nomFichier = document.getElementById('bom-file-input')?.files?.[0]?.name || '';
+  dernierTicket = ticket;
+
   let webhookResults = [];
   try {
     const resp = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: payloadRows })
+      body: JSON.stringify({ rows: payloadRows, ticket: ticket, fichier: nomFichier })
     });
     if (!resp.ok) {
       // n8n renvoie le motif reel dans le corps de la reponse : on le lit au lieu de
@@ -1975,10 +1992,25 @@ async function analyzeBOM() {
     webhookResults = await resp.json();
   } catch(e) {
     document.getElementById('bom-loading').style.display='none';
-    alert("Erreur lors de l'appel au service de codification N8N :\n\n" + e.message);
+    // Une erreur SANS code HTTP signifie que la connexion a ete coupee avant la
+    // reponse : le calcul a tres probablement abouti cote n8n et attend en
+    // consigne. Ce n'est pas la meme chose qu'un refus du service, et l'ecran
+    // ne doit pas dire la meme chose.
+    if (!/^HTTP /.test(e.message || '')) {
+      echecReseau(ticket, e.message);
+    } else {
+      alert("Erreur lors de l'appel au service de codification N8N :\n\n" + e.message);
+    }
     return;
   }
 
+  appliquerEtAfficher(rows, webhookResults);
+}
+
+// Applique un jeu de resultats (venu du webhook OU de la consigne) sur une BOM
+// chargee, puis affiche le tableau. Sortie factorisee pour que la recuperation
+// depuis la consigne suive exactement le meme chemin que l'analyse directe.
+function appliquerEtAfficher(rows, webhookResults) {
   const byDesignator = {};
   (webhookResults||[]).forEach(r => { byDesignator[r.Designator] = r; });
   const allResults = rows.map((row, i) => {
@@ -2004,6 +2036,120 @@ async function analyzeBOM() {
   showGSheetBar(filename);
   const clientLabel = activeClient.nom !== 'Standard' ? activeClient.nom : 'Standard (pas de contrainte MPN)';
   collapseImportZone(`${filename || 'BOM chargée'} — ${rows.length} composant(s) — client : ${clientLabel}`);
+}
+// ============================================================
+// CONSIGNE DES ANALYSES
+// ============================================================
+// Le service de codification met plusieurs dizaines de secondes a repondre, et
+// la connexion peut etre coupee avant (plafond d'environ 100 s impose en amont
+// de n8n). Le calcul, lui, va toujours au bout. Chaque resultat est donc depose
+// en base sous un numero de ticket et y reste 72 h : rien ne se perd, meme si
+// l'onglet est ferme.
+let dernierTicket = "";
+
+function nouveauTicket() {
+  const d = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+  return 'bom-' + d + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function urlConsigne() {
+  if (!webhookUrl) return '';
+  return webhookUrl.replace(/\/[^\/]*$/, '/bom-consigne');
+}
+
+// Affiche le message d'echec reseau : l'analyse a abouti, elle est en consigne.
+function echecReseau(ticket, detail) {
+  const zone = document.getElementById('consigne-liste');
+  document.getElementById('consigne-bar').scrollIntoView({behavior:'smooth', block:'center'});
+  zone.style.display = 'block';
+  zone.innerHTML = `<div style="padding:12px 16px; background:var(--amber-bg); border-left:3px solid var(--amber-badge); border-radius:0 var(--radius) var(--radius) 0;">
+    <div style="font-size:13px; font-weight:500; color:var(--amber-badge); margin-bottom:5px;">
+      <i class="ti ti-clock-exclamation" aria-hidden="true"></i> L'affichage a échoué, pas l'analyse
+    </div>
+    <div style="font-size:12px; color:var(--amber-badge); line-height:1.55;">
+      La connexion a été coupée avant l'arrivée des résultats, mais le calcul est allé au bout
+      et le résultat est déposé en consigne. Laissez la BOM chargée et cliquez ci-dessous.
+      <div style="margin-top:4px; opacity:.75;">Ticket : <code>${ticket}</code></div>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn sm" onclick="recupererAnalyse('${ticket}')"><i class="ti ti-download" aria-hidden="true"></i> Récupérer mon analyse</button>
+      <button class="btn sm" onclick="chargerConsigne()"><i class="ti ti-list" aria-hidden="true"></i> Voir toutes les analyses</button>
+    </div>
+  </div>`;
+}
+
+async function chargerConsigne() {
+  const zone = document.getElementById('consigne-liste');
+  const url = urlConsigne();
+  if (!url) { alert("URL du webhook N8N non configurée (voir Reconfigurer)."); return; }
+  zone.style.display = 'block';
+  zone.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px 4px;">Lecture de la consigne…</div>';
+  let d;
+  try {
+    const r = await fetch(url + '?mode=liste');
+    d = await r.json();
+  } catch(e) {
+    zone.innerHTML = '<div style="font-size:12px;color:var(--red);padding:8px 4px;">Consigne injoignable : ' + (e.message||'') + '</div>';
+    return;
+  }
+  const items = (d && d.analyses) || [];
+  if (!items.length) {
+    zone.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px 4px;">Aucune analyse dans les 72 dernières heures.</div>';
+    return;
+  }
+  zone.innerHTML = '<div style="border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden;">' +
+    items.map(a => {
+      let quand = a.cree_le || '';
+      try { quand = new Date(a.cree_le).toLocaleString('fr-FR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch(e) {}
+      const nom = a.fichier || a.ticket;
+      return `<div style="display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--border); background:var(--surface2);">
+        <span style="font-size:11px; color:var(--text3); min-width:88px;">${quand}</span>
+        <span style="font-size:12px; color:var(--text); flex:1; word-break:break-all;">${nom}</span>
+        <span style="font-size:11px; color:var(--text3); min-width:74px; text-align:right;">${a.nb_lignes ?? '?'} ligne(s)</span>
+        <button class="btn sm" onclick="recupererAnalyse('${a.ticket}')"><i class="ti ti-download" aria-hidden="true"></i> Récupérer</button>
+      </div>`;
+    }).join('') + '</div>';
+}
+
+async function recupererAnalyse(ticket) {
+  const url = urlConsigne();
+  if (!url) { alert("URL du webhook N8N non configurée (voir Reconfigurer)."); return; }
+
+  // Les resultats en consigne ne contiennent que les IPN et les statuts, pas les
+  // quantites ni les descriptions : il faut la BOM d'origine pour reconstruire
+  // le tableau. C'est un choix assume, la consigne reste legere.
+  const csvText = (csvBuffer || '').trim();
+  if (!csvText) {
+    alert("Rechargez d'abord la BOM correspondante (même fichier, même onglet),\npuis relancez la récupération.\n\nLa consigne ne stocke que les codifications, pas la nomenclature.");
+    return;
+  }
+  const rows = filterBOMRows(parseCSV(csvText));
+  if (!rows.length) { alert("La BOM chargée ne contient aucun composant exploitable."); return; }
+
+  document.getElementById('bom-loading').style.display='flex';
+  document.getElementById('bom-loading-msg').textContent = 'Récupération de l\'analyse en consigne…';
+  let d;
+  try {
+    const r = await fetch(url + '?ticket=' + encodeURIComponent(ticket));
+    d = await r.json();
+  } catch(e) {
+    document.getElementById('bom-loading').style.display='none';
+    alert("Consigne injoignable :\n\n" + (e.message||''));
+    return;
+  }
+  document.getElementById('bom-loading').style.display='none';
+
+  if (!d || !d.trouve) {
+    alert(d && d.message ? d.message : "Analyse introuvable en consigne.");
+    return;
+  }
+  const res = d.resultat || [];
+  if (!res.length) { alert("L'analyse trouvée est vide."); return; }
+
+  bomData = rows;
+  appliquerEtAfficher(rows, res);
+  const zone = document.getElementById('consigne-liste');
+  if (zone) zone.innerHTML = '<div style="font-size:12px;color:var(--green);padding:8px 4px;">Analyse ' + ticket + ' récupérée — ' + res.length + ' ligne(s).</div>';
 }
 // ============================================================
 // FIN ANALYSE BOM
