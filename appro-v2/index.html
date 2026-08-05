@@ -427,8 +427,8 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "2.3";
-const APP_DATE = "03/08/2026";
+const APP_VERSION = "2.4";
+const APP_DATE = "05/08/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -738,14 +738,23 @@ function renderLigneReception(c, cardId, idx) {
       ? `<span class="stkinfo" style="color:var(--wa-t)" title="Aucune donn\u00e9e r\u00e9elle disponible \u2014 valeur suppos\u00e9e \u00e0 v\u00e9rifier">? à vérifier</span>`
       : '';
 
+  // Certains clients imposent la reference fabricant : un IPN de passif couvre
+  // plusieurs MPN, et sortir la mauvaise bobine est un ecart qualite. Pour
+  // ceux-la on affiche le MPN en principal et on retire l'IPN, pour qu'il n'y
+  // ait rien d'autre a lire que la reference a prendre.
+  // Repli : si la ligne n'a pas de MPN, on retombe sur l'IPN plutot que
+  // d'afficher une case vide.
+  const mpnImpose = (c && c.mpnStrict === true);
+  const refPrincipale = mpnImpose ? (l.mpn || l.ipn || '') : (l.ipn || l.mpn || '');
+
   const sousLigne = [
-    (l.ipn && l.mpn && l.mpn !== l.ipn) ? l.mpn : '',
+    (!mpnImpose && l.ipn && l.mpn && l.mpn !== l.ipn) ? l.mpn : '',
     (!estInventory && l.fournisseurRef) ? l.fournisseurRef : ''
   ].filter(Boolean).join(' · ');
 
   return `
     <tr id="rl-${cardId}-${idx}" ${rowClass}>
-      <td><div class="ipn">${l.ipn || l.mpn}${l.stkPP && l.stkPP > 0 ? ` <span class="stkinfo" title="Stock disponible">📦 ${l.stkPP}</span>` : ''}</div>${sousLigne ? `<div class="mpn2">${sousLigne}</div>` : ''}</td>
+      <td><div class="ipn">${refPrincipale}${l.stkPP && l.stkPP > 0 ? ` <span class="stkinfo" title="Stock disponible">📦 ${l.stkPP}</span>` : ''}</div>${sousLigne ? `<div class="mpn2">${sousLigne}</div>` : ''}</td>
       <td class="qcell"><span class="qatt">${l.attendu}</span></td>
       <td class="qcell"><span style="color:var(--text-muted);font-family:var(--font-mono);font-size:12px">${l.besoin || '—'}</span></td>
       <td class="qcell"><div class="qwrap">
@@ -785,6 +794,16 @@ function renderCarteReception(c) {
     pillHtml = `<span class="pill p-ok"><i class="ti ti-check" style="font-size:10px" aria-hidden="true"></i> Prêt à valider</span>`;
   }
 
+  // Trois etats volontaires. L'indetermine n'est PAS un feu vert : il signale
+  // que la contrainte du client n'est pas renseignee dans Odoo, et il reste
+  // sobre pour ne pas se confondre avec une alerte. Il disparaitra client par
+  // client, a mesure que les fiches partenaires seront completees.
+  const badgeMpn = (c.mpnStrict === true)
+    ? `<span class="stkinfo" style="color:var(--wa-t);background:rgba(133,79,11,.14)" title="Ce client impose la référence fabricant : sortir exactement le MPN affiché, pas un équivalent">MPN imposé</span>`
+    : (c.mpnStrict === false)
+      ? ''
+      : `<span class="stkinfo" style="color:var(--text-muted)" title="Contrainte MPN non renseignée pour ce client dans Odoo — à vérifier avant de sortir un équivalent">MPN non vérifié</span>`;
+
   const metaBits = [c.client, c.carte, c.datePrevu && c.datePrevu !== '—' ? ('Prévu le ' + c.datePrevu) : null].filter(Boolean).join(' · ');
   const lignesHtml = c.lignes.map((l, idx) => renderLigneReception(c, cardId, idx)).join('');
   const lienAppro = c.urlAppro ? `<a href="${c.urlAppro}" target="_blank" style="color:var(--pp-blue);text-decoration:none;font-size:11px;margin-left:8px"><i class="ti ti-external-link" style="font-size:10px" aria-hidden="true"></i> GSheet</a>` : '';
@@ -794,7 +813,7 @@ function renderCarteReception(c) {
       <div class="ch" onclick="this.closest('.card').classList.toggle('open')">
         <span class="fb ${badge}">${(c.fournisseur || 'INCONNU').toUpperCase()}</span>
         <div class="ci">
-          <div class="cso">${c.so} ${pillHtml}</div>
+          <div class="cso">${c.so} ${pillHtml} ${badgeMpn}</div>
           <div class="cm">${metaBits || '—'}</div>
         </div>
         <div class="pw"><div class="pb"><div class="pf ${pfClass}" style="width:${pct}%"></div></div><span class="pp2">${recues}/${total}</span></div>
