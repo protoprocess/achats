@@ -1048,8 +1048,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "1.5";
-const APP_DATE = "05/08/2026";
+const APP_VERSION = "1.6";
+const APP_DATE = "06/08/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1172,6 +1172,12 @@ let stockByIPN = {}, stockByMPN = {};
 //    on ignore volontairement le vrai chiffre du fichier stock pour cette ligne
 let stockOverrides = {};
 let clientsList = [];
+// Alias de libellés : clé = libellé normalisé lu dans le nom de fichier,
+// valeur = identifiant du partenaire Odoo. Appris un par un, par un humain.
+let aliasParLibelle = {};
+// Libellé client du fichier en cours, conservé pour pouvoir l'enregistrer
+// comme alias si l'utilisateur choisit lui-même le client.
+let libelleFichierEnCours = '';
 let activeClient = { nom:'Standard', mpn_strict:false, notes:'' };
 let sourceStatus = { clients:'none', stock:'none', rules:'none' };
 let apiKey = "";
@@ -1362,23 +1368,41 @@ async function loadAll() {
     btn.disabled = false;
     return;
   }
-  if (clientsUrl) {
-    setDot('clients','loading','Chargement…');
-    try {
-      const text = await fetchCSV(clientsUrl);
-      const rows = parseCSV(text);
-      clientsList = rows.map(r => ({
-        nom: findCol(r,['nom','name','client'])||'',
-        mpn_strict: (findCol(r,['mpn_strict','mpn strict','strict'])||'').toLowerCase().trim()==='oui',
-        notes: findCol(r,['notes','note','commentaire'])||''
-      })).filter(c=>c.nom);
-      if (!clientsList.length) throw new Error('Aucun client trouvé — vérifiez les colonnes');
-      setDot('clients','ok',`${clientsList.length} client(s) chargé(s)`);
-      sourceStatus.clients = 'ok';
-      populateClientSelect();
-      renderClientsPreview();
-    } catch(e) {
-      setDot('clients','err',e.message);
+  // REGISTRE CLIENTS — Odoo d'abord, feuille CSV en repli.
+  // Odoo devient la source de vérité de la politique client (décision du 05/08) :
+  // la feuille avait vocation à disparaître, mais elle reste branchée tant que
+  // la bascule n'est pas éprouvée. Si Odoo répond, la feuille est ignorée.
+  setDot('clients','loading','Chargement…');
+  let clientsOdooOk = false;
+  try {
+    await chargerClientsOdoo();
+    clientsOdooOk = true;
+    setDot('clients','ok', clientsList.length + ' client(s) Odoo · ' + Object.keys(aliasParLibelle).length + ' alias');
+    sourceStatus.clients = 'ok';
+    populateClientSelect();
+    renderClientsPreview();
+  } catch(eOdoo) {
+    if (clientsUrl) {
+      try {
+        const text = await fetchCSV(clientsUrl);
+        const rows = parseCSV(text);
+        clientsList = rows.map(r => ({
+          nom: findCol(r,['nom','name','client'])||'',
+          mpn_strict: (findCol(r,['mpn_strict','mpn strict','strict'])||'').toLowerCase().trim()==='oui',
+          notes: findCol(r,['notes','note','commentaire'])||'',
+          origine: 'feuille'
+        })).filter(c=>c.nom);
+        if (!clientsList.length) throw new Error('Aucun client trouvé — vérifiez les colonnes');
+        setDot('clients','warn', clientsList.length + ' client(s) — repli sur la feuille, Odoo injoignable');
+        sourceStatus.clients = 'ok';
+        populateClientSelect();
+        renderClientsPreview();
+      } catch(e) {
+        setDot('clients','err', e.message);
+        sourceStatus.clients = 'err';
+      }
+    } else {
+      setDot('clients','err','Odoo injoignable : ' + eOdoo.message);
       sourceStatus.clients = 'err';
     }
   }
@@ -1440,13 +1464,117 @@ function renderClientsPreview() {
   const el = document.getElementById('config-clients-preview');
   if (!clientsList.length) { el.innerHTML='<p style="font-size:13px;color:var(--text2)">Aucun client chargé.</p>'; return; }
   el.innerHTML = `<div class="clients-table-wrap"><table>
-    <thead><tr><th>Nom</th><th>MPN strict</th><th>Notes</th></tr></thead>
+    <thead><tr><th>Nom</th><th>MPN strict</th><th>Code / origine</th></tr></thead>
     <tbody>${clientsList.map(c=>`<tr>
       <td style="font-weight:600">${c.nom}</td>
       <td>${c.mpn_strict?'<span class="badge b-strict"><i class="ti ti-lock" aria-hidden="true"></i> oui</span>':'<span class="badge b-ok">non</span>'}</td>
-      <td style="color:var(--text2);font-size:12px">${c.notes}</td>
+      <td style="color:var(--text2);font-size:12px">${(c.odoo_code||'')}${c.origine==='odoo'?' · Odoo':(c.notes?' · '+c.notes:'')}</td>
     </tr>`).join('')}</tbody>
   </table></div>`;
+}
+
+// NORMALISATION — doit rester IDENTIQUE à celle des workflows po-societes et
+// clients-alias. Une divergence casserait le rapprochement en silence.
+function normNomClient(v) {
+  return String(v || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+// Lit le registre Odoo et les alias. Les deux points d'entrée vivent sur le
+// même hôte que le webhook de codification : aucune URL supplémentaire à
+// configurer, et l'en-tête d'authentification est posé automatiquement.
+async function chargerClientsOdoo() {
+  if (!webhookUrl) throw new Error('Webhook N8N non configuré');
+  const base = webhookUrl.replace(/\/[^\/]*$/, '');
+
+  const rs = await fetch(base + '/po-societes');
+  const ds = await rs.json();
+  if (!ds || !ds.ok || !Array.isArray(ds.societes)) throw new Error('Registre Odoo illisible');
+
+  // On ne garde que les fiches CLIENT : le registre contient aussi les
+  // fournisseurs, qui n'ont rien à faire dans ce sélecteur.
+  clientsList = ds.societes
+    .filter(f => !f.code || String(f.code).toUpperCase().indexOf('FOU') !== 0)
+    .map(f => ({
+      nom: f.nom,
+      nom_normalise: f.nom_normalise,
+      odoo_partner_id: f.id,
+      odoo_code: f.code || '',
+      mpn_strict: f.mpn_strict === true,
+      notes: '',
+      origine: 'odoo'
+    }))
+    .filter(c => c.nom);
+
+  if (!clientsList.length) throw new Error('Aucun client dans le registre Odoo');
+
+  aliasParLibelle = {};
+  try {
+    const ra = await fetch(base + '/clients-alias');
+    const da = await ra.json();
+    (da && da.alias ? da.alias : []).forEach(a => {
+      if (a.alias_normalise && a.odoo_partner_id) aliasParLibelle[a.alias_normalise] = a.odoo_partner_id;
+    });
+  } catch (e) {
+    // Les alias sont un confort : leur absence fait retomber sur l'équivalence
+    // stricte, jamais sur un rapprochement approximatif.
+  }
+}
+
+// Enregistre le libellé du fichier comme alias du client choisi à la main.
+// Un geste fait une fois sert toutes les fois suivantes — c'est tout l'intérêt.
+async function apprendreAlias() {
+  const ind = document.getElementById('alias-indice');
+  const libelle = libelleFichierEnCours;
+  const cible = normNomClient(libelle);
+  if (!libelle || !cible) return;
+  if (!activeClient || !activeClient.odoo_partner_id) return;
+  if (aliasParLibelle[cible]) return;
+
+  if (ind) ind.textContent = 'Enregistrement du libellé…';
+  try {
+    const base = webhookUrl.replace(/\/[^\/]*$/, '');
+    const r = await fetch(base + '/clients-alias-ajout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        alias: libelle,
+        odoo_partner_id: activeClient.odoo_partner_id,
+        odoo_code: activeClient.odoo_code || '',
+        odoo_nom: activeClient.nom,
+        cree_par: 'bom-sourcing'
+      })
+    });
+    const d = await r.json();
+    if (d && d.ok) {
+      aliasParLibelle[cible] = activeClient.odoo_partner_id;
+      if (ind) ind.innerHTML = '<span style="color:var(--green)">« ' + libelle +' » retenu pour ' + activeClient.nom + '</span>';
+    } else if (d && d.etat === 'CONFLIT') {
+      if (ind) ind.innerHTML = '<span style="color:var(--red)">' + (d.motif || 'Libellé déjà attribué à un autre client') + '</span>';
+    } else {
+      if (ind) ind.textContent = '';
+    }
+  } catch (e) {
+    if (ind) ind.innerHTML = '<span style="color:var(--amber)">Libellé non enregistré : ' + e.message + '</span>';
+  }
+}
+
+// Propose l'apprentissage quand le fichier porte un libellé inconnu.
+function majIndiceAlias() {
+  const ind = document.getElementById('alias-indice');
+  if (!ind) return;
+  const cible = normNomClient(libelleFichierEnCours);
+  if (!libelleFichierEnCours || !cible) { ind.textContent = ''; return; }
+  if (clientsList.some(c => c.nom_normalise === cible) || aliasParLibelle[cible]) { ind.textContent = ''; return; }
+  if (!activeClient || !activeClient.odoo_partner_id) {
+    ind.innerHTML = '<span style="color:var(--text3)">Libellé « ' + libelleFichierEnCours + ' » inconnu — choisissez le client ci-dessus</span>';
+    return;
+  }
+  ind.innerHTML = '<span style="color:var(--text3)">Libellé « ' + libelleFichierEnCours + ' » inconnu</span> ' +
+    '<button class="btn-s" style="margin-left:6px" onclick="apprendreAlias()">Retenir pour ' + activeClient.nom + '</button>';
 }
 
 function onClientChange() {
@@ -1454,11 +1582,27 @@ function onClientChange() {
   activeClient = val==='__standard__'
     ? {nom:'Standard',mpn_strict:false,notes:''}
     : (clientsList.find(c=>c.nom===val)||{nom:'Standard',mpn_strict:false,notes:''});
+  majIndiceAlias();
   document.getElementById('client-badge').innerHTML = activeClient.mpn_strict
     ? `<span class="badge b-strict"><i class="ti ti-lock" aria-hidden="true"></i> MPN strict</span>`
     : `<span class="badge b-ok"><i class="ti ti-check" aria-hidden="true"></i> Standard</span>`;
   document.getElementById('client-note-text').textContent = activeClient.notes||'';
 }
+
+// Zone d'indice créée à la volée sous la note client, pour ne pas toucher au
+// gabarit HTML existant.
+(function preparerZoneAlias() {
+  const poser = () => {
+    const note = document.getElementById('client-note-text');
+    if (!note || document.getElementById('alias-indice')) return;
+    const d = document.createElement('div');
+    d.id = 'alias-indice';
+    d.style.cssText = 'font-size:11px;margin-top:4px;line-height:1.6';
+    note.parentNode.insertBefore(d, note.nextSibling);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', poser);
+  else poser();
+})();
 
 async function loadBOM() {
   const url = document.getElementById('bom-url').value.trim();
@@ -2841,22 +2985,35 @@ async function tracerSubstitutions(so, substitutions, statusEl) {
 }
 
 function autoSelectClientFromFilename(filename) {
+  libelleFichierEnCours = '';
   if (!filename) return;
   const parsed = parseLuminovoFilename(filename);
   if (!parsed || !parsed.client) return;
   const sel = document.getElementById('client-select');
   if (!sel) return;
-  const opt = Array.from(sel.options).find(o =>
-    o.value !== '__standard__' && (
-      o.value.toLowerCase() === parsed.client.toLowerCase() ||
-      parsed.client.toLowerCase().includes(o.value.toLowerCase()) ||
-      o.value.toLowerCase().includes(parsed.client.toLowerCase())
-    )
-  );
-  if (opt) {
-    sel.value = opt.value;
+
+  libelleFichierEnCours = parsed.client;
+  const cible = normNomClient(parsed.client);
+  if (!cible) return;
+
+  // ÉQUIVALENCE STRICTE, ou alias déjà appris. JAMAIS de correspondance
+  // approximative : la version précédente rapprochait par inclusion dans les
+  // deux sens, ce qui pouvait désigner le mauvais client et retirer sa
+  // contrainte MPN sans que personne ne le voie. Se taire vaut mieux.
+  let trouve = clientsList.find(c => c.nom_normalise === cible);
+  if (!trouve && aliasParLibelle[cible]) {
+    const pid = aliasParLibelle[cible];
+    trouve = clientsList.find(c => c.odoo_partner_id === pid);
+  }
+
+  if (trouve) {
+    sel.value = trouve.nom;
+    onClientChange();
+  } else {
+    sel.value = '__standard__';
     onClientChange();
   }
+  majIndiceAlias();
 }
 
 function loadBOMSheet(sheetIdx, filename, zone, label) {
