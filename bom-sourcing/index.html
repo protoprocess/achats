@@ -1048,8 +1048,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "1.4";
-const APP_DATE = "04/08/2026";
+const APP_VERSION = "1.5";
+const APP_DATE = "05/08/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -2653,9 +2653,33 @@ async function writeToGSheet() {
   // Stock : cible explicitement la clé canonique 'Reçus'. resolveStockQty respecte les
   // matchs flous adoptés manuellement et les lignes suppressées par une scission de stock
   // partiel (leur vrai chiffre de stock ne doit pas être ré-écrit ici).
+  // SUBSTITUTION D'IPN — décision du 05/08.
+  // Quand un équivalent a été adopté en stock, l'IPN écrit devient CELUI DE
+  // L'ÉQUIVALENT, et non plus celui d'origine. Sans ça, la feuille achat porte
+  // une quantité en face d'une référence que le magasinier n'a pas dans son bac :
+  // il répond en rupture alors que le stock existe.
+  // C'est une décision d'OPPORTUNITÉ, jamais une équivalence durable — le stock
+  // du jour la motive, la commande suivante repose la question à zéro. D'où la
+  // trace en fiche de vie plutôt qu'une table d'équivalences.
+  const substitutions = [];
   bomData.forEach((row, i) => {
     const si = resolveStockQty(row, i);
     row['Reçus'] = si.qty !== null ? String(si.qty) : '';
+
+    if (si.fuzzyApplied && si.matchedKey) {
+      const cle = Object.keys(row).find(k => k.toLowerCase().includes('ipn') || k.toLowerCase().includes('internal')) || 'IPN';
+      const origine = String(row[cle] || '').trim();
+      const remplacant = String(si.matchedKey).trim();
+      if (remplacant && remplacant !== origine) {
+        row[cle] = remplacant;
+        const repere = findCol(row, ['designator','reference','ref']) || '';
+        substitutions.push({ repere, origine, remplacant, mpn: String(row['MPN'] || '').trim() });
+        if (rowMeta[i]) {
+          rowMeta[i].stockNote = 'IPN d\'origine ' + (origine || '—') + ' remplacé par ' + remplacant +
+            ' — équivalent disponible en stock, décision du ' + new Date().toLocaleDateString('fr-FR') + '.';
+        }
+      }
+    }
   });
 
   // Colonne dédiée "Vigilance" : points de vigilance qualité (Gemini + catégories Claude), warnings
@@ -2739,6 +2763,9 @@ async function writeToGSheet() {
       statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' +
         (result.lignes_ecrites ?? '?') + ' ligne(s) écrite(s) dans "' + (result.fileName || so) + '"' +
         ' — <a href="' + result.fileUrl + '" target="_blank" style="color:var(--green);font-weight:600">Ouvrir</a></span>';
+      // La trace part APRÈS l'écriture réussie : on ne consigne pas une décision
+      // qui ne s'est pas matérialisée dans la feuille achat.
+      tracerSubstitutions(so, substitutions, statusEl);
     } else if (result.reason === 'not_found') {
       statusEl.innerHTML = '<span style="color:var(--red)">Aucune GSheet trouvée pour le SO "' + so + '"</span>';
     } else if (result.reason === 'ambiguous') {
@@ -2752,6 +2779,64 @@ async function writeToGSheet() {
     }
   } catch(e) {
     statusEl.innerHTML = '<span style="color:var(--red)">Erreur connexion : ' + e.message + '</span>';
+  }
+}
+
+// TRACE DES SUBSTITUTIONS EN FICHE DE VIE.
+// La BOM achat cesse d'être identique à la BOM méthodes dès qu'un IPN est
+// remplacé. Méthodes consulte la fiche de vie systématiquement avant un OF
+// (confirmé par Olivier le 05/08) : c'est donc là que l'information doit vivre,
+// et nulle part ailleurs.
+// L'appel ne connaît QUE le numéro de commande — la résolution vers le produit
+// se fait côté n8n via commandes_so. L'appli n'a pas à connaître les
+// identifiants internes.
+async function tracerSubstitutions(so, substitutions, statusEl) {
+  if (!substitutions || !substitutions.length) return;
+  if (!writerUrl) return;
+
+  const url = writerUrl.replace(/\/[^\/]*$/, '/fiche-de-vie-ajout');
+  let ok = 0, ko = 0;
+
+  for (const s of substitutions) {
+    const texte = 'Composant substitué à l\'appro : IPN ' + (s.origine || '—') +
+      ' remplacé par ' + s.remplacant + ', équivalent disponible en stock. ' +
+      'La nomenclature achat diffère donc de la nomenclature méthodes sur cette ligne. ' +
+      'Décision d\'opportunité liée au stock du jour, non reconductible.';
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          so_canonique: so,
+          etape_code: 'APPRO',
+          poles: ['METHODES'],
+          auteur: 'BOM Sourcing',
+          source: 'bom-sourcing',
+          type: 'note',
+          visible_client: false,
+          repere: s.repere,
+          mpn: s.mpn,
+          texte_brut: texte
+        })
+      });
+      const d = await r.json();
+      if (d && d.ok) ok++; else ko++;
+    } catch (e) { ko++; }
+  }
+
+  // Échec DOUX et VISIBLE : la feuille achat est déjà écrite, on ne peut plus
+  // revenir en arrière. Mais une substitution non tracée est un écart silencieux
+  // entre les deux nomenclatures — l'utilisateur doit le savoir pour le reporter
+  // à la main.
+  if (statusEl) {
+    if (ko === 0) {
+      statusEl.innerHTML += '<br><span style="font-size:11px;color:var(--text2)">' +
+        ok + ' substitution(s) d\'IPN tracée(s) en fiche de vie</span>';
+    } else {
+      statusEl.innerHTML += '<br><span style="font-size:11px;color:var(--amber)">' +
+        '⚠ ' + ko + ' substitution(s) NON tracée(s) en fiche de vie — méthodes ne sera pas prévenu, ' +
+        'à reporter à la main. Vérifiez que le N° SO existe dans le référentiel des commandes.</span>';
+    }
   }
 }
 
