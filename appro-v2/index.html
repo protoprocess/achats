@@ -173,6 +173,23 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
 #toast.terr { border-color: var(--er-b); color: var(--er-t); }
 #toast.twarn { border-color: var(--wa-b); color: var(--wa-t); }
 </style>
+
+<style>
+/* signalement : bouton flottant, module commun (chantier 72) */
+#sig-btn{position:fixed;right:18px;bottom:18px;z-index:60;display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:22px;background:var(--surface,#1a2030);color:var(--text2,#94a3b8);border:1px solid var(--border2,#333d55);box-shadow:0 4px 14px rgba(0,0,0,.4);cursor:pointer;font-size:12px;font-family:inherit}
+#sig-btn:hover{color:var(--blue,#F07B1F);border-color:var(--blue,#F07B1F)}
+#sig-fond{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:18px}
+#sig-fond.hidden{display:none}
+#sig-boite{background:var(--surface,#1a2030);border:1px solid var(--border2,#333d55);border-radius:10px;width:min(94vw,560px);max-height:90vh;overflow:auto;padding:18px;color:var(--text,#e2e8f0);font-size:13px}
+#sig-boite h2{font-size:15px}
+.sig-t{display:flex;gap:6px;margin:0 0 11px;flex-wrap:wrap}
+.sig-t button{flex:1;min-width:120px;padding:8px 10px;border-radius:6px;background:transparent;color:var(--text2,#94a3b8);border:1px solid var(--border,#262e42);font-size:12px;cursor:pointer;font-family:inherit}
+.sig-t button.on{background:var(--blue,#F07B1F);color:#fff;border-color:transparent;font-weight:500}
+#sig-boite label.f{display:block;font-size:11.5px;color:var(--text2,#94a3b8);margin:0 0 4px}
+#sig-boite input.f,#sig-boite textarea.f{width:100%;box-sizing:border-box;background:var(--surface2,#161b27);color:var(--text,#e2e8f0);border:1px solid var(--border,#262e42);border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;margin-bottom:10px}
+#sig-boite .btn-ann{padding:6px 13px;background:transparent;color:var(--text2,#94a3b8);border:1px solid var(--border,#262e42);border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit}
+#sig-boite .btn-env{padding:6px 13px;background:var(--blue,#F07B1F);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
+</style>
 </head>
 <body>
 <!-- ===== ACCES PROTO PROCESS ===== -->
@@ -427,8 +444,8 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "2.4";
-const APP_DATE = "05/08/2026";
+const APP_VERSION = "3.0";
+const APP_DATE = "21/08/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1266,5 +1283,89 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 chargerSuivi();
 </script>
+
+<button id="sig-btn" onclick="ouvrirSignalement()" title="Signaler un bug, une analyse fausse ou une idée">
+  <i class="ti ti-message-report"></i> Signaler</button>
+
+<div id="sig-fond" class="hidden">
+  <div id="sig-boite">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h2 style="margin:0"><i class="ti ti-message-report"></i> Signaler</h2>
+      <button class="btn-ann" onclick="fermerSignalement()">✕</button>
+    </div>
+    <p style="font-size:11.5px;color:var(--text2,#94a3b8);margin:0 0 12px">
+      L'appli et sa version partent automatiquement avec votre message.</p>
+
+    <div class="sig-t" id="sig-types">
+      <button data-t="bug" class="on" onclick="sigType('bug')">Bug</button>
+      <button data-t="analyse" onclick="sigType('analyse')">Analyse fausse</button>
+      <button data-t="idee" onclick="sigType('idee')">Idée</button>
+    </div>
+
+    <label class="f">Votre nom</label>
+    <input class="f" id="sig-auteur" placeholder="pour qu'on puisse revenir vers vous">
+
+    <label class="f">Ce que vous avez constaté</label>
+    <textarea class="f" id="sig-desc" rows="6" placeholder="Sur une analyse fausse, précisez la valeur attendue et où vous l'avez lue."></textarea>
+
+    <div id="sig-msg" style="font-size:12px;margin-top:2px"></div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:13px">
+      <button class="btn-ann" onclick="fermerSignalement()">Annuler</button>
+      <button class="btn-env" id="sig-env" onclick="envoyerSignalement()">Envoyer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- signalement : module commun (chantier 72) ----------
+   Auto-suffisant : URL de production en dur, l'en-tete X-PP-Auth est pose par
+   l'intercepteur d'acces commun. Le contexte minimal (appli, version) part
+   automatiquement. Destination : Data Table n8n + table Supabase signalements
+   (lue par Claude) + mail immediat. */
+(function(){
+  var URL_SIG = 'https://protoprocess.app.n8n.cloud/webhook/v2-signalement';
+  var CLE_SIGNALEUR = 'pp_signaleur';
+  var SIG_TYPE = 'bug';
+  var APPLI = 'appro-v2';
+
+  window.sigType = function(t){
+    SIG_TYPE = t;
+    document.querySelectorAll('#sig-types button').forEach(function(b){ b.classList.toggle('on', b.dataset.t === t); });
+  };
+  window.ouvrirSignalement = function(){
+    try{ document.getElementById('sig-auteur').value = localStorage.getItem(CLE_SIGNALEUR) || ''; }catch(e){}
+    document.getElementById('sig-msg').textContent = '';
+    document.getElementById('sig-fond').classList.remove('hidden');
+    document.getElementById('sig-desc').focus();
+  };
+  window.fermerSignalement = function(){ document.getElementById('sig-fond').classList.add('hidden'); };
+  window.envoyerSignalement = function(){
+    var desc = document.getElementById('sig-desc').value.trim();
+    var msg = document.getElementById('sig-msg');
+    if(!desc){ msg.innerHTML = '<span style="color:#f09595">Décrivez ce que vous avez constaté.</span>'; return; }
+    var auteur = document.getElementById('sig-auteur').value.trim();
+    try{ if(auteur) localStorage.setItem(CLE_SIGNALEUR, auteur); }catch(e){}
+    var btn = document.getElementById('sig-env');
+    btn.disabled = true;
+    msg.innerHTML = '<span style="color:var(--text2,#94a3b8)">Envoi…</span>';
+    fetch(URL_SIG, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        type: SIG_TYPE, description: desc, auteur: auteur,
+        appli: APPLI, version: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '')
+      })
+    }).then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      msg.innerHTML = '<span style="color:#86c564">Merci, c\'est envoyé.</span>';
+      document.getElementById('sig-desc').value = '';
+      setTimeout(window.fermerSignalement, 1400);
+    }).catch(function(e){
+      msg.innerHTML = '<span style="color:#f09595">Envoi impossible : ' + String(e.message).replace(/[<>&]/g,'') + '. Réessayez ou prévenez Olivier.</span>';
+    }).then(function(){ btn.disabled = false; });
+  };
+})();
+</script>
+
 </body>
 </html>
