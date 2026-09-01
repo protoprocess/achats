@@ -794,6 +794,7 @@ tr:hover td { background: var(--surface2); }
       <button class="tab active" onclick="switchTab('bom')">Analyse BOM</button>
       <button class="tab" onclick="switchTab('codif')">Codification IPN</button>
       <button class="tab" onclick="switchTab('config')">Règles &amp; Config</button>
+      <button class="tab" onclick="switchTab('attente')">Achats en attente <span id="att-tab-badge" style="display:none; background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 7px; font-size:11px; margin-left:4px;"></span></button>
     </div>
 
     <!-- BOM TAB -->
@@ -1057,6 +1058,22 @@ tr:hover td { background: var(--surface2); }
       </div>
     </div>
 
+    <!-- ACHATS EN ATTENTE TAB (module independant — aucune dependance a l'analyse BOM) -->
+    <div class="panel" id="tab-attente">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+        <p style="font-size:13px; color:var(--text2); margin:0;">Tout ce qui attend une action d'achat : sourcing sans solution, paniers incomplets, manques de stock constatés en réception, et réponses client FabStory.</p>
+        <button class="btn" onclick="attCharger()"><i class="ti ti-refresh" aria-hidden="true"></i> Actualiser</button>
+      </div>
+
+      <div id="att-compteurs" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px;"></div>
+
+      <div id="att-filtres" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;"></div>
+
+      <div id="att-liste" style="display:flex; flex-direction:column; gap:8px;">
+        <p style="font-size:13px; color:var(--text3)">Chargement…</p>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1065,8 +1082,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "2.0";
-const APP_DATE = "21/08/2026";
+const APP_VERSION = "3.0";
+const APP_DATE = "01/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1205,9 +1222,10 @@ let writerUrl = "";
 let webhookUrl = "";
 
 function switchTab(name) {
-  const names = ['bom','codif','config'];
+  const names = ['bom','codif','config','attente'];
   document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
   document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', names[i]===name));
+  if (name === 'attente' && !window.__attLoaded) { attCharger(); }
 }
 
 function showSetup() {
@@ -3657,6 +3675,160 @@ async function sendChat() {
     }).catch(function(e){
       msg.innerHTML = '<span style="color:#f09595">Envoi impossible : ' + String(e.message).replace(/[<>&]/g,'') + '. Réessayez ou prévenez Olivier.</span>';
     }).then(function(){ btn.disabled = false; });
+  };
+})();
+</script>
+
+<script>
+/* ============================================================
+   MODULE ACHATS EN ATTENTE — independant de l'analyse BOM.
+   Source : webhook GET achats-en-attente (panier sheet + FabStory).
+   Aucune fonction/variable partagee avec le reste, prefixe att.
+   ============================================================ */
+(function(){
+  const ATT_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-en-attente';
+  let attData = { panier: [], fabstory: [] };
+  let attFiltre = 'tout';
+
+  window.attCharger = async function(){
+    const liste = document.getElementById('att-liste');
+    liste.innerHTML = '<p style="font-size:13px; color:var(--text3)">Chargement…</p>';
+    try {
+      const r = await fetch(ATT_URL);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      attData = { panier: d.panier || [], fabstory: d.fabstory || [] };
+      window.__attLoaded = true;
+      attRender();
+    } catch(e) {
+      liste.innerHTML = '<p style="font-size:13px; color:var(--red)">Erreur de chargement : ' + e.message + '</p>';
+    }
+  };
+
+  function attNorm(s){ return (s||'').toString().trim(); }
+
+  function attCartes(){
+    const cartes = [];
+    for (const l of attData.panier) {
+      const type = attNorm(l['Type']);
+      const statut = attNorm(l['Statut']);
+      if (statut === 'Commandé') continue; /* deja traite, on ne montre pas */
+      cartes.push({
+        origine: type === 'Stock manquant' ? 'reception' : 'sourcing',
+        type: type || 'Sans solution',
+        so: attNorm(l['SO']),
+        carte: attNorm(l['Ref. client — Carte']),
+        ipn: attNorm(l['IPN']),
+        mpn: attNorm(l['MPN']),
+        qte: l['Qté'] || '',
+        depuis: attNorm(l['Date ajout']),
+        commentaire: attNorm(l['Commentaire']),
+        fournisseur: attNorm(l['Fournisseur']),
+        refFourn: attNorm(l['Ref. fournisseur'])
+      });
+    }
+    for (const q of attData.fabstory) {
+      cartes.push({
+        origine: 'client',
+        type: q.etat === 'en_attente' ? 'Attente réponse client' : 'Réponse client reçue',
+        so: attNorm(q.so_id),
+        carte: [attNorm(q.code_client), attNorm(q.ref_carte)].filter(Boolean).join(' — '),
+        ipn: '',
+        mpn: attNorm(q.mpn),
+        qte: '',
+        depuis: (q.cree_le||'').slice(0,10),
+        commentaire: q.reponse_texte ? ('Client : ' + q.reponse_texte) : attNorm(q.texte).split('\n')[0],
+        etat: q.etat,
+        fournisseur: '',
+        refFourn: ''
+      });
+    }
+    return cartes;
+  }
+
+  function attBadge(c){
+    if (c.origine === 'reception') return ['Stock manquant','var(--amber-bg)','var(--amber-badge)'];
+    if (c.origine === 'client') {
+      return c.etat === 'en_attente'
+        ? ['Attente client','var(--pink-bg)','var(--pink-badge)']
+        : ['Réponse client','var(--green-bg)','var(--green-badge)'];
+    }
+    if (c.type === 'Panier incomplet') return ['Panier incomplet','var(--amber-bg)','var(--amber-badge)'];
+    return ['Sans solution','var(--red-bg)','var(--red-badge)'];
+  }
+
+  function attLisere(c){
+    if (c.origine === 'reception') return 'var(--amber-badge)';
+    if (c.origine === 'client') return c.etat === 'en_attente' ? 'var(--pink-badge)' : 'var(--green-badge)';
+    return 'var(--red-badge)';
+  }
+
+  window.attFiltrer = function(f){
+    attFiltre = f;
+    attRender();
+  };
+
+  function attRecherche(c){
+    const q = encodeURIComponent(c.mpn || c.ipn);
+    if (!q) return '';
+    return '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
+      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + q + '">DigiKey</a>'
+      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://eu.mouser.com/c/?q=' + q + '">Mouser</a>'
+      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://octopart.com/search?q=' + q + '">Octopart</a>'
+      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://fr.farnell.com/search?st=' + q + '">Farnell</a>'
+      + '</div>';
+  }
+
+  function attRender(){
+    const cartes = attCartes();
+    const compte = {
+      sourcing: cartes.filter(c => c.origine==='sourcing').length,
+      reception: cartes.filter(c => c.origine==='reception').length,
+      client: cartes.filter(c => c.origine==='client').length
+    };
+
+    const badge = document.getElementById('att-tab-badge');
+    const total = cartes.length;
+    if (badge) { badge.textContent = total; badge.style.display = total ? 'inline-block' : 'none'; }
+
+    document.getElementById('att-compteurs').innerHTML =
+      '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Sourcing sans solution</div><div style="font-size:20px; font-weight:500;">' + compte.sourcing + '</div></div>'
+      + '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Stock manquant (réception)</div><div style="font-size:20px; font-weight:500; color:var(--amber);">' + compte.reception + '</div></div>'
+      + '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Questions client FabStory</div><div style="font-size:20px; font-weight:500;">' + compte.client + '</div></div>';
+
+    const filtres = [['tout','Tout'],['sourcing','Sourcing'],['reception','Réception'],['client','Client']];
+    document.getElementById('att-filtres').innerHTML = filtres.map(([k,lbl]) =>
+      '<button class="filter-btn' + (attFiltre===k?' active':'') + '" onclick="attFiltrer(\'' + k + '\')">' + lbl + '</button>'
+    ).join('');
+
+    const visibles = cartes.filter(c => attFiltre==='tout' || c.origine===attFiltre);
+    const liste = document.getElementById('att-liste');
+    if (!visibles.length) {
+      liste.innerHTML = '<p style="font-size:13px; color:var(--text3)">Rien en attente sur ce filtre.</p>';
+      return;
+    }
+    liste.innerHTML = visibles.map((c,i) => {
+      const [blbl,bbg,bfg] = attBadge(c);
+      const titre = [c.so, c.carte].filter(Boolean).join(' — ') || '(sans SO)';
+      const sousTitre = [c.ipn && ('IPN ' + c.ipn), c.mpn && ('MPN ' + c.mpn), c.qte && (c.qte + ' pcs'), c.depuis && ('depuis ' + c.depuis)].filter(Boolean).join(' · ');
+      return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
+        + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
+        + '<div style="flex:1; min-width:240px;">'
+        + '<div style="font-size:13px; font-weight:500;">' + titre + '</div>'
+        + '<div style="font-size:12px; color:var(--text2); margin-top:2px;">' + sousTitre + '</div>'
+        + (c.commentaire ? '<div style="font-size:12px; color:var(--text3); margin-top:4px; white-space:pre-wrap;">' + c.commentaire + '</div>' : '')
+        + '</div>'
+        + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span>'
+        + '<button class="btn" onclick="attToggleRecherche(' + i + ')"><i class="ti ti-search" aria-hidden="true"></i> Trouver réf</button>'
+        + '</div>'
+        + '<div id="att-rech-' + i + '" style="display:none;">' + attRecherche(c) + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  window.attToggleRecherche = function(i){
+    const el = document.getElementById('att-rech-' + i);
+    if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
   };
 })();
 </script>
