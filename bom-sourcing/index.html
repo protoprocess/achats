@@ -1072,6 +1072,16 @@ tr:hover td { background: var(--surface2); }
       <div id="att-liste" style="display:flex; flex-direction:column; gap:8px;">
         <p style="font-size:13px; color:var(--text3)">Chargement…</p>
       </div>
+
+      <div style="margin-top:22px; padding-top:14px; border-top:1px solid var(--border);">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+          <span class="section-label" style="margin:0;">Sheet achat d'une affaire</span>
+          <input type="text" id="att-sheet-so" placeholder="SO2607-400" style="width:150px;" onkeydown="if(event.key==='Enter')attSheetCharger()" />
+          <button class="btn primary" onclick="attSheetCharger()"><i class="ti ti-download" aria-hidden="true"></i> Charger</button>
+          <a id="att-sheet-lien" href="#" target="_blank" style="display:none; font-size:12px; color:var(--blue);">Ouvrir dans Sheets</a>
+        </div>
+        <div id="att-sheet-contenu"></div>
+      </div>
     </div>
 
   </div>
@@ -1082,7 +1092,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "3.1";
+const APP_VERSION = "3.2";
 const APP_DATE = "01/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3838,6 +3848,83 @@ async function sendChat() {
   window.attToggleRecherche = function(i){
     const el = document.getElementById('att-rech-' + i);
     if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+  };
+
+  /* ---- Section sheet achat d'une affaire ---- */
+  const ATT_SHEET_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-sheet';
+  let attSheetData = null;
+
+  window.attSheetCharger = async function(){
+    const so = document.getElementById('att-sheet-so').value.trim();
+    const zone = document.getElementById('att-sheet-contenu');
+    if (!so) { zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Saisis un numéro de SO.</p>'; return; }
+    zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Chargement…</p>';
+    document.getElementById('att-sheet-lien').style.display = 'none';
+    try {
+      const r = await fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(so));
+      const d = await r.json();
+      if (!d.ok) {
+        zone.innerHTML = '<p style="font-size:13px; color:var(--red)">' + (d.reason === 'not_found' ? 'Aucune sheet achat trouvée pour ' + so : (d.reason === 'ambiguous' ? 'Plusieurs fichiers correspondent : ' + d.detail : 'Erreur : ' + d.reason)) + '</p>';
+        return;
+      }
+      attSheetData = d;
+      const lien = document.getElementById('att-sheet-lien');
+      lien.href = d.fileUrl; lien.style.display = 'inline';
+      attSheetRender();
+    } catch(e) {
+      zone.innerHTML = '<p style="font-size:13px; color:var(--red)">Erreur réseau : ' + e.message + '</p>';
+    }
+  };
+
+  function attSheetRender(){
+    const d = attSheetData;
+    const zone = document.getElementById('att-sheet-contenu');
+    if (!d.lignes.length) { zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Sheet vide.</p>'; return; }
+    /* Colonnes courtes et importantes d'abord (charte §5), le reste accessible dans Sheets */
+    const rows = d.lignes.map((l, i) => {
+      const fourn = (l['Supplier']||'').trim();
+      const inv = fourn.toLowerCase() === 'inventory';
+      const manquant = (l['Manquant']||'').toString().trim();
+      const cmdBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap;">'
+        + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'' + f + '\')">' + f + '</button>').join('')
+        + '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'__autre\')">autre…</button></div>';
+      return '<tr>'
+        + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : '') + '">' + (fourn || '—') + '</td>'
+        + '<td style="padding:5px 8px;">' + (l['Purchase qty']||'') + '</td>'
+        + '<td style="padding:5px 8px; ' + (manquant && manquant !== '0' ? 'color:var(--red); font-weight:500;' : 'color:var(--text3);') + '">' + (manquant || '') + '</td>'
+        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['Approved internal part number']||'') + '</td>'
+        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['MPN']||'') + '</td>'
+        + '<td style="padding:5px 8px; font-size:11px;">' + (l['Supplier part number']||'') + '</td>'
+        + '<td style="padding:5px 8px;">' + cmdBtn + '</td>'
+        + '</tr>';
+    }).join('');
+    zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + ' — ' + d.lignes.length + ' lignes</div>'
+      + '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px;">'
+      + '<thead><tr style="color:var(--text3); text-align:left;"><th style="padding:5px 8px;">Fournisseur</th><th style="padding:5px 8px;">Qté</th><th style="padding:5px 8px;">Manquant</th><th style="padding:5px 8px;">IPN</th><th style="padding:5px 8px;">MPN</th><th style="padding:5px 8px;">Réf fourn.</th><th style="padding:5px 8px;">Cmdé chez</th></tr></thead>'
+      + '<tbody>' + rows + '</tbody></table></div>';
+  }
+
+  window.attSheetCommander = async function(i, fournisseur){
+    const d = attSheetData;
+    const l = d && d.lignes[i];
+    if (!l) return;
+    if (fournisseur === '__autre') {
+      fournisseur = prompt('Nom du fournisseur :');
+      if (!fournisseur) return;
+    }
+    const mpn = (l['MPN']||'').trim();
+    const ipn = (l['Approved internal part number']||'').trim();
+    if (!confirm('Marquer commandé chez ' + fournisseur + ' ?\n' + d.so + ' — ' + (mpn || ipn))) return;
+    try {
+      const r = await fetch(ATT_RESOL_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ so: d.so, mpn, ipn, fournisseur })
+      });
+      const res = await r.json();
+      if (res.success) { attSheetCharger(); }
+      else { alert('Échec : ' + (res.reason || 'inconnu')); }
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
   };
 
   /* Resolution 1 clic : "Cmdé X" ecrit le fournisseur dans la sheet achat
