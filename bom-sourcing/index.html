@@ -1092,7 +1092,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "4.2";
+const APP_VERSION = "5.0";
 const APP_DATE = "01/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3898,31 +3898,92 @@ async function sendChat() {
     const d = attSheetData;
     const zone = document.getElementById('att-sheet-contenu');
     if (!d.lignes.length) { zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Sheet vide.</p>'; return; }
+    /* Seuil au-dela duquel la demande de prix est CONSEILLEE (aide a la decision
+       pour les gestionnaires — provisoire, a ajuster avec Olivier) */
+    const SEUIL_PRIX_LIGNE = 150;
+    let nbChers = 0;
     /* Colonnes courtes et importantes d'abord (charte §5), le reste accessible dans Sheets */
     const rows = d.lignes.map((l, i) => {
       const fourn = (l['Supplier']||'').trim();
       const inv = fourn.toLowerCase() === 'inventory';
       const manquant = (l['Manquant']||'').toString().trim();
+      const prix = parseFloat((l['Purchase price']||'').toString().replace(',','.')) || 0;
+      const cher = prix >= SEUIL_PRIX_LIGNE;
+      if (cher) nbChers++;
       const cmdBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap;">'
         + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'' + f + '\')">' + f + '</button>').join('')
         + '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'__autre\')">autre…</button>'
         + '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink);" onclick="attSheetSansSolution(' + i + ')" title="Préfixe le fournisseur avec ? et crée la question client FabStory">Sans solution</button>'
         + '</div>';
-      return '<tr>'
+      const prixHtml = prix
+        ? (cher
+          ? '<span style="color:var(--amber); font-weight:500;" title="Demande de prix conseillée — un broker peut faire mieux que les distributeurs sur ce montant">' + prix.toFixed(2) + ' € <i class="ti ti-alert-triangle" aria-hidden="true"></i></span>'
+          : prix.toFixed(2) + ' €')
+        : '';
+      return '<tr' + (cher ? ' style="background:rgba(234,182,118,0.06)"' : '') + '>'
+        + '<td style="padding:5px 6px;"><input type="checkbox" class="att-dp-check" data-i="' + i + '" onchange="attDpMaj()"' + (cher ? ' title="Prix élevé"' : '') + '></td>'
         + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : '') + '">' + (fourn || '—') + '</td>'
         + '<td style="padding:5px 8px;">' + (l['Purchase qty']||'') + '</td>'
         + '<td style="padding:5px 8px; ' + (manquant && manquant !== '0' ? 'color:var(--red); font-weight:500;' : 'color:var(--text3);') + '">' + (manquant || '') + '</td>'
+        + '<td style="padding:5px 8px;">' + prixHtml + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['Approved internal part number']||'') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['MPN']||'') + '</td>'
         + '<td style="padding:5px 8px; font-size:11px;">' + (l['Supplier part number']||'') + '</td>'
         + '<td style="padding:5px 8px;">' + cmdBtn + '</td>'
         + '</tr>';
     }).join('');
+    const bandeau = nbChers
+      ? '<div style="background:var(--amber-bg); color:var(--amber-badge); border-radius:var(--radius); padding:8px 12px; font-size:12px; margin-bottom:8px;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + nbChers + ' ligne' + (nbChers>1?'s':'') + ' au-dessus de ' + SEUIL_PRIX_LIGNE + ' € — une demande de prix broker peut valoir le coup : coche les lignes puis clique "Demande de prix (meilleur prix)".</div>'
+      : '';
     zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + ' — ' + d.lignes.length + ' lignes</div>'
+      + bandeau
+      + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">'
+      + '<button class="btn" id="att-dp-dispo" disabled onclick="attDemandePrix(\'dispo\')"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix (indispo)</button>'
+      + '<button class="btn" id="att-dp-prix" disabled onclick="attDemandePrix(\'prix\')"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix (meilleur prix)</button>'
+      + '<span id="att-dp-compte" style="font-size:12px; color:var(--text3); align-self:center;">0 sélectionnée</span>'
+      + '</div>'
       + '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px;">'
-      + '<thead><tr style="color:var(--text3); text-align:left;"><th style="padding:5px 8px;">Fournisseur</th><th style="padding:5px 8px;">Qté</th><th style="padding:5px 8px;">Manquant</th><th style="padding:5px 8px;">IPN</th><th style="padding:5px 8px;">MPN</th><th style="padding:5px 8px;">Réf fourn.</th><th style="padding:5px 8px;">Cmdé chez</th></tr></thead>'
+      + '<thead><tr style="color:var(--text3); text-align:left;"><th style="padding:5px 6px;"></th><th style="padding:5px 8px;">Fournisseur</th><th style="padding:5px 8px;">Qté</th><th style="padding:5px 8px;">Manquant</th><th style="padding:5px 8px;">Prix</th><th style="padding:5px 8px;">IPN</th><th style="padding:5px 8px;">MPN</th><th style="padding:5px 8px;">Réf fourn.</th><th style="padding:5px 8px;">Cmdé chez</th></tr></thead>'
       + '<tbody>' + rows + '</tbody></table></div>';
   }
+
+  window.attDpMaj = function(){
+    const n = document.querySelectorAll('.att-dp-check:checked').length;
+    const c = document.getElementById('att-dp-compte');
+    if (c) c.textContent = n + ' sélectionnée' + (n>1?'s':'');
+    ['att-dp-dispo','att-dp-prix'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) b.disabled = !n;
+    });
+  };
+
+  const ATT_DP_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-demande-prix';
+
+  window.attDemandePrix = async function(motif){
+    const d = attSheetData;
+    if (!d) return;
+    const cochees = Array.from(document.querySelectorAll('.att-dp-check:checked')).map(cb => parseInt(cb.dataset.i, 10));
+    if (!cochees.length) return;
+    const lignes = cochees.map(i => {
+      const l = d.lignes[i];
+      return {
+        ref: (l['Approved parts']||'').trim() || (l['MPN']||'').trim(),
+        mpn: (l['MPN']||'').trim(),
+        fabricant: (l['Manufacturer free']||'').trim(),
+        qte: (l['Purchase qty']||'').toString().trim()
+      };
+    }).filter(l => l.ref || l.mpn);
+    if (!confirm('Préparer un brouillon Gmail (commercial@) — ' + lignes.length + ' référence' + (lignes.length>1?'s':'') + ', motif : ' + (motif==='prix'?'recherche meilleur prix':'indisponibilité') + ' ?\n\nDestinataire à choisir dans Gmail avant envoi.')) return;
+    try {
+      const r = await fetch(ATT_DP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ so: d.so, carte: d.fileName, motif, lignes })
+      });
+      const res = await r.json();
+      alert(res.success ? res.message : ('Échec : ' + (res.reason || 'inconnu')));
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
+  };
 
   window.attSheetCommander = async function(i, fournisseur){
     const d = attSheetData;
