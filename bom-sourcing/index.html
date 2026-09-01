@@ -1092,7 +1092,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "4.1";
+const APP_VERSION = "4.2";
 const APP_DATE = "01/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -1209,6 +1209,8 @@ let bomData = [];
 let csvBuffer = "";
 let bomWorkbook = null;
 let stockByIPN = {}, stockByMPN = {};
+// stockMpnByIPN : MPN lie a chaque IPN du referentiel stock (pour la substitution stock)
+let stockMpnByIPN = {};
 // stockOverrides[idx] : décision manuelle de stock pour une ligne, valable pour la session
 // courante uniquement (jamais écrit dans le fichier stock lui-même) :
 //  - { qty, source, matchedKey } → correspondance floue adoptée par l'utilisateur
@@ -1491,13 +1493,14 @@ function loadStockData(csvText) {
   const cM = document.getElementById('scol-mpn').value||'MPN';
   const cQ = document.getElementById('scol-qty').value||'Stock';
   const rows = parseCSV(csvText);
-  stockByIPN = {}; stockByMPN = {};
+  stockByIPN = {}; stockByMPN = {}; stockMpnByIPN = {};
   rows.forEach(row => {
     const ipn = (findCol(row,[cI])||'').trim().toUpperCase();
     const mpn = (findCol(row,[cM])||'').trim().toUpperCase();
     const qty = parseInt(findCol(row,[cQ]))||0;
     if (ipn) stockByIPN[ipn] = qty;
     if (mpn) stockByMPN[mpn] = qty;
+    if (ipn && mpn) stockMpnByIPN[ipn] = mpn;
   });
   // Le stock a change : l'index normalise et les recherches memorisees deviennent caducs.
   if (typeof _viderIndexFlou === 'function') _viderIndexFlou();
@@ -3834,10 +3837,14 @@ async function sendChat() {
       const titre = [c.so, c.carte].filter(Boolean).join(' — ') || '(sans SO)';
       const sousTitre = [c.ipn && ('IPN ' + c.ipn), c.mpn && ('MPN ' + c.mpn), c.qte && (c.qte + ' pcs'), c.depuis && ('depuis ' + c.depuis)].filter(Boolean).join(' · ');
       const cmdables = c.origine !== 'client';
+      const substBtn = c.origine === 'reception'
+        ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
+        : '';
       const cmdBtns = cmdables
         ? '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
           + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> Cmdé ' + f + '</button>').join('')
           + '<button class="btn" onclick="attCommander(' + i + ',\'__autre\')">Cmdé autre…</button>'
+          + substBtn
           + '</div>'
         : '';
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
@@ -4020,6 +4027,42 @@ async function sendChat() {
       alert('Erreur réseau : ' + e.message);
       attRender();
     }
+  };
+
+  /* Substitution IPN stock (ch.100) : apres verification physique, remplacer
+     la ligne par un autre IPN pris en stock. Controle qty+MPN dans le
+     referentiel deja charge, puis ecriture Inventory + IPN + MPN + note. */
+  const ATT_SUBST_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-substitution';
+
+  window.attSubstituer = async function(i){
+    const c = attVisibles[i];
+    if (!c) return;
+    const saisie = prompt('Substitution stock pour ' + (c.ipn || c.mpn) + ' (' + c.so + ')\n\nNouvel IPN pris en stock :');
+    if (!saisie) return;
+    const nouvelIpn = saisie.trim().toUpperCase();
+    let nouveauMpn = '';
+    let infoStock = 'IPN introuvable dans le référentiel stock chargé — vérifie la saisie.';
+    try {
+      if (typeof stockByIPN === 'object' && Object.keys(stockByIPN).length) {
+        if (stockByIPN[nouvelIpn] !== undefined) {
+          nouveauMpn = (typeof stockMpnByIPN === 'object' && stockMpnByIPN[nouvelIpn]) || '';
+          infoStock = 'Stock référentiel : ' + stockByIPN[nouvelIpn] + ' pcs' + (nouveauMpn ? '\nMPN lié : ' + nouveauMpn : '\nMPN lié : introuvable');
+        }
+      } else {
+        infoStock = 'Référentiel stock non chargé (Analyse BOM > sources) — contrôle impossible, la sheet Stock PP fait foi.';
+      }
+    } catch(e) {}
+    if (!confirm('Substituer ' + (c.ipn || c.mpn) + ' → ' + nouvelIpn + ' ?\n\n' + infoStock + '\n\nÉcrit dans la sheet achat : Supplier=Inventory, IPN et MPN remplacés, note de traçabilité.')) return;
+    try {
+      const r = await fetch(ATT_SUBST_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ so: c.so, mpn: c.mpn, ipn: c.ipn, nouveau_ipn: nouvelIpn, nouveau_mpn: nouveauMpn })
+      });
+      const res = await r.json();
+      if (res.success) { attCharger(); }
+      else { alert('Échec : ' + (res.reason || 'inconnu')); }
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
   };
 })();
 </script>
