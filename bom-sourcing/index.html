@@ -1060,6 +1060,16 @@ tr:hover td { background: var(--surface2); }
 
     <!-- ACHATS EN ATTENTE TAB (module independant — aucune dependance a l'analyse BOM) -->
     <div class="panel" id="tab-attente">
+      <div style="padding-bottom:14px; margin-bottom:14px; border-bottom:1px solid var(--border);">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+          <span class="section-label" style="margin:0;">Achats de l'affaire</span>
+          <input type="text" id="att-sheet-so" placeholder="SO2607-400" style="width:150px;" onkeydown="if(event.key==='Enter')attSheetCharger()" />
+          <button class="btn primary" onclick="attSheetCharger()"><i class="ti ti-download" aria-hidden="true"></i> Charger</button>
+          <a id="att-sheet-lien" href="#" target="_blank" style="display:none; font-size:12px; color:var(--blue);">Ouvrir dans Sheets</a>
+        </div>
+        <div id="att-sheet-contenu"></div>
+      </div>
+
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
         <p style="font-size:13px; color:var(--text2); margin:0;">Tout ce qui attend une action d'achat : sourcing sans solution, paniers incomplets, manques de stock constatés en réception, et réponses client FabStory.</p>
         <button class="btn" onclick="attCharger()"><i class="ti ti-refresh" aria-hidden="true"></i> Actualiser</button>
@@ -1072,16 +1082,6 @@ tr:hover td { background: var(--surface2); }
       <div id="att-liste" style="display:flex; flex-direction:column; gap:8px;">
         <p style="font-size:13px; color:var(--text3)">Chargement…</p>
       </div>
-
-      <div style="margin-top:22px; padding-top:14px; border-top:1px solid var(--border);">
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-          <span class="section-label" style="margin:0;">Sheet achat d'une affaire</span>
-          <input type="text" id="att-sheet-so" placeholder="SO2607-400" style="width:150px;" onkeydown="if(event.key==='Enter')attSheetCharger()" />
-          <button class="btn primary" onclick="attSheetCharger()"><i class="ti ti-download" aria-hidden="true"></i> Charger</button>
-          <a id="att-sheet-lien" href="#" target="_blank" style="display:none; font-size:12px; color:var(--blue);">Ouvrir dans Sheets</a>
-        </div>
-        <div id="att-sheet-contenu"></div>
-      </div>
     </div>
 
   </div>
@@ -1092,7 +1092,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "3.2";
+const APP_VERSION = "3.3";
 const APP_DATE = "01/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -1236,6 +1236,17 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
   document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', names[i]===name));
   if (name === 'attente' && !window.__attLoaded) { attCharger(); }
+  /* Enchainement analyse -> achats : pre-remplit le SO de l'affaire en cours */
+  if (name === 'attente') {
+    try {
+      const soAnalyse = (document.getElementById('so-reference')||{}).value || '';
+      const champ = document.getElementById('att-sheet-so');
+      if (soAnalyse.trim() && champ && !champ.value.trim()) {
+        champ.value = soAnalyse.trim();
+        attSheetCharger();
+      }
+    } catch(e) {}
+  }
 }
 
 function showSetup() {
