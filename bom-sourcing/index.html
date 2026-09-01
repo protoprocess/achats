@@ -1092,8 +1092,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "5.1";
-const APP_DATE = "01/09/2026";
+const APP_VERSION = "6.0";
+const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -3712,6 +3712,7 @@ async function sendChat() {
 (function(){
   const ATT_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-en-attente';
   let attData = { panier: [], fabstory: [] };
+  let attSeuils = { digikey:75, mouser:75, farnell:50, rs:50, defaut:75 };
   let attFiltre = 'tout';
 
   window.attCharger = async function(){
@@ -3722,6 +3723,7 @@ async function sendChat() {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       attData = { panier: d.panier || [], fabstory: d.fabstory || [] };
+      if (d.seuils_franco) attSeuils = d.seuils_franco;
       window.__attLoaded = true;
       attRender();
     } catch(e) {
@@ -3936,8 +3938,22 @@ async function sendChat() {
     const bandeau = nbChers
       ? '<div style="background:var(--amber-bg); color:var(--amber-badge); border-radius:var(--radius); padding:8px 12px; font-size:12px; margin-bottom:8px;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + nbChers + ' ligne' + (nbChers>1?'s':'') + ' au-dessus de ' + SEUIL_PRIX_LIGNE + ' € — une demande de prix broker peut valoir le coup : coche les lignes puis clique "Demande de prix (meilleur prix)".</div>'
       : '';
+    /* Boutons Panier par fournisseur present dans la sheet */
+    const parFourn = {};
+    d.lignes.forEach((l, i) => {
+      const cle = attFournCle((l['Supplier']||''));
+      if (!cle) return;
+      (parFourn[cle] = parFourn[cle] || []).push(i);
+    });
+    const panierBtns = Object.keys(parFourn).length
+      ? '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">'
+        + '<span style="font-size:12px; color:var(--text3)">Panier :</span>'
+        + Object.keys(parFourn).map(cle => '<button class="btn primary" style="padding:4px 10px; font-size:12px;" onclick="attPanierOuvrir(\'' + cle + '\')"><i class="ti ti-basket" aria-hidden="true"></i> ' + attPanierFormats[cle].titre + ' (' + parFourn[cle].length + ')</button>').join('')
+        + '</div><div id="att-panier-panel"></div>'
+      : '<div id="att-panier-panel"></div>';
     zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + ' — ' + d.lignes.length + ' lignes</div>'
       + bandeau
+      + panierBtns
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">'
       + '<button class="btn" id="att-dp-dispo" disabled onclick="attDemandePrix(\'dispo\')"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix (indispo)</button>'
       + '<button class="btn" id="att-dp-prix" disabled onclick="attDemandePrix(\'prix\')"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix (meilleur prix)</button>'
@@ -4037,6 +4053,170 @@ async function sendChat() {
       } else {
         alert('Échec : ' + (res.reason || 'inconnu') + (res.note ? '\n' + res.note : ''));
       }
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
+  };
+
+  /* ============================================================
+     PANNEAU COMMANDER — copie par fournisseur au format sheet appro
+     (SCRIPT_TEMPLATE_APPRO v5.1 — memes ordres de colonnes, qte en
+     premier chez DigiKey), cumul avec les paniers en attente, verdict
+     franco (seuils lus dans environnement via l API), mise en attente
+     et reprise via achats-panier.
+     ============================================================ */
+  window.attPanierFormats = {
+    farnell: { titre: 'Farnell', entete: 'Ref. Farnell · Qty · ref. cmd · IPN', colonnes: ['refFour','qte','so','ipn'] },
+    digikey: { titre: 'DigiKey', entete: 'Qty · Ref. DK · IPN', colonnes: ['qte','refFour','ipn'] },
+    mouser:  { titre: 'Mouser',  entete: 'Ref. Mouser · IPN · Qty', colonnes: ['refFour','ipn','qte'] },
+    rs:      { titre: 'RS',      entete: 'Ref. RS · Qty · ref. cmd', colonnes: ['refFour','qte','so'] },
+    autres:  { titre: 'Autres',  entete: 'Ref. · Qty · ref. cmd · IPN', colonnes: ['refFour','qte','so','ipn'] }
+  };
+
+  window.attFournCle = function(f){
+    const n = (f||'').toString().trim().toLowerCase();
+    if (!n || n.charAt(0) === '?' || n === 'inventory' || n === 'client') return null;
+    if (n.includes('digikey') || n === 'dk' || n.startsWith('dk ')) return 'digikey';
+    if (n.includes('mouser')) return 'mouser';
+    if (n.includes('farnell')) return 'farnell';
+    if (n === 'rs' || n.includes('rs components')) return 'rs';
+    return 'autres';
+  };
+
+  const ATT_PANIER_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-panier';
+  let attPanier = null;
+
+  window.attPanierOuvrir = async function(cle){
+    if (!window.__attLoaded) { try { await attCharger(); } catch(e) {} }
+    const d = attSheetData;
+    if (!d) return;
+    const num = s => parseFloat((s||'').toString().replace(',','.')) || 0;
+    const aff = [];
+    d.lignes.forEach((l, i) => {
+      if (attFournCle(l['Supplier']) !== cle) return;
+      aff.push({
+        i, coche: true,
+        fournisseur: (l['Supplier']||'').trim(),
+        refFour: (l['Supplier part number']||'').trim(),
+        ipn: (l['Approved internal part number']||'').trim(),
+        mpn: (l['MPN']||'').trim(),
+        qte: (l['Purchase qty']||'').toString().trim(),
+        montant: num(l['Purchase price'])
+      });
+    });
+    const att = [];
+    (attData.panier||[]).forEach(p => {
+      if ((p['Statut']||'').trim() === 'Commandé') return;
+      if ((p['SO']||'').trim().toLowerCase() === d.so.toLowerCase()) return;
+      if (attFournCle(p['Fournisseur']) !== cle) return;
+      att.push({
+        so: (p['SO']||'').trim(),
+        fournisseur: (p['Fournisseur']||'').trim(),
+        refFour: (p['Ref. fournisseur']||'').toString().trim(),
+        ipn: (p['IPN']||'').trim(),
+        mpn: (p['MPN']||'').trim(),
+        qte: (p['Qté']||'').toString().trim(),
+        montant: num(p['Montant'])
+      });
+    });
+    attPanier = { cle, aff, att, reprendre: false };
+    attPanierRender();
+  };
+
+  function attPanierRender(){
+    const P = attPanier;
+    const zone = document.getElementById('att-panier-panel');
+    if (!P || !zone) return;
+    const fmt = attPanierFormats[P.cle];
+    const seuil = attSeuils[P.cle] !== undefined ? attSeuils[P.cle] : attSeuils.defaut;
+    const totAff = P.aff.filter(l => l.coche).reduce((s,l) => s + l.montant, 0);
+    const totAtt = P.att.reduce((s,l) => s + l.montant, 0);
+    const totFinal = totAff + (P.reprendre ? totAtt : 0);
+    const atteint = totFinal >= seuil;
+    const eur = v => v.toFixed(2) + ' €';
+    const verdict = atteint
+      ? '<span style="color:var(--green); font-weight:500;"><i class="ti ti-check" aria-hidden="true"></i> Seuil franco atteint (' + eur(totFinal) + ' ≥ ' + seuil + ' €) — commande possible.</span>'
+      : '<span style="color:var(--amber); font-weight:500;"><i class="ti ti-hourglass" aria-hidden="true"></i> Sous le seuil (' + eur(totFinal) + ' < ' + seuil + ' €) — mise en attente conseillée' + (P.att.length && !P.reprendre ? ', ou coche la reprise ci-dessous' : '') + '.</span>';
+    const ligneAff = (l, ix) => '<label style="display:flex; gap:8px; align-items:center; font-size:12px; padding:3px 0;">'
+      + '<input type="checkbox" ' + (l.coche?'checked':'') + ' onchange="attPanierToggle(' + ix + ')">'
+      + '<span style="font-family:var(--mono); font-size:11px; flex:1;">' + (l.refFour || l.mpn || l.ipn) + '</span>'
+      + '<span>' + l.qte + ' pcs</span><span style="color:var(--text3); min-width:70px; text-align:right;">' + eur(l.montant) + '</span></label>';
+    const blocAtt = P.att.length
+      ? '<div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border);">'
+        + '<label style="display:flex; gap:8px; align-items:center; font-size:12px; font-weight:500;"><input type="checkbox" ' + (P.reprendre?'checked':'') + ' onchange="attPanierReprendre()"> Reprendre aussi les paniers en attente — ' + P.att.length + ' ligne(s), ' + eur(totAtt) + ' (' + Array.from(new Set(P.att.map(l=>l.so))).join(', ') + ')</label>'
+        + (P.reprendre ? '<div style="margin-top:4px; padding-left:22px;">' + P.att.map(l => '<div style="font-size:11px; color:var(--text2);">' + l.so + ' · <span style="font-family:var(--mono)">' + (l.refFour||l.mpn) + '</span> · ' + l.qte + ' pcs · ' + eur(l.montant) + '</div>').join('') + '</div>' : '')
+        + '</div>'
+      : '';
+    zone.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius); padding:12px; margin-bottom:10px;">'
+      + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">'
+      + '<div style="font-size:13px; font-weight:500;"><i class="ti ti-basket" aria-hidden="true"></i> Commander — ' + fmt.titre + ' · ' + attSheetData.so + '</div>'
+      + '<button class="btn" style="padding:2px 8px;" onclick="attPanierFermer()"><i class="ti ti-x" aria-hidden="true"></i></button></div>'
+      + P.aff.map(ligneAff).join('')
+      + blocAtt
+      + '<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border); font-size:12px;">Affaire : <b>' + eur(totAff) + '</b>' + (P.reprendre ? ' + attente : <b>' + eur(totAtt) + '</b>' : '') + ' — ' + verdict + '</div>'
+      + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">'
+      + '<button class="btn primary" onclick="attPanierCopier()"><i class="ti ti-copy" aria-hidden="true"></i> Copier (' + fmt.entete + ')</button>'
+      + '<button class="btn" onclick="attPanierValider()" ' + (atteint ? '' : 'disabled title="Seuil non atteint"') + '><i class="ti ti-check" aria-hidden="true"></i> J\'ai commandé</button>'
+      + '<button class="btn" style="color:var(--amber); border-color:var(--amber);" onclick="attPanierAttente()"><i class="ti ti-hourglass" aria-hidden="true"></i> Mettre en attente</button>'
+      + '<span id="att-panier-msg" style="font-size:12px; color:var(--green); align-self:center;"></span>'
+      + '</div></div>';
+  }
+
+  window.attPanierFermer = function(){
+    const z = document.getElementById('att-panier-panel');
+    if (z) z.innerHTML = '';
+    attPanier = null;
+  };
+  window.attPanierToggle = function(ix){ if (attPanier) { attPanier.aff[ix].coche = !attPanier.aff[ix].coche; attPanierRender(); } };
+  window.attPanierReprendre = function(){ if (attPanier) { attPanier.reprendre = !attPanier.reprendre; attPanierRender(); } };
+
+  window.attPanierCopier = function(){
+    const P = attPanier;
+    if (!P) return;
+    const fmt = attPanierFormats[P.cle];
+    const lignes = P.aff.filter(l => l.coche).map(l => Object.assign({}, l, { so: attSheetData.so }))
+      .concat(P.reprendre ? P.att : []);
+    const tsv = lignes.map(l => fmt.colonnes.map(c => l[c] || '').join('\t')).join('\n');
+    navigator.clipboard.writeText(tsv).then(() => {
+      const m = document.getElementById('att-panier-msg');
+      if (m) m.textContent = lignes.length + ' ligne(s) copiée(s) — coller dans le panier ' + fmt.titre + '.';
+    }).catch(() => alert('Copie impossible — sélectionne et copie manuellement :\n\n' + tsv));
+  };
+
+  window.attPanierAttente = async function(){
+    const P = attPanier;
+    if (!P) return;
+    const lignes = P.aff.filter(l => l.coche);
+    if (!lignes.length) return;
+    if (!confirm('Mettre ' + lignes.length + ' ligne(s) en attente (Panier incomplet, seuil non atteint) ?\nElles seront reprises automatiquement au prochain panier ' + attPanierFormats[P.cle].titre + '.')) return;
+    try {
+      const r = await fetch(ATT_PANIER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'attente', so: attSheetData.so, carte: attSheetData.fileName, fournisseur: attPanierFormats[P.cle].titre, lignes })
+      });
+      const res = await r.json();
+      alert(res.success ? res.message : ('Échec : ' + (res.reason || 'inconnu')));
+      if (res.success) { attPanierFermer(); attCharger(); }
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
+  };
+
+  window.attPanierValider = async function(){
+    const P = attPanier;
+    if (!P) return;
+    if (!P.reprendre || !P.att.length) {
+      const m = document.getElementById('att-panier-msg');
+      if (m) m.textContent = 'Commande notée — pense au vert dans la sheet (menu Appro) pour les lignes de l\'affaire.';
+      return;
+    }
+    if (!confirm('Passer les ' + P.att.length + ' ligne(s) en attente reprises en Commandé ?')) return;
+    try {
+      const r = await fetch(ATT_PANIER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reprise', fournisseur: attPanierFormats[P.cle].titre, lignes: P.att })
+      });
+      const res = await r.json();
+      alert(res.success ? res.message : ('Échec : ' + (res.reason || 'inconnu')));
+      if (res.success) { attPanierFermer(); attCharger(); }
     } catch(e) { alert('Erreur réseau : ' + e.message); }
   };
 
