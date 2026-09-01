@@ -1092,7 +1092,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "3.3";
+const APP_VERSION = "4.0";
 const APP_DATE = "01/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3898,7 +3898,9 @@ async function sendChat() {
       const manquant = (l['Manquant']||'').toString().trim();
       const cmdBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap;">'
         + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'' + f + '\')">' + f + '</button>').join('')
-        + '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'__autre\')">autre…</button></div>';
+        + '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'__autre\')">autre…</button>'
+        + '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink);" onclick="attSheetSansSolution(' + i + ')" title="Préfixe le fournisseur avec ? et crée la question client FabStory">Sans solution</button>'
+        + '</div>';
       return '<tr>'
         + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : '') + '">' + (fourn || '—') + '</td>'
         + '<td style="padding:5px 8px;">' + (l['Purchase qty']||'') + '</td>'
@@ -3935,6 +3937,36 @@ async function sendChat() {
       const res = await r.json();
       if (res.success) { attSheetCharger(); }
       else { alert('Échec : ' + (res.reason || 'inconnu')); }
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
+  };
+
+  /* Sans solution : prefixe le fournisseur avec ? dans la sheet achat
+     (fournisseur Luminovo impose non valable) et cree la question client
+     FabStory rattachee au SO + produit. Groupage/envoi depuis FabStory. */
+  const ATT_SANSSOL_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-sans-solution';
+
+  window.attSheetSansSolution = async function(i){
+    const d = attSheetData;
+    const l = d && d.lignes[i];
+    if (!l) return;
+    const mpn = (l['MPN']||'').trim();
+    const ipn = (l['Approved internal part number']||'').trim();
+    const qte = (l['Purchase qty']||'').toString().trim();
+    if (!confirm('Sans solution pour ' + (mpn || ipn) + ' ?\n\n- Le fournisseur passera en "?' + (l['Supplier']||'').trim() + '" dans la sheet achat\n- Une question client sera créée dans FabStory (envoi groupé depuis FabStory)')) return;
+    try {
+      const r = await fetch(ATT_SANSSOL_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ so: d.so, mpn, ipn, qte })
+      });
+      const res = await r.json();
+      if (res.success) {
+        alert('Question FabStory créée (n°' + res.question_id + '), fournisseur marqué ' + res.fournisseur + '.');
+        attSheetCharger();
+        attCharger();
+      } else {
+        alert('Échec : ' + (res.reason || 'inconnu') + (res.note ? '\n' + res.note : ''));
+      }
     } catch(e) { alert('Erreur réseau : ' + e.message); }
   };
 
