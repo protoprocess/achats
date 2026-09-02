@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "7.5";
+const APP_VERSION = "7.6";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3929,6 +3929,13 @@ async function sendChat() {
   let attSheetData = null;
   let attSheetActives = [];
 
+  /* Les prix de la sheet arrivent formatés ("€0.22", "1,26 €", "8.29") :
+     parseFloat direct rend NaN sur le symbole — cause du "0.00 €" partout
+     au contre-test du 02/09. On ne garde que chiffres, virgule, point, signe. */
+  function attPrixNum(s){
+    return parseFloat((s||'').toString().replace(/[^0-9,.\-]/g,'').replace(',','.')) || 0;
+  }
+
   window.attSheetCharger = async function(){
     const so = document.getElementById('att-sheet-so').value.trim();
     const zone = document.getElementById('att-sheet-contenu');
@@ -3980,7 +3987,7 @@ async function sendChat() {
       const inv = fourn.toLowerCase() === 'inventory';
       const sansSol = fourn.charAt(0) === '?';
       const manquant = (l['Manquant']||'').toString().trim();
-      const prix = parseFloat((l['Purchase price']||'').toString().replace(',','.')) || 0;
+      const prix = attPrixNum(l['Purchase price']);
       const cher = prix >= SEUIL_PRIX_LIGNE;
       if (cher) nbChers++;
       const cmdBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap;">'
@@ -4159,7 +4166,7 @@ async function sendChat() {
     if (!window.__attLoaded) { try { await attCharger(); } catch(e) {} }
     const d = attSheetData;
     if (!d) return;
-    const num = s => parseFloat((s||'').toString().replace(',','.')) || 0;
+    const num = attPrixNum;
     const aff = [];
     attSheetActives.forEach((l, i) => {
       if (attFournCle(l['Supplier']) !== cle) return;
