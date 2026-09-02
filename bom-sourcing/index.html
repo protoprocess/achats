@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "7.4";
+const APP_VERSION = "7.5";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -1922,7 +1922,7 @@ function parseRCIpn(str) {
   if (parts.length < 2) return null;
 
   let m = parts[0].match(/^R(\d+[RKM]\d*)$/);
-  if (m) return { type:'R', value:m[1], pkg:parts[1]||'', voltage:null, tolerance:null };
+  if (m) return { type:'R', value:m[1], pkg:parts[1]||'', voltage:null, tolerance:null, ppm:parts[2]||null };
 
   m = parts[0].match(/^CT(\d+[PNUF]\d*)$/);
   if (m) return { type:'C', value:m[1], pkg:parts[1]||'', voltage:parts[2]||null, tolerance:parts[3]||null };
@@ -1943,13 +1943,22 @@ function rcCompatible(searchKey, candidateKey) {
   if (a.type !== b.type) return false;
   if (a.value !== b.value) return false;
   if (a.pkg !== b.pkg) return false;
-  if (a.voltage && b.voltage) {
+  /* Regles validees par Olivier le 02/09 : un candidat qui n'affiche pas la
+     caracteristique demandee est un inconnu -> silence, jamais le benefice du doute. */
+  if (a.voltage) {
+    if (!b.voltage) return false;
     const va = parseFloat(a.voltage), vb = parseFloat(b.voltage);
-    if (!isNaN(va) && !isNaN(vb) && vb < va) return false; // tension proposée doit être >= demandée
+    if (isNaN(vb) || vb < va) return false;   // tension proposée >= demandée, sinon exclu
   }
-  if (a.tolerance && b.tolerance) {
+  if (a.tolerance) {
+    if (!b.tolerance) return false;
     const ta = parseFloat(a.tolerance), tb = parseFloat(b.tolerance);
-    if (!isNaN(ta) && !isNaN(tb) && tb > ta) return false; // tolérance proposée doit être <= demandée
+    if (isNaN(tb) || tb > ta) return false;   // tolérance proposée <= demandée, sinon exclu
+  }
+  if (a.ppm) {
+    if (!b.ppm) return false;                 // 25PPM demandé : une R sans ppm n'est jamais proposée
+    const pa = parseFloat(a.ppm), pb = parseFloat(b.ppm);
+    if (isNaN(pb) || pb > pa) return false;   // ppm proposé <= demandé
   }
   return true;
 }
@@ -1987,15 +1996,14 @@ function stripPackagingSuffixes(str) {
 // n'est jamais utilisee (on ne fait que filtrer puis trier les retenus).
 function fuzzyScoreNorm(aBrut, aNorm, bBrut, bNorm) {
   const rc = rcCompatible(aBrut, bBrut);
-  if (rc === true) return 1;   // même valeur + même boîtier, tension/tolérance compatibles
-  if (rc === false) return 0;  // R/C reconnus des deux côtés mais valeur ou boîtier différents -> exclu
+  if (rc === true) return 1;   // même valeur + même boîtier, tension/tolérance/ppm compatibles
+  if (rc === false) return 0;  // R/C reconnus des deux côtés mais spec incompatible -> exclu
   if (!aNorm || !bNorm) return 0;
-  const maxLen = Math.max(aNorm.length, bNorm.length);
-  if (!maxLen) return 0;
-  const k = Math.floor((1 - FUZZY_MIN_SCORE) * maxLen);
-  const d = levenshteinMax(aNorm, bNorm, k);
-  if (d > k) return 0;
-  return 1 - d / maxLen;
+  /* Hors R/C : la distance d'edition proposait tout et n'importe quoi (LED d'une
+     autre couleur, BLM d'un autre boitier, serie B2B pour S2B — contre-test 02/09).
+     Seule difference toleree desormais : un suffixe de conditionnement (CT/TR/…),
+     deja retire par la normalisation. Identique apres normalisation, ou silence. */
+  return aNorm === bNorm ? 1 : 0;
 }
 
 // Conserve pour compatibilite si une autre partie du code l'appelle encore.
@@ -2039,6 +2047,7 @@ function findFuzzyStockCandidates(searchKey, limit) {
   const retenus = [];
   for (const e of idx) {
     if (e.key === searchKey) continue;
+    if (!(e.qty > 0)) continue;   // regle 0 (Olivier 02/09) : sans stock, inutile de proposer
     const sc = fuzzyScoreNorm(searchKey, aNorm, e.key, e.norm);
     if (sc >= FUZZY_MIN_SCORE) retenus.push({ key:e.key, qty:e.qty, source:e.source, score:sc });
   }
