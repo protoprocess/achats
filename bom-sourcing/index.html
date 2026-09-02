@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "7.2";
+const APP_VERSION = "7.3";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3732,6 +3732,7 @@ async function sendChat() {
   let attSeuils = { digikey:75, mouser:75, farnell:50, rs:50, defaut:75 };
   let attFiltre = 'tout';
   let attFiltreType = 'tout';
+  let attFiltreSO = '';
 
   window.attCharger = async function(){
     const liste = document.getElementById('att-liste');
@@ -3817,6 +3818,14 @@ async function sendChat() {
     attRender();
   };
 
+  window.attFiltrerSO = function(v){
+    attFiltreSO = v;
+    attRender();
+    /* Le rendu reconstruit le champ : on lui rend le focus et le curseur en fin */
+    const inp = document.getElementById('att-filtre-so');
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  };
+
   function attRecherche(c){
     const q = encodeURIComponent(c.mpn || c.ipn);
     if (!q) return '';
@@ -3846,7 +3855,7 @@ async function sendChat() {
       + '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Questions client FabStory</div><div style="font-size:20px; font-weight:500;">' + compte.client + '</div></div>';
 
     const filtres = [['tout','Tout'],['sourcing','Sourcing'],['reception','Réception'],['client','Client']];
-    const types = [['tout','Tous types'],['Sans solution','Sans solution'],['Panier incomplet','Panier incomplet'],['Stock manquant','Stock manquant']];
+    const types = [['tout','Tous types'],['Sans solution','Sans solution'],['Panier incomplet','Panier incomplet'],['Stock manquant','Stock manquant'],['Attente réponse client','Attente client'],['Réponse client reçue','Réponse client']];
     document.getElementById('att-filtres').innerHTML =
       filtres.map(([k,lbl]) =>
         '<button class="filter-btn' + (attFiltre===k?' active':'') + '" onclick="attFiltrer(\'' + k + '\')">' + lbl + '</button>'
@@ -3854,11 +3863,15 @@ async function sendChat() {
       + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
       + types.map(([k,lbl]) =>
         '<button class="filter-btn' + (attFiltreType===k?' active':'') + '" onclick="attFiltrerType(\'' + k.replace(/'/g,"\\'") + '\')">' + lbl + '</button>'
-      ).join('');
+      ).join('')
+      + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
+      + '<input type="text" id="att-filtre-so" value="' + (attFiltreSO||'').replace(/"/g,'&quot;') + '" placeholder="SO…" style="width:110px; padding:5px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;" oninput="attFiltrerSO(this.value)">';
 
+    const soN = (attFiltreSO||'').trim().toLowerCase();
     const visibles = cartes.filter(c =>
       (attFiltre==='tout' || c.origine===attFiltre)
       && (attFiltreType==='tout' || c.type===attFiltreType)
+      && (!soN || (c.so||'').toLowerCase().includes(soN))
     );
     window.attSetVisibles(visibles);
     const liste = document.getElementById('att-liste');
