@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "7.1";
+const APP_VERSION = "7.2";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3934,13 +3934,17 @@ async function sendChat() {
     const zone = document.getElementById('att-sheet-contenu');
     if (!d.lignes.length) { zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Sheet vide.</p>'; return; }
     /* La sheet est seule maitresse du "commandé" (vert colonne A, script ou main).
-       L'appli ne remonte QUE le non-commandé — decision Olivier 02/09. */
-    const actives = d.lignes.filter(l => !l._commande);
+       L'appli ne remonte QUE le non-commandé — decision Olivier 02/09.
+       Les lignes Inventory (stock interne, rien a commander) sont masquees
+       aussi — SO2607-400 en portait ~1000. */
+    const actives = d.lignes.filter(l => !l._commande && (l['Supplier']||'').trim().toLowerCase() !== 'inventory');
     attSheetActives = actives;
-    const nbVertes = d.lignes.length - actives.length;
+    const nbVertes = d.lignes.filter(l => l._commande).length;
+    const nbInv = d.lignes.length - actives.length - nbVertes;
+    const masquees = [nbVertes ? '<span style="color:var(--green)">' + nbVertes + ' commandée(s)</span>' : '', nbInv ? nbInv + ' Inventory' : ''].filter(Boolean).join(' · ');
     if (!actives.length) {
-      zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + '</div>'
-        + '<p style="font-size:13px; color:var(--green);"><i class="ti ti-check" aria-hidden="true"></i> Tout est commandé (' + nbVertes + ' ligne' + (nbVertes>1?'s':'') + ' verte' + (nbVertes>1?'s':'') + ') — rien à traiter ici.</p>';
+      zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + (masquees ? ' — masquées : ' + masquees : '') + '</div>'
+        + '<p style="font-size:13px; color:var(--green);"><i class="ti ti-check" aria-hidden="true"></i> Rien à traiter ici.</p>';
       return;
     }
     /* Seuil au-dela duquel la demande de prix est CONSEILLEE (aide a la decision
@@ -3996,7 +4000,7 @@ async function sendChat() {
         + Object.keys(parFourn).map(cle => '<button class="btn primary" style="padding:4px 10px; font-size:12px;" onclick="attPanierOuvrir(\'' + cle + '\')"><i class="ti ti-basket" aria-hidden="true"></i> ' + attPanierFormats[cle].titre + ' (' + parFourn[cle].length + ')</button>').join('')
         + '</div><div id="att-panier-panel"></div>'
       : '<div id="att-panier-panel"></div>';
-    zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + ' — ' + actives.length + ' ligne(s) à traiter' + (nbVertes ? ' · <span style="color:var(--green)">' + nbVertes + ' commandée(s) masquée(s)</span>' : '') + '</div>'
+    zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + ' — ' + actives.length + ' ligne(s) à traiter' + (masquees ? ' · masquées : ' + masquees : '') + '</div>'
       + bandeau
       + panierBtns
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">'
