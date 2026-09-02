@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.1";
+const APP_VERSION = "8.2";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -4076,8 +4076,9 @@ async function sendChat() {
     const lignes = cochees.map(i => {
       const l = attSheetActives[i];
       return {
-        ref: (l['Approved parts']||'').trim() || (l['MPN']||'').trim(),
+        ref: (l['Approved parts']||'').trim() || (l['MPN']||'').trim() || (l['Approved internal part number']||'').trim(),
         mpn: (l['MPN']||'').trim(),
+        ipn: (l['Approved internal part number']||'').trim(),
         fabricant: (l['Manufacturer free']||'').trim(),
         qte: (l['Purchase qty']||'').toString().trim()
       };
@@ -4100,7 +4101,7 @@ async function sendChat() {
           const rr = await fetch(ATT_RESOL_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ so: d.so, mpn: l.mpn, ipn: '', fournisseur: 'Consultation', panier: 'skip' })
+            body: JSON.stringify({ so: d.so, mpn: l.mpn, ipn: l.ipn || '', fournisseur: 'Consultation', panier: 'skip' })
           });
           const dr = await rr.json();
           if (dr.success) poses++;
@@ -4110,7 +4111,7 @@ async function sendChat() {
         await fetch(ATT_PANIER_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'consultation', lignes: lignes.map(l => ({ so: d.so, mpn: l.mpn, ipn: '' })) })
+          body: JSON.stringify({ action: 'consultation', lignes: lignes.map(l => ({ so: d.so, mpn: l.mpn, ipn: l.ipn || '' })) })
         });
       } catch(e) {}
       alert(res.message + '\n' + poses + '/' + lignes.length + ' ligne(s) passée(s) en Consultation sur la sheet.');
