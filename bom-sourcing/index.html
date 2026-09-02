@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.0";
+const APP_VERSION = "8.1";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3985,13 +3985,23 @@ async function sendChat() {
        la consultation broker vaut rarement le coup) */
     const SEUIL_PRIX_LIGNE = 500;
     let nbChers = 0;
+    /* Tri du process achats (Olivier 02/09) : consultations en cours puis lignes
+       cheres (candidates demande de prix) en tete, le reste dans l'ordre sheet. */
+    actives.forEach((l, i) => {
+      l._prix = attPrixNum(l['Purchase price']);
+      l._ordre = i;
+      const f = (l['Supplier']||'').trim().toLowerCase();
+      l._rang = f === 'consultation' ? 0 : (l._prix >= SEUIL_PRIX_LIGNE ? 1 : 2);
+    });
+    actives.sort((a,b) => a._rang - b._rang || (a._rang === 1 ? b._prix - a._prix : a._ordre - b._ordre));
     /* Colonnes courtes et importantes d'abord (charte §5), le reste accessible dans Sheets */
     const rows = actives.map((l, i) => {
       const fourn = (l['Supplier']||'').trim();
       const inv = fourn.toLowerCase() === 'inventory';
+      const consult = fourn.toLowerCase() === 'consultation';
       const sansSol = fourn.charAt(0) === '?';
       const manquant = (l['Manquant']||'').toString().trim();
-      const prix = attPrixNum(l['Purchase price']);
+      const prix = l._prix;
       const cher = prix >= SEUIL_PRIX_LIGNE;
       if (cher) nbChers++;
       const cmdBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap;">'
@@ -4007,7 +4017,7 @@ async function sendChat() {
       const teinte = sansSol ? ' style="background:rgba(237,147,177,0.07)"' : (cher ? ' style="background:rgba(234,182,118,0.06)"' : '');
       return '<tr' + teinte + '>'
         + '<td style="padding:5px 6px;"><input type="checkbox" class="att-dp-check" data-i="' + i + '" onchange="attDpMaj()"' + (cher ? ' title="Prix élevé"' : '') + '></td>'
-        + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : '')) + '">' + (fourn || '—') + '</td>'
+        + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + (fourn || '—') + '</td>'
         + '<td style="padding:5px 8px;">' + (l['Purchase qty']||'') + '</td>'
         + '<td style="padding:5px 8px; ' + (manquant && manquant !== '0' ? 'color:var(--red); font-weight:500;' : 'color:var(--text3);') + '">' + (manquant || '') + '</td>'
         + '<td style="padding:5px 8px;">' + prixHtml + '</td>'
@@ -4080,7 +4090,31 @@ async function sendChat() {
         body: JSON.stringify({ so: d.so, carte: d.fileName, motif, lignes })
       });
       const res = await r.json();
-      alert(res.success ? res.message : ('Échec : ' + (res.reason || 'inconnu')));
+      if (!res.success) { alert('Échec : ' + (res.reason || 'inconnu')); return; }
+      /* Statut Consultation : sur la sheet achat (Supplier=Consultation, la ref
+         d'origine reste en trace) et au Planning si la ligne y figure. A la
+         conclusion : Cmdé autre… avec le vrai fournisseur (ex. Club Elec). */
+      let poses = 0;
+      for (const l of lignes) {
+        try {
+          const rr = await fetch(ATT_RESOL_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ so: d.so, mpn: l.mpn, ipn: '', fournisseur: 'Consultation', panier: 'skip' })
+          });
+          const dr = await rr.json();
+          if (dr.success) poses++;
+        } catch(e) {}
+      }
+      try {
+        await fetch(ATT_PANIER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'consultation', lignes: lignes.map(l => ({ so: d.so, mpn: l.mpn, ipn: '' })) })
+        });
+      } catch(e) {}
+      alert(res.message + '\n' + poses + '/' + lignes.length + ' ligne(s) passée(s) en Consultation sur la sheet.');
+      attSheetCharger();
     } catch(e) { alert('Erreur réseau : ' + e.message); }
   };
 
@@ -4155,7 +4189,7 @@ async function sendChat() {
 
   window.attFournCle = function(f){
     const n = (f||'').toString().trim().toLowerCase();
-    if (!n || n.charAt(0) === '?' || n === 'inventory' || n === 'client') return null;
+    if (!n || n.charAt(0) === '?' || n === 'inventory' || n === 'client' || n === 'consultation') return null;
     if (n.includes('digikey') || n === 'dk' || n.startsWith('dk ')) return 'digikey';
     if (n.includes('mouser')) return 'mouser';
     if (n.includes('farnell')) return 'farnell';
