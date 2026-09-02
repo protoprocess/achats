@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.2";
+const APP_VERSION = "8.3";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -4007,6 +4007,7 @@ async function sendChat() {
       const cmdBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap;">'
         + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'' + f + '\')">' + f + '</button>').join('')
         + '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'__autre\')">autre…</button>'
+        + '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pp-blue); border-color:var(--pp-blue);" onclick="attBasculer(' + i + ')" title="Chercher ce composant chez un autre fournisseur (stock)">↔ Fourn.</button>'
         + '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink);" onclick="attSheetSansSolution(' + i + ')" title="Préfixe le fournisseur avec ? et crée la question client FabStory">Sans solution</button>'
         + '</div>';
       const prixHtml = prix
@@ -4335,6 +4336,90 @@ async function sendChat() {
       const res = await r.json();
       alert(res.success ? res.message : ('Échec : ' + (res.reason || 'inconnu')));
       if (res.success) { attPanierFermer(); attCharger(); }
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
+  };
+
+  /* ============================================================
+     BASCULE FOURNISSEUR (v8.3) — une ligne sans stock chez son
+     fournisseur : afficher les offres connues (ref-info, Mouser +
+     DigiKey), liens de recherche pre-remplis Farnell/RS, et
+     bascule = ecriture Supplier + ref SANS vert (re-sourcer
+     n'est pas commander — resolution v1.3, vert:false).
+     ============================================================ */
+  window.attBasculer = async function(i){
+    const l = attSheetActives[i];
+    if (!l) return;
+    const mpn = (l['MPN']||'').trim();
+    const ipn = (l['Approved internal part number']||'').trim();
+    const zone = document.getElementById('att-panier-panel');
+    if (!zone) return;
+    const cible = mpn || ipn;
+    zone.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius); padding:12px; margin-bottom:10px;"><p style="font-size:12px; color:var(--text3); margin:0;">Recherche des offres pour <span style="font-family:var(--mono)">' + cible + '</span>…</p></div>';
+    let offres = [];
+    if (mpn) {
+      try {
+        const r = await fetch(ATT_REFINFO_URL + '?mpn=' + encodeURIComponent(mpn));
+        const d = await r.json();
+        offres = d.offres || [];
+      } catch(e) {}
+    }
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    /* Rendu generique : on affiche TOUT ce que l'offre contient (stock,
+       prix… selon ce que ref-info renvoie), sans presumer des champs. */
+    const offreHtml = offres.map((o, oi) => {
+      const extras = Object.keys(o).filter(k => k !== 'distributeur' && k !== 'spn')
+        .map(k => k + ': ' + esc(o[k])).join(' · ');
+      return '<div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:0.5px solid var(--border); font-size:12px;">'
+        + '<b style="min-width:70px;">' + esc(o.distributeur||'?') + '</b>'
+        + '<span style="font-family:var(--mono); font-size:11px;">' + esc(o.spn||'') + '</span>'
+        + '<span style="color:var(--text3); flex:1;">' + extras + '</span>'
+        + (o.spn ? '<button class="btn" style="padding:3px 10px; font-size:11px;" onclick="attBasculerVers(' + i + ',\'' + esc(o.distributeur) + '\',\'' + esc(o.spn) + '\')">Basculer</button>' : '')
+        + '</div>';
+    }).join('');
+    zone.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius); padding:12px; margin-bottom:10px;">'
+      + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">'
+      + '<div style="font-size:13px; font-weight:500;"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Basculer — <span style="font-family:var(--mono); font-size:12px;">' + esc(cible) + '</span> <span style="color:var(--text3); font-size:11px;">(actuellement ' + esc((l['Supplier']||'').trim()) + ')</span></div>'
+      + '<button class="btn" style="padding:2px 8px;" onclick="attPanierFermer()"><i class="ti ti-x" aria-hidden="true"></i></button></div>'
+      + (offreHtml || '<p style="font-size:12px; color:var(--text3); margin:0 0 8px;">Aucune offre Mouser/DigiKey trouvée' + (mpn ? '' : ' (pas de MPN sur la ligne)') + '.</p>')
+      + '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center;">'
+      + '<span style="font-size:12px; color:var(--text3);">Vérifier ailleurs :</span>'
+      + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.farnell.com/search?st=' + encodeURIComponent(cible) + '">Farnell ↗</a>'
+      + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.rs-online.com/web/c/?searchTerm=' + encodeURIComponent(cible) + '">RS ↗</a>'
+      + '</div>'
+      + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center; padding-top:8px; border-top:1px dashed var(--border);">'
+      + '<span style="font-size:12px;">Bascule manuelle :</span>'
+      + '<input id="att-basc-fourn" placeholder="Fournisseur" style="width:130px; padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+      + '<input id="att-basc-ref" placeholder="Réf fournisseur" style="width:170px; padding:4px 8px; font-size:12px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+      + '<button class="btn primary" style="padding:4px 12px; font-size:12px;" onclick="attBasculerVers(' + i + ', null, null)">Basculer</button>'
+      + '</div></div>';
+  };
+
+  window.attBasculerVers = async function(i, fournisseur, ref){
+    const l = attSheetActives[i];
+    if (!l) return;
+    if (fournisseur === null) {
+      fournisseur = (document.getElementById('att-basc-fourn')||{}).value || '';
+      ref = (document.getElementById('att-basc-ref')||{}).value || '';
+      fournisseur = fournisseur.trim();
+      ref = ref.trim();
+      if (!fournisseur) { alert('Fournisseur manquant.'); return; }
+    }
+    if (!confirm('Basculer cette ligne vers ' + fournisseur + (ref ? ' (réf ' + ref + ')' : '') + ' ?\nLa ligne rejoindra le panier ' + fournisseur + ' — elle n\'est pas marquée commandée.')) return;
+    try {
+      const r = await fetch(ATT_RESOL_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          so: attSheetData.so,
+          mpn: (l['MPN']||'').trim(),
+          ipn: (l['Approved internal part number']||'').trim(),
+          fournisseur, ref_fournisseur: ref || '',
+          panier: 'skip', vert: false
+        })
+      });
+      const d = await r.json();
+      if (d.success) { attPanierFermer(); attSheetCharger(); }
+      else alert('Échec : ' + (d.reason || 'inconnu') + (d.detail ? '\n' + d.detail : ''));
     } catch(e) { alert('Erreur réseau : ' + e.message); }
   };
 
