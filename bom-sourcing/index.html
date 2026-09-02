@@ -794,7 +794,8 @@ tr:hover td { background: var(--surface2); }
       <button class="tab active" onclick="switchTab('bom')">Analyse BOM</button>
       <button class="tab" onclick="switchTab('codif')">Codification IPN</button>
       <button class="tab" onclick="switchTab('config')">Règles &amp; Config</button>
-      <button class="tab" onclick="switchTab('attente')">Achats en attente <span id="att-tab-badge" style="display:none; background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 7px; font-size:11px; margin-left:4px;"></span></button>
+      <button class="tab" onclick="switchTab('achats')">Achats</button>
+      <button class="tab" onclick="switchTab('attente')">En attente <span id="att-tab-badge" style="display:none; background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 7px; font-size:11px; margin-left:4px;"></span></button>
     </div>
 
     <!-- BOM TAB -->
@@ -1058,9 +1059,9 @@ tr:hover td { background: var(--surface2); }
       </div>
     </div>
 
-    <!-- ACHATS EN ATTENTE TAB (module independant — aucune dependance a l'analyse BOM) -->
-    <div class="panel" id="tab-attente">
-      <div style="padding-bottom:14px; margin-bottom:14px; border-bottom:1px solid var(--border);">
+    <!-- ACHATS TAB — l'affaire en cours (enchainement analyse -> achats) -->
+    <div class="panel" id="tab-achats">
+      <div style="padding-bottom:14px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
           <span class="section-label" style="margin:0;">Achats de l'affaire</span>
           <input type="text" id="att-sheet-so" placeholder="SO2607-400" style="width:150px;" onkeydown="if(event.key==='Enter')attSheetCharger()" />
@@ -1069,7 +1070,10 @@ tr:hover td { background: var(--surface2); }
         </div>
         <div id="att-sheet-contenu"></div>
       </div>
+    </div>
 
+    <!-- EN ATTENTE TAB — la file de tout ce qui attend une action d'achat -->
+    <div class="panel" id="tab-attente">
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
         <p style="font-size:13px; color:var(--text2); margin:0;">Tout ce qui attend une action d'achat : sourcing sans solution, paniers incomplets, manques de stock constatés en réception, et réponses client FabStory.</p>
         <button class="btn" onclick="attCharger()"><i class="ti ti-refresh" aria-hidden="true"></i> Actualiser</button>
@@ -1092,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "6.0";
+const APP_VERSION = "7.0";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -1234,12 +1238,12 @@ let writerUrl = "";
 let webhookUrl = "";
 
 function switchTab(name) {
-  const names = ['bom','codif','config','attente'];
+  const names = ['bom','codif','config','achats','attente'];
   document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
   document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', names[i]===name));
-  if (name === 'attente' && !window.__attLoaded) { attCharger(); }
+  if ((name === 'attente' || name === 'achats') && !window.__attLoaded) { attCharger(); }
   /* Enchainement analyse -> achats : pre-remplit le SO de l'affaire en cours */
-  if (name === 'attente') {
+  if (name === 'achats') {
     try {
       const soAnalyse = (document.getElementById('so-reference')||{}).value || '';
       const champ = document.getElementById('att-sheet-so');
@@ -2919,6 +2923,15 @@ async function writeToGSheet() {
   const rowsPayload = bomData.map(r => {
     const obj = {};
     ACHATS_COLUMNS.forEach(c => { obj[c] = String(getColValue(r, c) || ''); });
+    // Prix : les en-tetes Luminovo varient (unit price (EUR), total price, …) —
+    // recherche souple, puis repli calcule qte x unitaire si le total manque.
+    if (!obj['Unit price']) obj['Unit price'] = String(findCol(r, ['unit price','prix unitaire','unitprice']) || '');
+    if (!obj['Purchase price']) obj['Purchase price'] = String(findCol(r, ['purchase price','total price','line total','prix total']) || '');
+    if (!obj['Purchase price']) {
+      const pu = parseFloat((obj['Unit price']||'').toString().replace(',','.'));
+      const q  = parseFloat((obj['Purchase qty']||'').toString().replace(',','.'));
+      if (pu > 0 && q > 0) obj['Purchase price'] = (pu * q).toFixed(2);
+    }
     return obj;
   });
 
@@ -2969,6 +2982,10 @@ async function writeToGSheet() {
       // La trace part APRÈS l'écriture réussie : on ne consigne pas une décision
       // qui ne s'est pas matérialisée dans la feuille achat.
       tracerSubstitutions(so, substitutions, statusEl);
+      // Apprentissage d'alias automatique : l'écriture vaut confirmation du choix
+      // client. apprendreAlias() se protège seule (libellé connu, alias déjà pris,
+      // pas de client actif → no-op ; conflit géré côté serveur).
+      try { apprendreAlias(); } catch(e) {}
     } else if (result.reason === 'not_found') {
       statusEl.innerHTML = '<span style="color:var(--red)">Aucune GSheet trouvée pour le SO "' + so + '"</span>';
     } else if (result.reason === 'ambiguous') {
@@ -3714,6 +3731,7 @@ async function sendChat() {
   let attData = { panier: [], fabstory: [] };
   let attSeuils = { digikey:75, mouser:75, farnell:50, rs:50, defaut:75 };
   let attFiltre = 'tout';
+  let attFiltreType = 'tout';
 
   window.attCharger = async function(){
     const liste = document.getElementById('att-liste');
@@ -3794,6 +3812,11 @@ async function sendChat() {
     attRender();
   };
 
+  window.attFiltrerType = function(t){
+    attFiltreType = t;
+    attRender();
+  };
+
   function attRecherche(c){
     const q = encodeURIComponent(c.mpn || c.ipn);
     if (!q) return '';
@@ -3823,11 +3846,20 @@ async function sendChat() {
       + '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Questions client FabStory</div><div style="font-size:20px; font-weight:500;">' + compte.client + '</div></div>';
 
     const filtres = [['tout','Tout'],['sourcing','Sourcing'],['reception','Réception'],['client','Client']];
-    document.getElementById('att-filtres').innerHTML = filtres.map(([k,lbl]) =>
-      '<button class="filter-btn' + (attFiltre===k?' active':'') + '" onclick="attFiltrer(\'' + k + '\')">' + lbl + '</button>'
-    ).join('');
+    const types = [['tout','Tous types'],['Sans solution','Sans solution'],['Panier incomplet','Panier incomplet'],['Stock manquant','Stock manquant']];
+    document.getElementById('att-filtres').innerHTML =
+      filtres.map(([k,lbl]) =>
+        '<button class="filter-btn' + (attFiltre===k?' active':'') + '" onclick="attFiltrer(\'' + k + '\')">' + lbl + '</button>'
+      ).join('')
+      + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
+      + types.map(([k,lbl]) =>
+        '<button class="filter-btn' + (attFiltreType===k?' active':'') + '" onclick="attFiltrerType(\'' + k.replace(/'/g,"\\'") + '\')">' + lbl + '</button>'
+      ).join('');
 
-    const visibles = cartes.filter(c => attFiltre==='tout' || c.origine===attFiltre);
+    const visibles = cartes.filter(c =>
+      (attFiltre==='tout' || c.origine===attFiltre)
+      && (attFiltreType==='tout' || c.type===attFiltreType)
+    );
     window.attSetVisibles(visibles);
     const liste = document.getElementById('att-liste');
     if (!visibles.length) {
