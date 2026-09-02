@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "7.6";
+const APP_VERSION = "8.0";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3770,6 +3770,7 @@ async function sendChat() {
       cartes.push({
         origine: type === 'Stock manquant' ? 'reception' : 'sourcing',
         type: type || 'Sans solution',
+        statut: statut,
         so: attNorm(l['SO']),
         carte: attNorm(l['Ref. client — Carte']),
         ipn: attNorm(l['IPN']),
@@ -3801,6 +3802,7 @@ async function sendChat() {
   }
 
   function attBadge(c){
+    if (c.statut === 'Consultation') return ['Consultation','var(--blue-bg)','var(--blue)'];
     if (c.origine === 'reception') return ['Stock manquant','var(--amber-bg)','var(--amber-badge)'];
     if (c.origine === 'client') {
       return c.etat === 'en_attente'
@@ -3864,7 +3866,7 @@ async function sendChat() {
       + '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Questions client FabStory</div><div style="font-size:20px; font-weight:500;">' + compte.client + '</div></div>';
 
     const filtres = [['tout','Tout'],['sourcing','Sourcing'],['reception','Réception'],['client','Client']];
-    const types = [['tout','Tous types'],['Sans solution','Sans solution'],['Panier incomplet','Panier incomplet'],['Stock manquant','Stock manquant'],['Attente réponse client','Attente client'],['Réponse client reçue','Réponse client']];
+    const types = [['tout','Tous types'],['Sans solution','Sans solution'],['Panier incomplet','Panier incomplet'],['Stock manquant','Stock manquant'],['Attente réponse client','Attente client'],['Réponse client reçue','Réponse client'],['__consultation','Consultation']];
     document.getElementById('att-filtres').innerHTML =
       filtres.map(([k,lbl]) =>
         '<button class="filter-btn' + (attFiltre===k?' active':'') + '" onclick="attFiltrer(\'' + k + '\')">' + lbl + '</button>'
@@ -3879,7 +3881,7 @@ async function sendChat() {
     const soN = (attFiltreSO||'').trim().toLowerCase();
     const visibles = cartes.filter(c =>
       (attFiltre==='tout' || c.origine===attFiltre)
-      && (attFiltreType==='tout' || c.type===attFiltreType)
+      && (attFiltreType==='tout' || (attFiltreType==='__consultation' ? c.statut==='Consultation' : c.type===attFiltreType))
       && (!soN || (c.so||'').toLowerCase().includes(soN))
     );
     window.attSetVisibles(visibles);
@@ -3893,6 +3895,7 @@ async function sendChat() {
       const titre = [c.so, c.carte].filter(Boolean).join(' — ') || '(sans SO)';
       const sousTitre = [c.ipn && ('IPN ' + c.ipn), c.mpn && ('MPN ' + c.mpn), c.qte && (c.qte + ' pcs'), c.depuis && ('depuis ' + c.depuis)].filter(Boolean).join(' · ');
       const cmdables = c.origine !== 'client';
+      const dpBtn = '<button class="btn" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
       const substBtn = c.origine === 'reception'
         ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
@@ -3900,6 +3903,7 @@ async function sendChat() {
         ? '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
           + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> Cmdé ' + f + '</button>').join('')
           + '<button class="btn" onclick="attCommander(' + i + ',\'__autre\')">Cmdé autre…</button>'
+          + dpBtn
           + substBtn
           + '</div>'
         : '';
@@ -4182,7 +4186,8 @@ async function sendChat() {
     });
     const att = [];
     (attData.panier||[]).forEach(p => {
-      if ((p['Statut']||'').trim() === 'Commandé') return;
+      const st = (p['Statut']||'').trim();
+      if (st === 'Commandé' || st === 'Consultation') return;
       if ((p['SO']||'').trim().toLowerCase() === d.so.toLowerCase()) return;
       if (attFournCle(p['Fournisseur']) !== cle) return;
       att.push({
@@ -4290,7 +4295,7 @@ async function sendChat() {
       const r = await fetch(ATT_PANIER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reprise', fournisseur: attPanierFormats[P.cle].titre, lignes: P.att })
+        body: JSON.stringify({ action: 'reprise', fournisseur: attPanierFormats[P.cle].titre, so_commandeur: attSheetData.so, lignes: P.att })
       });
       const res = await r.json();
       alert(res.success ? res.message : ('Échec : ' + (res.reason || 'inconnu')));
@@ -4353,6 +4358,32 @@ async function sendChat() {
      la ligne par un autre IPN pris en stock. Controle qty+MPN dans le
      referentiel deja charge, puis ecriture Inventory + IPN + MPN + note. */
   const ATT_SUBST_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-substitution';
+
+  window.attCarteDemandePrix = async function(i){
+    const c = attVisibles[i];
+    if (!c) return;
+    const motif = (prompt('Motif de la demande de prix :\n1 = indisponibilité distributeurs\n2 = recherche meilleur prix', c.type === 'Sans solution' ? '1' : '2') || '').trim();
+    if (motif !== '1' && motif !== '2') return;
+    const lignes = [{ ref: c.mpn || c.ipn, mpn: c.mpn, fabricant: '', qte: (c.qte||'').toString() }];
+    try {
+      const r = await fetch(ATT_DP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ so: c.so, carte: c.carte, motif: motif === '2' ? 'prix' : 'dispo', lignes })
+      });
+      const res = await r.json();
+      if (!res.success) { alert('Échec brouillon : ' + (res.reason || 'inconnu')); return; }
+      /* Rendre la consultation visible de tous : statut au Planning */
+      const r2 = await fetch(ATT_PANIER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'consultation', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn }] })
+      });
+      const res2 = await r2.json();
+      alert(res.message + (res2.success && res2.nb ? '\nStatut Consultation posé au Planning — la ligne est protégée de la reprise.' : '\n(Ligne absente du Planning : statut non posé.)'));
+      attCharger();
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
+  };
 
   window.attSubstituer = async function(i){
     const c = attVisibles[i];
