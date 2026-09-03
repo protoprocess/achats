@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.6";
+const APP_VERSION = "8.7";
 const APP_DATE = "03/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -4435,11 +4435,39 @@ async function sendChat() {
         })()
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center; padding-top:8px; border-top:1px dashed var(--border);">'
       + '<span style="font-size:12px;">Bascule manuelle :</span>'
-      + '<input id="att-basc-fourn" placeholder="Fournisseur" style="width:130px; padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+      /* Libelles = ceux que Luminovo ecrit (verifie 03/09 : PPLib normalise par
+         prefixe et attFournCle par inclusion — Mouser / Mouser USA, meme groupe) */
+      + '<select id="att-basc-fourn-sel" onchange="attBascFournChange()" style="padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+      + ['Farnell','DigiKey USA','Mouser USA','RS Components GBR'].map(f => '<option value="' + f + '">' + f + '</option>').join('')
+      + '<option value="__autre">Autre…</option></select>'
+      + '<input id="att-basc-fourn" placeholder="Fournisseur" style="display:none; width:130px; padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
       + '<input id="att-basc-ref" placeholder="Réf fournisseur" style="width:170px; padding:4px 8px; font-size:12px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
       + '<input id="att-basc-mpn" placeholder="Nouveau MPN (si équivalent)" style="width:200px; padding:4px 8px; font-size:12px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+      + '<button class="btn" style="padding:4px 10px; font-size:11px;" onclick="attBascRefAuto(' + i + ')" title="Réf Mouser/DigiKey depuis le MPN (nouveau MPN, sinon celui de la ligne)">réf auto</button>'
       + '<button class="btn primary" style="padding:4px 12px; font-size:12px;" onclick="attBasculerVers(' + i + ', null, null)">Basculer</button>'
       + '</div></div>';
+  };
+
+  window.attBascFournChange = function(){
+    const sel = document.getElementById('att-basc-fourn-sel');
+    const inp = document.getElementById('att-basc-fourn');
+    if (sel && inp) inp.style.display = (sel.value === '__autre') ? '' : 'none';
+  };
+
+  window.attBascRefAuto = async function(i){
+    const sel = document.getElementById('att-basc-fourn-sel');
+    const refInp = document.getElementById('att-basc-ref');
+    const mpnInp = document.getElementById('att-basc-mpn');
+    if (!sel || !refInp) return;
+    const cible = { 'DigiKey USA': 'DigiKey', 'Mouser USA': 'Mouser' }[sel.value];
+    if (!cible) { alert('Réf auto disponible pour DigiKey et Mouser uniquement (clés serveur).'); return; }
+    const l = attSheetActives[i];
+    const mpn = ((mpnInp && mpnInp.value.trim()) || (l && (l['MPN']||'').trim()) || '');
+    if (!mpn) { alert('Aucun MPN (ni nouveau, ni sur la ligne).'); return; }
+    refInp.value = '…';
+    const spn = await attRefAuto(mpn, cible);
+    refInp.value = spn || '';
+    if (!spn) alert('Pas de réf ' + cible + ' trouvée pour ' + mpn + '.');
   };
 
   window.attBasculerVers = async function(i, fournisseur, ref){
@@ -4447,7 +4475,8 @@ async function sendChat() {
     if (!l) return;
     let nouveauMpn = '';
     if (fournisseur === null) {
-      fournisseur = (document.getElementById('att-basc-fourn')||{}).value || '';
+      const sel = document.getElementById('att-basc-fourn-sel');
+      fournisseur = (sel && sel.value !== '__autre') ? sel.value : ((document.getElementById('att-basc-fourn')||{}).value || '');
       ref = (document.getElementById('att-basc-ref')||{}).value || '';
       nouveauMpn = ((document.getElementById('att-basc-mpn')||{}).value || '').trim();
       fournisseur = fournisseur.trim();
