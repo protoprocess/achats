@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.3";
+const APP_VERSION = "8.4";
 const APP_DATE = "02/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -4367,7 +4367,9 @@ async function sendChat() {
     /* Rendu generique : on affiche TOUT ce que l'offre contient (stock,
        prix… selon ce que ref-info renvoie), sans presumer des champs. */
     const offreHtml = offres.map((o, oi) => {
-      const extras = Object.keys(o).filter(k => k !== 'distributeur' && k !== 'spn')
+      /* Olivier 02/09 : stock + prix uniquement, pas de blabla */
+      const extras = Object.keys(o)
+        .filter(k => /stock|dispo|qt|prix|price/i.test(k) && o[k] !== '' && o[k] !== null && o[k] !== undefined)
         .map(k => k + ': ' + esc(o[k])).join(' · ');
       return '<div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:0.5px solid var(--border); font-size:12px;">'
         + '<b style="min-width:70px;">' + esc(o.distributeur||'?') + '</b>'
@@ -4385,6 +4387,7 @@ async function sendChat() {
       + '<span style="font-size:12px; color:var(--text3);">Vérifier ailleurs :</span>'
       + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.farnell.com/search?st=' + encodeURIComponent(cible) + '">Farnell ↗</a>'
       + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.rs-online.com/web/c/?searchTerm=' + encodeURIComponent(cible) + '">RS ↗</a>'
+      + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://octopart.com/search?q=' + encodeURIComponent(cible) + '">Octopart ↗</a>'
       + '</div>'
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center; padding-top:8px; border-top:1px dashed var(--border);">'
       + '<span style="font-size:12px;">Bascule manuelle :</span>'
