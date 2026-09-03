@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.5";
+const APP_VERSION = "8.6";
 const APP_DATE = "03/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3941,7 +3941,13 @@ async function sendChat() {
   }
 
   window.attSheetCharger = async function(){
-    const so = document.getElementById('att-sheet-so').value.trim();
+    /* Saisie au pavé numérique (Olivier 03/09) : "2608-443" et même
+       "2608443" suffisent — le préfixe SO et le tiret sont déduits. */
+    const champ = document.getElementById('att-sheet-so');
+    let so = (champ.value || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (/^\d{7,8}$/.test(so)) so = so.slice(0, 4) + '-' + so.slice(4);
+    if (/^\d{4}-\d{3,4}$/.test(so)) so = 'SO' + so;
+    champ.value = so;
     const zone = document.getElementById('att-sheet-contenu');
     if (!so) { zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Saisis un numéro de SO.</p>'; return; }
     zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Chargement…</p>';
