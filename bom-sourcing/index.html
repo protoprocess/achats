@@ -1096,8 +1096,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.4";
-const APP_DATE = "02/09/2026";
+const APP_VERSION = "8.5";
+const APP_DATE = "03/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -4346,6 +4346,32 @@ async function sendChat() {
      bascule = ecriture Supplier + ref SANS vert (re-sourcer
      n'est pas commander — resolution v1.3, vert:false).
      ============================================================ */
+  /* IPN -> requete de recherche en clair pour les moteurs distributeurs.
+     C22U-0805-6V3-20P-X5R -> "22uF 0805 6.3V 20% X5R"
+     R10K-0402-25PPM       -> "10k 0402 25ppm resistor 0.1%" (ppm PP) */
+  function attSpecDepuisIpn(ipn){
+    const p = (ipn||'').toUpperCase().split('-');
+    if (!p.length) return '';
+    let m = p[0].match(/^C(\d+)([UNP])$/);
+    if (m) {
+      const unite = { U: 'uF', N: 'nF', P: 'pF' }[m[2]];
+      const morceaux = [m[1] + unite, p[1] || ''];
+      if (p[2]) morceaux.push(p[2].replace(/^(\d+)V(\d+)$/, '$1.$2V').replace(/^(\d+)V$/, '$1V'));
+      if (p[3]) morceaux.push(p[3].replace(/^(\d+)P$/, '$1%'));
+      if (p[4]) morceaux.push(p[4]);
+      return morceaux.filter(Boolean).join(' ');
+    }
+    m = p[0].match(/^R(\d+)([RKM])(\d*)$/);
+    if (m) {
+      const val = m[3] ? m[1] + '.' + m[3] : m[1];
+      const unite = { R: 'ohm', K: 'k', M: 'M' }[m[2]];
+      const morceaux = [val + unite, p[1] || '', 'resistor'];
+      if (p[2] && /PPM$/.test(p[2])) morceaux.push(p[2].toLowerCase());
+      return morceaux.filter(Boolean).join(' ');
+    }
+    return '';
+  }
+
   window.attBasculer = async function(i){
     const l = attSheetActives[i];
     if (!l) return;
@@ -4389,10 +4415,23 @@ async function sendChat() {
       + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.rs-online.com/web/c/?searchTerm=' + encodeURIComponent(cible) + '">RS ↗</a>'
       + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://octopart.com/search?q=' + encodeURIComponent(cible) + '">Octopart ↗</a>'
       + '</div>'
+      + (function(){
+          const spec = attSpecDepuisIpn(ipn);
+          if (!spec) return '';
+          const eq = encodeURIComponent(spec);
+          return '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; padding-top:8px; border-top:1px dashed var(--border);">'
+            + '<span style="font-size:12px; color:var(--text3);">Équivalent par spec <span style="font-family:var(--mono); font-size:11px;">(' + esc(spec) + ')</span> :</span>'
+            + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://octopart.com/search?q=' + eq + '">Octopart ↗</a>'
+            + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + eq + '">DigiKey ↗</a>'
+            + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.mouser.fr/c/?q=' + eq + '">Mouser ↗</a>'
+            + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.farnell.com/search?st=' + eq + '">Farnell ↗</a>'
+            + '</div>';
+        })()
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center; padding-top:8px; border-top:1px dashed var(--border);">'
       + '<span style="font-size:12px;">Bascule manuelle :</span>'
       + '<input id="att-basc-fourn" placeholder="Fournisseur" style="width:130px; padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
       + '<input id="att-basc-ref" placeholder="Réf fournisseur" style="width:170px; padding:4px 8px; font-size:12px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+      + '<input id="att-basc-mpn" placeholder="Nouveau MPN (si équivalent)" style="width:200px; padding:4px 8px; font-size:12px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
       + '<button class="btn primary" style="padding:4px 12px; font-size:12px;" onclick="attBasculerVers(' + i + ', null, null)">Basculer</button>'
       + '</div></div>';
   };
@@ -4400,14 +4439,17 @@ async function sendChat() {
   window.attBasculerVers = async function(i, fournisseur, ref){
     const l = attSheetActives[i];
     if (!l) return;
+    let nouveauMpn = '';
     if (fournisseur === null) {
       fournisseur = (document.getElementById('att-basc-fourn')||{}).value || '';
       ref = (document.getElementById('att-basc-ref')||{}).value || '';
+      nouveauMpn = ((document.getElementById('att-basc-mpn')||{}).value || '').trim();
       fournisseur = fournisseur.trim();
       ref = ref.trim();
       if (!fournisseur) { alert('Fournisseur manquant.'); return; }
+      if (nouveauMpn && !ref) { alert('Un équivalent (nouveau MPN) exige sa réf fournisseur.'); return; }
     }
-    if (!confirm('Basculer cette ligne vers ' + fournisseur + (ref ? ' (réf ' + ref + ')' : '') + ' ?\nLa ligne rejoindra le panier ' + fournisseur + ' — elle n\'est pas marquée commandée.')) return;
+    if (!confirm('Basculer cette ligne vers ' + fournisseur + (ref ? ' (réf ' + ref + ')' : '') + (nouveauMpn ? '\nÉQUIVALENT : le MPN devient ' + nouveauMpn + ' (note de traçabilité posée)' : '') + ' ?\nLa ligne rejoindra le panier ' + fournisseur + ' — elle n\'est pas marquée commandée.')) return;
     try {
       const r = await fetch(ATT_RESOL_URL, {
         method: 'POST',
@@ -4417,6 +4459,7 @@ async function sendChat() {
           mpn: (l['MPN']||'').trim(),
           ipn: (l['Approved internal part number']||'').trim(),
           fournisseur, ref_fournisseur: ref || '',
+          nouveau_mpn: nouveauMpn || '',
           panier: 'skip', vert: false
         })
       });
