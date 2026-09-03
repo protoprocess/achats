@@ -1096,8 +1096,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.9";
-const APP_DATE = "03/09/2026";
+const APP_VERSION = "9.0";
+const APP_DATE = "04/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -3766,7 +3766,7 @@ async function sendChat() {
     for (const l of attData.panier) {
       const type = attNorm(l['Type']);
       const statut = attNorm(l['Statut']);
-      if (statut === 'Commandé') continue; /* deja traite, on ne montre pas */
+      if (statut === 'Commandé' || statut === 'Clos') continue; /* traite ou sorti du circuit */
       cartes.push({
         origine: type === 'Stock manquant' ? 'reception' : 'sourcing',
         type: type || 'Sans solution',
@@ -4574,6 +4574,8 @@ async function sendChat() {
       ? 'Fermer cette question client ? Elle sort de la file (l\'historique FabStory est conservé).'
       : 'Clore cette ligne du Planning ? Elle sort du circuit sans être commandée (statut Clos — réglée par ailleurs).';
     if (!confirm(quoi)) return;
+    /* Raison facultative, consignee en Notes de la ligne sheet achat (Olivier 04/09) */
+    const raison = (prompt('Raison de la clôture (facultatif — consignée dans la sheet achat) :', '') || '').trim();
     try {
       let res;
       if (c.origine === 'client') {
@@ -4591,7 +4593,23 @@ async function sendChat() {
         });
         res = await r.json();
       }
-      if (res.success) attCharger();
+      if (res.success) {
+        if (raison && c.so && (c.mpn || c.ipn)) {
+          try {
+            await fetch(ATT_RESOL_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                so: c.so, mpn: c.mpn || '', ipn: c.ipn || '',
+                fournisseur: c.fournisseur || '?',
+                note: 'Clos: ' + raison + ' (' + new Date().toLocaleDateString('fr-FR') + ')',
+                note_seule: true, panier: 'skip', vert: false
+              })
+            });
+          } catch(e) {}
+        }
+        attCharger();
+      }
       else alert('Échec : ' + (res.reason || 'inconnu'));
     } catch(e) { alert('Erreur réseau : ' + e.message); }
   };
