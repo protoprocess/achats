@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.8";
+const APP_VERSION = "8.9";
 const APP_DATE = "03/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3896,19 +3896,24 @@ async function sendChat() {
       const titre = [c.so, c.carte].filter(Boolean).join(' — ') || '(sans SO)';
       const sousTitre = [c.ipn && ('IPN ' + c.ipn), c.mpn && ('MPN ' + c.mpn), c.qte && (c.qte + ' pcs'), c.depuis && ('depuis ' + c.depuis)].filter(Boolean).join(' · ');
       const cmdables = c.origine !== 'client';
-      const dpBtn = '<button class="btn" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
+      /* Pastels charte (Olivier 03/09) : actions en bleu PP pastel, Clore en
+         orange pastel — teintes a faible opacite sur fond sombre. */
+      const stylePP = 'background:rgba(91,196,216,0.12); color:#8FD8E6; border-color:rgba(91,196,216,0.35);';
+      const styleClore = 'background:rgba(234,182,118,0.12); color:var(--amber); border-color:rgba(234,182,118,0.35);';
+      const dpBtn = '<button class="btn" style="' + stylePP + '" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
       const substBtn = c.origine === 'reception'
-        ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
+        ? '<button class="btn" style="' + stylePP + '" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
-      const cloreBtn = '<button class="btn" style="color:var(--text3);" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
+      const cloreBtn = '<button class="btn" style="' + styleClore + '" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
       const cmdBtns = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
         + (cmdables
-          ? ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> Cmdé ' + f + '</button>').join('')
-            + '<button class="btn" onclick="attCommander(' + i + ',\'__autre\')">Cmdé autre…</button>'
+          ? ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="' + stylePP + '" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> Cmdé ' + f + '</button>').join('')
+            + '<button class="btn" style="' + stylePP + '" onclick="attCommander(' + i + ',\'__autre\')">Cmdé autre…</button>'
           : '')
         + dpBtn
         + substBtn
         + cloreBtn
+        + '<button class="btn" onclick="attToggleRecherche(' + i + ')"><i class="ti ti-search" aria-hidden="true"></i> Trouver réf</button>'
         + '</div>';
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
@@ -3918,7 +3923,6 @@ async function sendChat() {
         + (c.commentaire ? '<div style="font-size:12px; color:var(--text3); margin-top:4px; white-space:pre-wrap;">' + c.commentaire + '</div>' : '')
         + '</div>'
         + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span>'
-        + '<button class="btn" onclick="attToggleRecherche(' + i + ')"><i class="ti ti-search" aria-hidden="true"></i> Trouver réf</button>'
         + '</div>'
         + cmdBtns
         + '<div id="att-rech-' + i + '" style="display:none;">' + attRecherche(c) + '</div>'
