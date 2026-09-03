@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "8.7";
+const APP_VERSION = "8.8";
 const APP_DATE = "03/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3785,6 +3785,7 @@ async function sendChat() {
     for (const q of attData.fabstory) {
       cartes.push({
         origine: 'client',
+        id: q.id,
         type: q.etat === 'en_attente' ? 'Attente réponse client' : 'Réponse client reçue',
         so: attNorm(q.so_id),
         carte: [attNorm(q.code_client), attNorm(q.ref_carte)].filter(Boolean).join(' — '),
@@ -3899,14 +3900,16 @@ async function sendChat() {
       const substBtn = c.origine === 'reception'
         ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
-      const cmdBtns = cmdables
-        ? '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
-          + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> Cmdé ' + f + '</button>').join('')
-          + '<button class="btn" onclick="attCommander(' + i + ',\'__autre\')">Cmdé autre…</button>'
-          + dpBtn
-          + substBtn
-          + '</div>'
-        : '';
+      const cloreBtn = '<button class="btn" style="color:var(--text3);" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
+      const cmdBtns = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
+        + (cmdables
+          ? ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> Cmdé ' + f + '</button>').join('')
+            + '<button class="btn" onclick="attCommander(' + i + ',\'__autre\')">Cmdé autre…</button>'
+          : '')
+        + dpBtn
+        + substBtn
+        + cloreBtn
+        + '</div>';
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
         + '<div style="flex:1; min-width:240px;">'
@@ -4559,6 +4562,35 @@ async function sendChat() {
      la ligne par un autre IPN pris en stock. Controle qty+MPN dans le
      referentiel deja charge, puis ecriture Inventory + IPN + MPN + note. */
   const ATT_SUBST_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-substitution';
+
+  window.attCarteClore = async function(i){
+    const c = attVisibles[i];
+    if (!c) return;
+    const quoi = c.origine === 'client'
+      ? 'Fermer cette question client ? Elle sort de la file (l\'historique FabStory est conservé).'
+      : 'Clore cette ligne du Planning ? Elle sort du circuit sans être commandée (statut Clos — réglée par ailleurs).';
+    if (!confirm(quoi)) return;
+    try {
+      let res;
+      if (c.origine === 'client') {
+        const r = await fetch('https://protoprocess.app.n8n.cloud/webhook/fabstory-question-clore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: c.id })
+        });
+        res = await r.json();
+      } else {
+        const r = await fetch(ATT_PANIER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'clore', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn }] })
+        });
+        res = await r.json();
+      }
+      if (res.success) attCharger();
+      else alert('Échec : ' + (res.reason || 'inconnu'));
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
+  };
 
   window.attCarteDemandePrix = async function(i){
     const c = attVisibles[i];
