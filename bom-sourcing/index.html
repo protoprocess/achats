@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "9.1";
+const APP_VERSION = "9.2";
 const APP_DATE = "04/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3779,7 +3779,8 @@ async function sendChat() {
         depuis: attNorm(l['Date ajout']),
         commentaire: attNorm(l['Commentaire']),
         fournisseur: attNorm(l['Fournisseur']),
-        refFourn: attNorm(l['Ref. fournisseur'])
+        refFourn: attNorm(l['Ref. fournisseur']),
+        montant: attPrixNum(l['Montant'])
       });
     }
     for (const q of attData.fabstory) {
@@ -3917,16 +3918,42 @@ async function sendChat() {
         ? '<button class="btn" style="' + stylePP + '" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
       const cloreBtn = '<button class="btn" style="' + styleClore + '" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
+      /* v9.2 (04/09, ch.111) : le libelle "Cmde X" n induit en erreur que sur
+         cette file "En attente" -- rien n a ete reellement commande tant que
+         le montant de la ligne seule n atteint pas le seuil franco du
+         fournisseur. Sous le seuil : "A commander chez X" (meme bouton, meme
+         action -- juste un mot plus honnete). Au-dessus : commande directe,
+         libelle inchange. */
+      const libCmd = f => {
+        const seuil = attSeuils[attFournCle(f)] !== undefined ? attSeuils[attFournCle(f)] : attSeuils.defaut;
+        return (c.montant && c.montant >= seuil) ? ('Cmdé ' + f) : ('À commander chez ' + f);
+      };
+      const libAutre = (c.montant && c.montant >= attSeuils.defaut) ? 'Cmdé autre…' : 'À commander chez…';
+      /* Modifier fournisseur/ref (ch.111, 04/09) : pour une ligne "Sans
+         solution" une fois un equivalent trouve -- corrige et repasse en
+         "En attente" (n8n : action modifier, pas de marquage Commande). */
+      const modifBtn = cmdables
+        ? '<button class="btn" onclick="attToggleModifier(' + i + ')"><i class="ti ti-edit" aria-hidden="true"></i> Modifier</button>'
+        : '';
       const cmdBtns = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
         + (cmdables
-          ? ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="' + stylePP + '" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> Cmdé ' + f + '</button>').join('')
-            + '<button class="btn" style="' + stylePP + '" onclick="attCommander(' + i + ',\'__autre\')">Cmdé autre…</button>'
+          ? ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="' + stylePP + '" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> ' + libCmd(f) + '</button>').join('')
+            + '<button class="btn" style="' + stylePP + '" onclick="attCommander(' + i + ',\'__autre\')">' + libAutre + '</button>'
           : '')
         + dpBtn
         + substBtn
         + cloreBtn
+        + modifBtn
         + '<button class="btn" onclick="attToggleRecherche(' + i + ')"><i class="ti ti-search" aria-hidden="true"></i> Trouver réf</button>'
-        + '</div>';
+        + '</div>'
+        + (cmdables
+          ? '<div id="att-mod-' + i + '" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius);">'
+            + '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">'
+            + '<input type="text" id="att-mod-fourn-' + i + '" placeholder="Fournisseur" value="' + (c.fournisseur||'').replace(/^\?/,'').replace(/"/g,'&quot;') + '" style="flex:1; min-width:140px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;">'
+            + '<input type="text" id="att-mod-ref-' + i + '" placeholder="Réf. fournisseur" value="' + (c.refFourn||'').replace(/"/g,'&quot;') + '" style="flex:1; min-width:140px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;">'
+            + '<button class="btn" style="' + stylePP + '" onclick="attModifier(' + i + ')">Valider → En attente</button>'
+            + '</div></div>'
+          : '');
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
         + '<div style="flex:1; min-width:240px;">'
@@ -3945,6 +3972,38 @@ async function sendChat() {
   window.attToggleRecherche = function(i){
     const el = document.getElementById('att-rech-' + i);
     if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+  };
+
+  window.attToggleModifier = function(i){
+    const el = document.getElementById('att-mod-' + i);
+    if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+  };
+
+  /* Modifier fournisseur/ref sur une ligne (ch.111, 04/09) : cas "Sans
+     solution" -> equivalent trouve -- corrige et repasse la ligne en "En
+     attente" pour qu elle entre dans le circuit de commande normal. N ecrit
+     jamais Commande (ca reste le role des boutons Cmde/A commander). */
+  window.attModifier = async function(i){
+    const c = attVisibles[i];
+    if (!c) return;
+    const fournisseur = (document.getElementById('att-mod-fourn-' + i).value || '').trim();
+    const refFour = (document.getElementById('att-mod-ref-' + i).value || '').trim();
+    if (!fournisseur) { alert('Fournisseur requis.'); return; }
+    try {
+      const r = await fetch(ATT_PANIER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'modifier', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, fournisseur, refFour }] })
+      });
+      const d = await r.json();
+      if (d.success && d.nb > 0) {
+        attCharger();
+      } else {
+        alert('Échec : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet (' + d.manquees.join(', ') + ')' : (d.reason || 'inconnu')));
+      }
+    } catch(e) {
+      alert('Erreur réseau : ' + e.message);
+    }
   };
 
   /* ---- Section sheet achat d'une affaire ---- */
@@ -4248,7 +4307,7 @@ async function sendChat() {
     const att = [];
     (attData.panier||[]).forEach(p => {
       const st = (p['Statut']||'').trim();
-      if (st === 'Commandé' || st === 'Consultation') return;
+      if (st !== 'En attente') return; /* reprise = uniquement ce statut precis (Olivier 04/09) -- ni Sans solution, ni Clos/Commande/Consultation */
       if ((p['SO']||'').trim().toLowerCase() === d.so.toLowerCase()) return;
       if (attFournCle(p['Fournisseur']) !== cle) return;
       att.push({
