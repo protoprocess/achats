@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "9.0";
+const APP_VERSION = "9.1";
 const APP_DATE = "04/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3841,12 +3841,24 @@ async function sendChat() {
   function attRecherche(c){
     const q = encodeURIComponent(c.mpn || c.ipn);
     if (!q) return '';
+    const spec = attSpecDepuisIpn(c.ipn);
+    const eq = spec ? encodeURIComponent(spec) : '';
+    const escLoc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     return '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
       + '<a class="btn" style="text-decoration:none" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + q + '">DigiKey</a>'
       + '<a class="btn" style="text-decoration:none" target="_blank" href="https://eu.mouser.com/c/?q=' + q + '">Mouser</a>'
       + '<a class="btn" style="text-decoration:none" target="_blank" href="https://octopart.com/search?q=' + q + '">Octopart</a>'
       + '<a class="btn" style="text-decoration:none" target="_blank" href="https://fr.farnell.com/search?st=' + q + '">Farnell</a>'
-      + '</div>';
+      + '</div>'
+      + (eq
+        ? '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; align-items:center;">'
+          + '<span style="font-size:11px; color:var(--text3);">Équivalent par spec <span style="font-family:var(--mono)">(' + escLoc(spec) + ')</span> :</span>'
+          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://octopart.com/search?q=' + eq + '">Octopart ↗</a>'
+          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + eq + '">DigiKey ↗</a>'
+          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.mouser.fr/c/?q=' + eq + '">Mouser ↗</a>'
+          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.farnell.com/search?st=' + eq + '">Farnell ↗</a>'
+          + '</div>'
+        : '');
   }
 
   function attRender(){
