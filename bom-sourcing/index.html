@@ -1067,6 +1067,7 @@ tr:hover td { background: var(--surface2); }
           <input type="text" id="att-sheet-so" placeholder="SO2607-400" style="width:150px;" onkeydown="if(event.key==='Enter')attSheetCharger()" />
           <button class="btn primary" onclick="attSheetCharger()"><i class="ti ti-download" aria-hidden="true"></i> Charger</button>
           <a id="att-sheet-lien" href="#" target="_blank" style="display:none; font-size:12px; color:var(--blue);">Ouvrir dans Sheets</a>
+          <a id="att-sheet-fabstory" href="#" target="_blank" style="display:none; font-size:12px; color:var(--blue);"><i class="ti ti-external-link" aria-hidden="true"></i> Fiche FabStory</a>
         </div>
         <div id="att-sheet-contenu"></div>
       </div>
@@ -1096,7 +1097,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "10.1";
+const APP_VERSION = "10.2";
 const APP_DATE = "07/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3738,6 +3739,19 @@ async function sendChat() {
 (function(){
   const ATT_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-en-attente';
   let attData = { panier: [], fabstory: [] };
+  /* v10.2 : table SO -> produit_id (commandes_so) pour le lien direct FabStory */
+  let attSoProduits = {};
+  const ATT_FABSTORY_URL = 'https://protoprocess.github.io/commercial/fabstory/';
+  function attProduitId(so){ return attSoProduits[String(so||'').trim().toUpperCase()] || null; }
+  function attLienFabStory(pid, libelle){
+    if (!pid) return '';
+    return '<a class="btn" target="_blank" style="text-decoration:none; padding:3px 9px; font-size:11px;" href="' + ATT_FABSTORY_URL + '?produit=' + encodeURIComponent(pid) + '" title="Ouvrir la fiche FabStory de cette carte"><i class="ti ti-external-link" aria-hidden="true"></i> ' + (libelle || 'FabStory') + '</a>';
+  }
+  /* Charge la table SO -> produit une seule fois si l onglet En attente n a pas encore ete ouvert */
+  async function attSoProduitsCharger(){
+    if (Object.keys(attSoProduits).length) return;
+    try { const r = await fetch(ATT_URL); const d = await r.json(); attSoProduits = d.so_produits || {}; } catch(e) {}
+  }
   let attSeuils = { digikey:75, mouser:75, farnell:50, rs:50, defaut:75 };
   let attFiltre = 'tout';
   let attFiltreType = 'tout';
@@ -3752,6 +3766,7 @@ async function sendChat() {
       const d = await r.json();
       attData = { panier: d.panier || [], fabstory: d.fabstory || [] };
       if (d.seuils_franco) attSeuils = d.seuils_franco;
+      attSoProduits = d.so_produits || attSoProduits;
       window.__attLoaded = true;
       attRender();
     } catch(e) {
@@ -3802,7 +3817,8 @@ async function sendChat() {
         commentaire: attNorm(l['Commentaire']),
         fournisseur: attNorm(l['Fournisseur']),
         refFourn: attNorm(l['Ref. fournisseur']),
-        montant: attPrixNum(l['Montant'])
+        montant: attPrixNum(l['Montant']),
+        produit_id: attProduitId(attNorm(l['SO']))
       });
     }
     for (const q of attData.fabstory) {
@@ -3821,7 +3837,8 @@ async function sendChat() {
         commentaire: q.reponse_texte ? ('Client : ' + q.reponse_texte) : attNorm(q.texte).split('\n')[0],
         etat: q.etat,
         fournisseur: '',
-        refFourn: ''
+        refFourn: '',
+        produit_id: q.produit_id ? Number(q.produit_id) : attProduitId(attNorm(q.so_txt))
       });
     }
     /* Plus recent en haut ; sans date en fin */
@@ -4027,7 +4044,7 @@ async function sendChat() {
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
         + '<div style="flex:1; min-width:240px;">'
-        + '<div style="font-size:13px; font-weight:500;">' + attEsc(titre) + '</div>'
+        + '<div style="font-size:13px; font-weight:500; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' + attEsc(titre) + attLienFabStory(c.produit_id) + '</div>'
         + '<div style="font-size:12px; color:var(--text2); margin-top:2px;">' + attEsc(sousTitre) + '</div>'
         + (c.commentaire ? '<div style="font-size:12px; color:var(--text3); margin-top:4px; white-space:pre-wrap;">' + attEsc(c.commentaire) + '</div>' : '')
         + '</div>'
@@ -4153,6 +4170,7 @@ async function sendChat() {
     if (!so) { zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Saisis un numéro de SO.</p>'; return; }
     zone.innerHTML = '<p style="font-size:13px; color:var(--text3)">Chargement…</p>';
     document.getElementById('att-sheet-lien').style.display = 'none';
+    document.getElementById('att-sheet-fabstory').style.display = 'none';
     try {
       const r = await fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(so));
       const d = await r.json();
@@ -4164,6 +4182,11 @@ async function sendChat() {
       const lien = document.getElementById('att-sheet-lien');
       lien.href = d.fileUrl; lien.style.display = 'inline';
       attSheetRender();
+      /* v10.2 : fiche FabStory de la carte, si le SO est rattache (commandes_so) */
+      await attSoProduitsCharger();
+      const pid = attProduitId(d.so);
+      const lf = document.getElementById('att-sheet-fabstory');
+      if (pid) { lf.href = ATT_FABSTORY_URL + '?produit=' + encodeURIComponent(pid); lf.style.display = 'inline'; }
     } catch(e) {
       zone.innerHTML = '<p style="font-size:13px; color:var(--red)">Erreur réseau : ' + e.message + '</p>';
     }
