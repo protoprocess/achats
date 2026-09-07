@@ -1096,7 +1096,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "10.0";
+const APP_VERSION = "10.1";
 const APP_DATE = "07/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3763,17 +3763,13 @@ async function sendChat() {
 
   /* v10.0 (07/09/2026, ch.111) — refonte de la carte En attente, decision
      Olivier : sept boutons pour trois verbes, c etait du bricolage.
-       - deux menus : "Commande chez..." (marque Commande sur les 2 sheets,
-         confirmation) et "A commander chez..." (nouveau fournisseur + ref,
-         repasse En attente, jamais Commande — ex-bouton Modifier)
-       - commentaire editable en place -> colonne N de Paniers en attente
-       - badge anciennete (ambre > 30 j, rouge > 60 j), tri plus RECENT en
-         haut : une ligne ancienne = toujours pas de solution, rien a faire
-         qu attendre (Olivier 07/09)
-       - un seul champ de recherche : SO, client, carte, IPN, MPN
-       - compteur "Sans solution" compte les vraies Sans solution seules ;
-         Panier incomplet et Consultation comptes a part
-       - "Trouver ref" devient une loupe a droite (liens de recherche) */
+     v10.1 (07/09) — retour Olivier sur l ecran reel : "illisible". Barre sur
+     UNE ligne (le CSS global force select/textarea en pleine largeur, on
+     l ecrase) ; UNE seule fenetre modale (attModal) pour toute saisie —
+     autre fournisseur, a commander chez, commentaire, clore, demande de
+     prix — plus aucun prompt()/confirm() navigateur ni zone depliable.
+     Ordre : Commande chez | A commander chez | Demande de prix |
+     Commentaire | Chercher | Clore. */
 
   function attJours(depuis){
     const s = attNorm(depuis);
@@ -3815,7 +3811,7 @@ async function sendChat() {
         origine: 'client',
         id: q.id,
         type: q.etat === 'en_attente' ? 'Attente réponse client' : 'Réponse client reçue',
-        so: attNorm(q.so_id),
+        so: attNorm(q.so_txt) || attNorm(q.so_id),
         carte: [attNorm(q.code_client), attNorm(q.ref_carte)].filter(Boolean).join(' — '),
         ipn: '',
         mpn: attNorm(q.mpn),
@@ -3901,6 +3897,58 @@ async function sendChat() {
   }
 
   const ATT_FOURNISSEURS = ['DigiKey','Mouser','Farnell'];
+  const attEsc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  /* ---- Fenetre modale unique du module (v10.1) ----
+     cfg = { titre, aide, champs:[{id,label,type:'text'|'textarea'|'choix',valeur,placeholder,options:[[val,lbl]]}],
+             valider:'libelle', danger:bool, onValider(valeurs) } */
+  function attModal(cfg){
+    let fond = document.getElementById('att-modal');
+    if (!fond) { fond = document.createElement('div'); fond.id = 'att-modal'; document.body.appendChild(fond); }
+    fond.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;';
+    const champs = (cfg.champs || []).map(ch => {
+      const lbl = ch.label ? '<div style="font-size:11px; color:var(--text3); margin-bottom:4px;">' + attEsc(ch.label) + '</div>' : '';
+      let ctrl;
+      if (ch.type === 'textarea') ctrl = '<textarea id="attm-' + ch.id + '" placeholder="' + attEsc(ch.placeholder||'') + '" style="width:100%; box-sizing:border-box; min-height:90px; font-family:var(--sans); font-size:13px; resize:vertical;">' + attEsc(ch.valeur||'') + '</textarea>';
+      else if (ch.type === 'choix') ctrl = '<div style="display:flex; flex-direction:column; gap:6px;">' + ch.options.map(([v,l],k) => '<label style="display:flex; gap:8px; align-items:center; font-size:13px; cursor:pointer;"><input type="radio" name="attm-' + ch.id + '" value="' + attEsc(v) + '"' + ((ch.valeur||'')===v ? ' checked' : '') + '> ' + attEsc(l) + '</label>').join('') + '</div>';
+      else ctrl = '<input type="text" id="attm-' + ch.id + '" value="' + attEsc(ch.valeur||'') + '" placeholder="' + attEsc(ch.placeholder||'') + '" style="width:100%; box-sizing:border-box;">';
+      return '<div style="margin-bottom:12px;">' + lbl + ctrl + '</div>';
+    }).join('');
+    fond.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-lg); padding:18px 20px; width:min(94vw,560px); box-shadow:0 20px 60px rgba(0,0,0,0.5);">'
+      + '<div style="font-size:14px; font-weight:500; margin-bottom:' + (cfg.aide ? '4px' : '14px') + ';">' + attEsc(cfg.titre||'') + '</div>'
+      + (cfg.aide ? '<div style="font-size:12px; color:var(--text2); margin-bottom:14px; white-space:pre-wrap;">' + attEsc(cfg.aide) + '</div>' : '')
+      + champs
+      + '<div id="attm-msg" style="font-size:12px; color:var(--red); min-height:0; margin-bottom:6px;"></div>'
+      + '<div style="display:flex; gap:8px; justify-content:flex-end; margin-top:6px;">'
+      + '<button class="btn" id="attm-annuler">Annuler</button>'
+      + '<button class="' + (cfg.danger ? 'btn' : 'btn-p') + '" id="attm-ok" style="' + (cfg.danger ? 'background:rgba(234,182,118,0.15); color:var(--amber); border-color:rgba(234,182,118,0.4);' : '') + '">' + attEsc(cfg.valider||'Valider') + '</button>'
+      + '</div></div>';
+    const fermer = () => { fond.style.display = 'none'; fond.innerHTML = ''; document.removeEventListener('keydown', onKey); };
+    const lire = () => {
+      const v = {};
+      for (const ch of (cfg.champs||[])) {
+        if (ch.type === 'choix') { const r = fond.querySelector('input[name="attm-' + ch.id + '"]:checked'); v[ch.id] = r ? r.value : ''; }
+        else { const el = document.getElementById('attm-' + ch.id); v[ch.id] = el ? el.value.trim() : ''; }
+      }
+      return v;
+    };
+    const ok = async () => {
+      const btn = document.getElementById('attm-ok');
+      btn.disabled = true;
+      try {
+        const res = await cfg.onValider(lire(), m => { const el = document.getElementById('attm-msg'); if (el) el.textContent = m; });
+        if (res !== false) fermer(); else btn.disabled = false;
+      } catch(e) { const el = document.getElementById('attm-msg'); if (el) el.textContent = 'Erreur : ' + e.message; btn.disabled = false; }
+    };
+    const onKey = e => { if (e.key === 'Escape') fermer(); else if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT') { e.preventDefault(); ok(); } };
+    document.getElementById('attm-annuler').onclick = fermer;
+    document.getElementById('attm-ok').onclick = ok;
+    fond.onclick = e => { if (e.target === fond) fermer(); };
+    document.addEventListener('keydown', onKey);
+    const premier = fond.querySelector('input[type=text], textarea');
+    if (premier) { premier.focus(); if (premier.select) premier.select(); }
+    return { fermer, setChamp: (id, val) => { const el = document.getElementById('attm-' + id); if (el && !el.value) el.value = val; } };
+  }
 
   function attRender(){
     const cartes = attCartes();
@@ -3933,7 +3981,7 @@ async function sendChat() {
         '<button class="filter-btn' + (attFiltreType===k?' active':'') + '" onclick="attFiltrerType(\'' + k.replace(/'/g,"\\'") + '\')">' + lbl + '</button>'
       ).join('')
       + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
-      + '<input type="text" id="att-filtre-so" value="' + (attFiltreSO||'').replace(/"/g,'&quot;') + '" placeholder="SO, client, carte, IPN, MPN…" style="width:260px; padding:5px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;" oninput="attFiltrerSO(this.value)">';
+      + '<input type="text" id="att-filtre-so" value="' + attEsc(attFiltreSO||'') + '" placeholder="SO, client, carte, IPN, MPN…" style="width:260px; padding:5px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;" oninput="attFiltrerSO(this.value)">';
 
     const soN = (attFiltreSO||'').trim().toLowerCase();
     const visibles = cartes.filter(c =>
@@ -3947,10 +3995,10 @@ async function sendChat() {
       liste.innerHTML = '<p style="font-size:13px; color:var(--text3)">Rien en attente sur ce filtre.</p>';
       return;
     }
-    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const stylePP = 'background:rgba(91,196,216,0.12); color:#8FD8E6; border-color:rgba(91,196,216,0.35);';
     const styleClore = 'background:rgba(234,182,118,0.12); color:var(--amber); border-color:rgba(234,182,118,0.35);';
-    const styleSel = 'padding:6px 10px; border-radius:var(--radius); border:1px solid var(--border2); background:var(--surface2); color:var(--text); font-size:12px; min-width:180px;';
+    /* Le CSS global force select en width:100% : on l ecrase ici (v10.1). */
+    const styleSel = 'width:auto; flex:0 0 auto; padding:6px 30px 6px 10px; font-size:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text); cursor:pointer;';
     const opts = ph => '<option value="">' + ph + '</option>' + ATT_FOURNISSEURS.map(f => '<option value="' + f + '">' + f + '</option>').join('') + '<option value="__autre">Autre fournisseur…</option>';
 
     liste.innerHTML = visibles.map((c,i) => {
@@ -3959,49 +4007,34 @@ async function sendChat() {
       const sousTitre = [c.ipn && ('IPN ' + c.ipn), c.mpn && ('MPN ' + c.mpn), c.qte && (c.qte + ' pcs'), c.fournisseur && ('chez ' + c.fournisseur.replace(/^\?/,'') + (c.refFourn ? ' · ' + c.refFourn : ''))].filter(Boolean).join(' · ');
       const cmdables = c.origine !== 'client';
 
-      const commentaire = cmdables
-        ? '<textarea id="att-com-' + i + '" rows="1" placeholder="Commentaire (colonne N)" data-init="' + esc(c.commentaire) + '" onblur="attCommenter(' + i + ')" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();this.blur();}" style="width:100%; box-sizing:border-box; margin-top:8px; padding:6px 8px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-size:12px; font-family:var(--sans); resize:vertical; min-height:30px;">' + esc(c.commentaire) + '</textarea>'
-          + '<div id="att-com-msg-' + i + '" style="font-size:11px; color:var(--text3); min-height:0;"></div>'
-        : (c.commentaire ? '<div style="font-size:12px; color:var(--text3); margin-top:4px; white-space:pre-wrap;">' + esc(c.commentaire) + '</div>' : '');
-
       const menus = cmdables
-        ? '<select id="att-sel-cmd-' + i + '" style="' + styleSel + ' ' + stylePP + '" onchange="attMenuCommande(' + i + ', this)" title="Marque la ligne COMMANDÉE chez ce fournisseur, sur la sheet appro et dans Paniers en attente">' + opts('Commandé chez…') + '</select>'
-          + '<select id="att-sel-att-' + i + '" style="' + styleSel + '" onchange="attMenuACommander(' + i + ', this)" title="Change le fournisseur et repasse la ligne En attente — rien n est marqué commandé">' + opts('À commander chez…') + '</select>'
-          + '<span style="width:1px; align-self:stretch; background:var(--border); margin:0 2px;"></span>'
+        ? '<select style="' + styleSel + ' ' + stylePP + '" onchange="attMenuCommande(' + i + ', this)" title="Marque la ligne COMMANDÉE chez ce fournisseur, sur la sheet appro et dans Paniers en attente">' + opts('Commandé chez…') + '</select>'
+          + '<select style="' + styleSel + '" onchange="attMenuACommander(' + i + ', this)" title="Change le fournisseur et repasse la ligne En attente — rien n est marqué commandé">' + opts('À commander chez…') + '</select>'
         : '';
       const dpBtn = '<button class="btn" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
+      const comBtn = cmdables
+        ? '<button class="btn" onclick="attCommenter(' + i + ')" title="Commentaire libre — colonne N de Paniers en attente"><i class="ti ti-message" aria-hidden="true"></i> Commentaire</button>'
+        : '';
       const substBtn = c.origine === 'reception'
         ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
+      const rechBtn = '<button class="btn" onclick="attToggleRecherche(' + i + ')" title="Liens de recherche DigiKey / Mouser / Octopart / Farnell"><i class="ti ti-search" aria-hidden="true"></i> Chercher</button>';
       const cloreBtn = '<button class="btn" style="' + styleClore + '" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
-      const loupe = '<button class="btn" style="margin-left:auto;" onclick="attToggleRecherche(' + i + ')" title="Liens de recherche DigiKey / Mouser / Octopart / Farnell" aria-label="Liens de recherche"><i class="ti ti-search" aria-hidden="true"></i></button>';
 
       const barre = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center;">'
-        + menus + dpBtn + substBtn + cloreBtn + loupe + '</div>';
-
-      const panneau = cmdables
-        ? '<div id="att-mod-' + i + '" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius);">'
-          + '<div style="font-size:11px; color:var(--text3); margin-bottom:6px;">Nouveau fournisseur — la ligne repasse <b>En attente</b>, rien n\'est marqué commandé.</div>'
-          + '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">'
-          + '<input type="text" id="att-mod-fourn-' + i + '" placeholder="Fournisseur" style="flex:1; min-width:140px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;">'
-          + '<input type="text" id="att-mod-ref-' + i + '" placeholder="Réf. fournisseur" style="flex:1; min-width:140px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;">'
-          + '<button class="btn" style="' + stylePP + '" onclick="attACommanderValider(' + i + ')">Valider → En attente</button>'
-          + '<button class="btn" onclick="attACommanderAnnuler(' + i + ')">Annuler</button>'
-          + '</div></div>'
-        : '';
+        + menus + dpBtn + comBtn + substBtn + rechBtn + cloreBtn + '</div>';
 
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
         + '<div style="flex:1; min-width:240px;">'
-        + '<div style="font-size:13px; font-weight:500;">' + esc(titre) + '</div>'
-        + '<div style="font-size:12px; color:var(--text2); margin-top:2px;">' + esc(sousTitre) + '</div>'
+        + '<div style="font-size:13px; font-weight:500;">' + attEsc(titre) + '</div>'
+        + '<div style="font-size:12px; color:var(--text2); margin-top:2px;">' + attEsc(sousTitre) + '</div>'
+        + (c.commentaire ? '<div style="font-size:12px; color:var(--text3); margin-top:4px; white-space:pre-wrap;">' + attEsc(c.commentaire) + '</div>' : '')
         + '</div>'
         + '<div style="display:flex; gap:6px; align-items:center;">' + attBadgeAge(c)
         + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span></div>'
         + '</div>'
-        + commentaire
         + barre
-        + panneau
         + '<div id="att-rech-' + i + '" style="display:none;">' + attRecherche(c) + '</div>'
         + '</div>';
     }).join('');
@@ -4012,96 +4045,88 @@ async function sendChat() {
     if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
   };
 
-  /* Menu "Commande chez..." : action inchangee (attCommander), seule la
-     porte d entree change. Le menu revient a vide apres le choix. */
+  /* Menu "Commande chez..." : confirmation dans la modale (plus de confirm()
+     navigateur), champ fournisseur si "Autre". L action reste attCommander. */
   window.attMenuCommande = function(i, sel){
     const f = sel.value;
     sel.value = '';
     if (!f) return;
-    attCommander(i, f);
+    const c = attVisibles[i];
+    if (!c) return;
+    const autre = (f === '__autre');
+    attModal({
+      titre: autre ? 'Commandé chez un autre fournisseur' : 'Marquer commandé chez ' + f + ' ?',
+      aide: c.so + ' — ' + (c.mpn || c.ipn) + '\nLa ligne sera marquée COMMANDÉE dans la sheet appro et dans Paniers en attente.',
+      champs: autre ? [{ id:'fourn', label:'Fournisseur', placeholder:'Club Elec, WinSource…' }] : [],
+      valider: 'Confirmer',
+      onValider: async (v, msg) => {
+        const fournisseur = autre ? v.fourn : f;
+        if (!fournisseur) { msg('Fournisseur requis.'); return false; }
+        attCommander(i, fournisseur, true);
+      }
+    });
   };
 
-  /* Menu "A commander chez..." : ouvre le panneau fournisseur + ref, pre-
-     rempli avec le choix ; ref fournisseur cherchee automatiquement pour
-     Mouser/DigiKey (ref-info) — modifiable avant validation. */
+  /* Menu "A commander chez..." : modale fournisseur + ref, ref cherchee
+     automatiquement pour Mouser/DigiKey (ref-info). Backend action modifier :
+     repasse En attente, n ecrit jamais Commande. */
   window.attMenuACommander = async function(i, sel){
     const f = sel.value;
     sel.value = '';
     if (!f) return;
     const c = attVisibles[i];
-    const pan = document.getElementById('att-mod-' + i);
-    const inF = document.getElementById('att-mod-fourn-' + i);
-    const inR = document.getElementById('att-mod-ref-' + i);
-    if (!pan || !inF || !inR) return;
-    inF.value = (f === '__autre') ? '' : f;
-    inR.value = '';
-    pan.style.display = 'block';
-    (f === '__autre' ? inF : inR).focus();
-    if (c && f !== '__autre') {
-      inR.placeholder = 'Recherche réf…';
+    if (!c) return;
+    const autre = (f === '__autre');
+    const m = attModal({
+      titre: 'À commander chez ' + (autre ? 'un autre fournisseur' : f),
+      aide: c.so + ' — ' + (c.mpn || c.ipn) + '\nLa ligne repasse En attente chez ce fournisseur. Rien n\'est marqué commandé.',
+      champs: [
+        { id:'fourn', label:'Fournisseur', valeur: autre ? '' : f, placeholder:'Fournisseur' },
+        { id:'ref', label:'Réf. fournisseur', valeur:'', placeholder: autre ? 'Réf. fournisseur' : 'Recherche en cours…' }
+      ],
+      valider: 'Valider → En attente',
+      onValider: async (v, msg) => {
+        if (!v.fourn) { msg('Fournisseur requis.'); return false; }
+        const r = await fetch(ATT_PANIER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'modifier', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, fournisseur: v.fourn, refFour: v.ref }] })
+        });
+        const d = await r.json();
+        if (d.success && d.nb > 0) { attCharger(); return true; }
+        msg('Échec : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet' : (d.reason || 'inconnu')));
+        return false;
+      }
+    });
+    if (!autre) {
       const ref = await attRefAuto(c.mpn, f);
-      if (ref && !inR.value) inR.value = ref;
-      inR.placeholder = 'Réf. fournisseur';
+      const el = document.getElementById('attm-ref');
+      if (el) { el.placeholder = 'Réf. fournisseur'; if (ref) m.setChamp('ref', ref); }
     }
   };
 
-  window.attACommanderAnnuler = function(i){
-    const pan = document.getElementById('att-mod-' + i);
-    if (pan) pan.style.display = 'none';
-  };
-
-  /* Ex-attModifier (v9.2) : backend action modifier — corrige fournisseur+ref
-     et repasse la ligne En attente. N ecrit jamais Commande. */
-  window.attACommanderValider = async function(i){
+  /* Commentaire (colonne N) : modale, backend achats-panier v1.6 action
+     commenter (remplacement total de la cellule). */
+  window.attCommenter = function(i){
     const c = attVisibles[i];
     if (!c) return;
-    const fournisseur = (document.getElementById('att-mod-fourn-' + i).value || '').trim();
-    const refFour = (document.getElementById('att-mod-ref-' + i).value || '').trim();
-    if (!fournisseur) { alert('Fournisseur requis.'); return; }
-    try {
-      const r = await fetch(ATT_PANIER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'modifier', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, fournisseur, refFour }] })
-      });
-      const d = await r.json();
-      if (d.success && d.nb > 0) {
-        attCharger();
-      } else {
-        alert('Échec : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet (' + d.manquees.join(', ') + ')' : (d.reason || 'inconnu')));
+    attModal({
+      titre: 'Commentaire',
+      aide: c.so + ' — ' + (c.mpn || c.ipn),
+      champs: [{ id:'com', type:'textarea', valeur: c.commentaire, placeholder:'Colonne N de Paniers en attente' }],
+      valider: 'Enregistrer',
+      onValider: async (v, msg) => {
+        const r = await fetch(ATT_PANIER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'commenter', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, commentaire: v.com }] })
+        });
+        const d = await r.json();
+        if (d.success && d.nb > 0) { attCharger(); return true; }
+        msg('Non enregistré : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet' : (d.reason || 'inconnu')));
+        return false;
       }
-    } catch(e) {
-      alert('Erreur réseau : ' + e.message);
-    }
-  };
-
-  /* Commentaire (colonne N) : sauve au blur si le texte a change.
-     Backend achats-panier v1.6, action commenter (remplacement total). */
-  window.attCommenter = async function(i){
-    const c = attVisibles[i];
-    const ta = document.getElementById('att-com-' + i);
-    const msg = document.getElementById('att-com-msg-' + i);
-    if (!c || !ta) return;
-    const texte = ta.value.trim();
-    if (texte === (ta.getAttribute('data-init') || '').trim()) return;
-    if (msg) msg.textContent = 'Enregistrement…';
-    try {
-      const r = await fetch(ATT_PANIER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'commenter', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, commentaire: texte }] })
-      });
-      const d = await r.json();
-      if (d.success && d.nb > 0) {
-        ta.setAttribute('data-init', texte);
-        c.commentaire = texte;
-        if (msg) { msg.textContent = 'Enregistré'; setTimeout(() => { if (msg.textContent === 'Enregistré') msg.textContent = ''; }, 2000); }
-      } else {
-        if (msg) msg.innerHTML = '<span style="color:var(--red)">Non enregistré : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet' : (d.reason || 'inconnu')) + '</span>';
-      }
-    } catch(e) {
-      if (msg) msg.innerHTML = '<span style="color:var(--red)">Erreur réseau : ' + e.message + '</span>';
-    }
+    });
   };
 
   /* ---- Section sheet achat d'une affaire ---- */
@@ -4701,14 +4726,16 @@ async function sendChat() {
   let attVisibles = [];
   window.attSetVisibles = function(v){ attVisibles = v; };
 
-  window.attCommander = async function(i, fournisseur){
+  window.attCommander = async function(i, fournisseur, confirme){
     const c = attVisibles[i];
     if (!c) return;
+    /* v10.1 : la confirmation et la saisie "Autre" passent par la modale
+       (attMenuCommande). Appel direct sans confirme = ancien comportement. */
     if (fournisseur === '__autre') {
       fournisseur = prompt('Nom du fournisseur :');
       if (!fournisseur) return;
     }
-    if (!confirm('Marquer commandé chez ' + fournisseur + ' ?\n' + c.so + ' — ' + (c.mpn || c.ipn))) return;
+    if (!confirme && !confirm('Marquer commandé chez ' + fournisseur + ' ?\n' + c.so + ' — ' + (c.mpn || c.ipn))) return;
     const btns = document.getElementById('att-cmd-' + i);
     if (btns) btns.innerHTML = '<span style="font-size:12px; color:var(--text3)">Recherche réf + écriture…</span>';
     try {
@@ -4736,77 +4763,76 @@ async function sendChat() {
      referentiel deja charge, puis ecriture Inventory + IPN + MPN + note. */
   const ATT_SUBST_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-substitution';
 
-  window.attCarteClore = async function(i){
+  window.attCarteClore = function(i){
     const c = attVisibles[i];
     if (!c) return;
-    const quoi = c.origine === 'client'
-      ? 'Fermer cette question client ? Elle sort de la file (l\'historique FabStory est conservé).'
-      : 'Clore cette ligne du Planning ? Elle sort du circuit sans être commandée (statut Clos — réglée par ailleurs).';
-    if (!confirm(quoi)) return;
-    /* Raison facultative, consignee en Notes de la ligne sheet achat (Olivier 04/09) */
-    const raison = (prompt('Raison de la clôture (facultatif — consignée dans la sheet achat) :', '') || '').trim();
-    try {
-      let res;
-      if (c.origine === 'client') {
-        const r = await fetch('https://protoprocess.app.n8n.cloud/webhook/fabstory-question-clore', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: c.id })
-        });
-        res = await r.json();
-      } else {
-        const r = await fetch(ATT_PANIER_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'clore', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn }] })
-        });
-        res = await r.json();
-      }
-      if (res.success) {
+    const client = c.origine === 'client';
+    attModal({
+      titre: client ? 'Fermer cette question client ?' : 'Clore cette ligne ?',
+      aide: c.so + ' — ' + (c.mpn || c.ipn) + '\n' + (client
+        ? 'Elle sort de la file. L\'historique FabStory est conservé.'
+        : 'Elle sort du circuit sans être commandée (statut Clos — réglée par ailleurs).'),
+      champs: client ? [] : [{ id:'raison', type:'textarea', placeholder:'Raison (facultatif) — consignée dans la sheet achat de l\'affaire' }],
+      valider: 'Clore', danger: true,
+      onValider: async (v, msg) => {
+        let res;
+        if (client) {
+          const r = await fetch('https://protoprocess.app.n8n.cloud/webhook/fabstory-question-clore', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id })
+          });
+          res = await r.json();
+        } else {
+          const r = await fetch(ATT_PANIER_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'clore', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn }] })
+          });
+          res = await r.json();
+        }
+        if (!res.success) { msg('Échec : ' + (res.reason || 'inconnu')); return false; }
+        const raison = (v.raison || '').trim();
         if (raison && c.so && (c.mpn || c.ipn)) {
           try {
             await fetch(ATT_RESOL_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                so: c.so, mpn: c.mpn || '', ipn: c.ipn || '',
-                fournisseur: c.fournisseur || '?',
-                note: 'Clos: ' + raison + ' (' + new Date().toLocaleDateString('fr-FR') + ')',
-                note_seule: true, panier: 'skip', vert: false
-              })
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ so: c.so, mpn: c.mpn || '', ipn: c.ipn || '', fournisseur: c.fournisseur || '?',
+                note: 'Clos: ' + raison + ' (' + new Date().toLocaleDateString('fr-FR') + ')', note_seule: true, panier: 'skip', vert: false })
             });
           } catch(e) {}
         }
         attCharger();
+        return true;
       }
-      else alert('Échec : ' + (res.reason || 'inconnu'));
-    } catch(e) { alert('Erreur réseau : ' + e.message); }
+    });
   };
 
-  window.attCarteDemandePrix = async function(i){
+  window.attCarteDemandePrix = function(i){
     const c = attVisibles[i];
     if (!c) return;
-    const motif = (prompt('Motif de la demande de prix :\n1 = indisponibilité distributeurs\n2 = recherche meilleur prix', c.type === 'Sans solution' ? '1' : '2') || '').trim();
-    if (motif !== '1' && motif !== '2') return;
-    const lignes = [{ ref: c.mpn || c.ipn, mpn: c.mpn, fabricant: '', qte: (c.qte||'').toString() }];
-    try {
-      const r = await fetch(ATT_DP_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ so: c.so, carte: c.carte, motif: motif === '2' ? 'prix' : 'dispo', lignes })
-      });
-      const res = await r.json();
-      if (!res.success) { alert('Échec brouillon : ' + (res.reason || 'inconnu')); return; }
-      /* Rendre la consultation visible de tous : statut au Planning */
-      const r2 = await fetch(ATT_PANIER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'consultation', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn }] })
-      });
-      const res2 = await r2.json();
-      alert(res.message + (res2.success && res2.nb ? '\nStatut Consultation posé au Planning — la ligne est protégée de la reprise.' : '\n(Ligne absente du Planning : statut non posé.)'));
-      attCharger();
-    } catch(e) { alert('Erreur réseau : ' + e.message); }
+    attModal({
+      titre: 'Demande de prix',
+      aide: c.so + ' — ' + (c.mpn || c.ipn) + '\nBrouillon Gmail commercial préparé (jamais envoyé seul) + statut Consultation au Planning.',
+      champs: [{ id:'motif', type:'choix', valeur: c.type === 'Sans solution' ? 'dispo' : 'prix',
+        options: [['dispo','Indisponibilité chez les distributeurs'],['prix','Recherche d\'un meilleur prix']] }],
+      valider: 'Préparer le brouillon',
+      onValider: async (v, msg) => {
+        if (!v.motif) { msg('Choisir un motif.'); return false; }
+        const lignes = [{ ref: c.mpn || c.ipn, mpn: c.mpn, fabricant: '', qte: (c.qte||'').toString() }];
+        const r = await fetch(ATT_DP_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ so: c.so, carte: c.carte, motif: v.motif, lignes })
+        });
+        const res = await r.json();
+        if (!res.success) { msg('Échec brouillon : ' + (res.reason || 'inconnu')); return false; }
+        const r2 = await fetch(ATT_PANIER_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'consultation', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn }] })
+        });
+        const res2 = await r2.json();
+        alert(res.message + (res2.success && res2.nb ? '\nStatut Consultation posé au Planning — la ligne est protégée de la reprise.' : '\n(Ligne absente du Planning : statut non posé.)'));
+        attCharger();
+        return true;
+      }
+    });
   };
 
   window.attSubstituer = async function(i){
