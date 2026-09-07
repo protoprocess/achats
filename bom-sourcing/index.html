@@ -1096,8 +1096,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "9.2";
-const APP_DATE = "04/09/2026";
+const APP_VERSION = "10.0";
+const APP_DATE = "07/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -3761,12 +3761,37 @@ async function sendChat() {
 
   function attNorm(s){ return (s||'').toString().trim(); }
 
+  /* v10.0 (07/09/2026, ch.111) — refonte de la carte En attente, decision
+     Olivier : sept boutons pour trois verbes, c etait du bricolage.
+       - deux menus : "Commande chez..." (marque Commande sur les 2 sheets,
+         confirmation) et "A commander chez..." (nouveau fournisseur + ref,
+         repasse En attente, jamais Commande — ex-bouton Modifier)
+       - commentaire editable en place -> colonne N de Paniers en attente
+       - badge anciennete (ambre > 30 j, rouge > 60 j), tri plus RECENT en
+         haut : une ligne ancienne = toujours pas de solution, rien a faire
+         qu attendre (Olivier 07/09)
+       - un seul champ de recherche : SO, client, carte, IPN, MPN
+       - compteur "Sans solution" compte les vraies Sans solution seules ;
+         Panier incomplet et Consultation comptes a part
+       - "Trouver ref" devient une loupe a droite (liens de recherche) */
+
+  function attJours(depuis){
+    const s = attNorm(depuis);
+    let d = null;
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) d = new Date(+m[3], +m[2]-1, +m[1]);
+    else { m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) d = new Date(+m[1], +m[2]-1, +m[3]); }
+    if (!d || isNaN(d)) return null;
+    return Math.round((Date.now() - d.getTime()) / 86400000);
+  }
+
   function attCartes(){
     const cartes = [];
     for (const l of attData.panier) {
       const type = attNorm(l['Type']);
       const statut = attNorm(l['Statut']);
       if (statut === 'Commandé' || statut === 'Clos') continue; /* traite ou sorti du circuit */
+      const depuis = attNorm(l['Date ajout']);
       cartes.push({
         origine: type === 'Stock manquant' ? 'reception' : 'sourcing',
         type: type || 'Sans solution',
@@ -3776,7 +3801,8 @@ async function sendChat() {
         ipn: attNorm(l['IPN']),
         mpn: attNorm(l['MPN']),
         qte: l['Qté'] || '',
-        depuis: attNorm(l['Date ajout']),
+        depuis: depuis,
+        jours: attJours(depuis),
         commentaire: attNorm(l['Commentaire']),
         fournisseur: attNorm(l['Fournisseur']),
         refFourn: attNorm(l['Ref. fournisseur']),
@@ -3784,6 +3810,7 @@ async function sendChat() {
       });
     }
     for (const q of attData.fabstory) {
+      const depuis = (q.cree_le||'').slice(0,10);
       cartes.push({
         origine: 'client',
         id: q.id,
@@ -3793,13 +3820,16 @@ async function sendChat() {
         ipn: '',
         mpn: attNorm(q.mpn),
         qte: '',
-        depuis: (q.cree_le||'').slice(0,10),
+        depuis: depuis,
+        jours: attJours(depuis),
         commentaire: q.reponse_texte ? ('Client : ' + q.reponse_texte) : attNorm(q.texte).split('\n')[0],
         etat: q.etat,
         fournisseur: '',
         refFourn: ''
       });
     }
+    /* Plus recent en haut ; sans date en fin */
+    cartes.sort((a, b) => (a.jours == null ? 1e9 : a.jours) - (b.jours == null ? 1e9 : b.jours));
     return cartes;
   }
 
@@ -3813,6 +3843,14 @@ async function sendChat() {
     }
     if (c.type === 'Panier incomplet') return ['Panier incomplet','var(--amber-bg)','var(--amber-badge)'];
     return ['Sans solution','var(--red-bg)','var(--red-badge)'];
+  }
+
+  function attBadgeAge(c){
+    if (c.jours == null) return '';
+    let bg = 'transparent', fg = 'var(--text3)', bd = 'var(--border)';
+    if (c.jours > 60) { bg = 'var(--red-bg)'; fg = 'var(--red-badge)'; bd = 'transparent'; }
+    else if (c.jours > 30) { bg = 'var(--amber-bg)'; fg = 'var(--amber-badge)'; bd = 'transparent'; }
+    return '<span title="depuis ' + c.depuis + '" style="background:' + bg + '; color:' + fg + '; border:1px solid ' + bd + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;"><i class="ti ti-clock" aria-hidden="true"></i> ' + c.jours + ' j</span>';
   }
 
   function attLisere(c){
@@ -3862,10 +3900,13 @@ async function sendChat() {
         : '');
   }
 
+  const ATT_FOURNISSEURS = ['DigiKey','Mouser','Farnell'];
+
   function attRender(){
     const cartes = attCartes();
     const compte = {
-      sourcing: cartes.filter(c => c.origine==='sourcing').length,
+      sansSolution: cartes.filter(c => c.origine==='sourcing' && c.type==='Sans solution' && c.statut!=='Consultation').length,
+      autresSourcing: cartes.filter(c => c.origine==='sourcing' && !(c.type==='Sans solution' && c.statut!=='Consultation')).length,
       reception: cartes.filter(c => c.origine==='reception').length,
       client: cartes.filter(c => c.origine==='client').length
     };
@@ -3874,10 +3915,12 @@ async function sendChat() {
     const total = cartes.length;
     if (badge) { badge.textContent = total; badge.style.display = total ? 'inline-block' : 'none'; }
 
+    const tuile = (lbl, n, couleur) => '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">' + lbl + '</div><div style="font-size:20px; font-weight:500;' + (couleur ? ' color:' + couleur + ';' : '') + '">' + n + '</div></div>';
     document.getElementById('att-compteurs').innerHTML =
-      '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Sourcing sans solution</div><div style="font-size:20px; font-weight:500;">' + compte.sourcing + '</div></div>'
-      + '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Stock manquant (réception)</div><div style="font-size:20px; font-weight:500; color:var(--amber);">' + compte.reception + '</div></div>'
-      + '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">Questions client FabStory</div><div style="font-size:20px; font-weight:500;">' + compte.client + '</div></div>';
+      tuile('Sans solution', compte.sansSolution, compte.sansSolution ? 'var(--red)' : '')
+      + tuile('Panier incomplet · Consultation', compte.autresSourcing, '')
+      + tuile('Stock manquant (réception)', compte.reception, 'var(--amber)')
+      + tuile('Questions client FabStory', compte.client, '');
 
     const filtres = [['tout','Tout'],['sourcing','Sourcing'],['reception','Réception'],['client','Client']];
     const types = [['tout','Tous types'],['Sans solution','Sans solution'],['Panier incomplet','Panier incomplet'],['Stock manquant','Stock manquant'],['Attente réponse client','Attente client'],['Réponse client reçue','Réponse client'],['__consultation','Consultation']];
@@ -3890,13 +3933,13 @@ async function sendChat() {
         '<button class="filter-btn' + (attFiltreType===k?' active':'') + '" onclick="attFiltrerType(\'' + k.replace(/'/g,"\\'") + '\')">' + lbl + '</button>'
       ).join('')
       + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
-      + '<input type="text" id="att-filtre-so" value="' + (attFiltreSO||'').replace(/"/g,'&quot;') + '" placeholder="SO…" style="width:110px; padding:5px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;" oninput="attFiltrerSO(this.value)">';
+      + '<input type="text" id="att-filtre-so" value="' + (attFiltreSO||'').replace(/"/g,'&quot;') + '" placeholder="SO, client, carte, IPN, MPN…" style="width:260px; padding:5px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;" oninput="attFiltrerSO(this.value)">';
 
     const soN = (attFiltreSO||'').trim().toLowerCase();
     const visibles = cartes.filter(c =>
       (attFiltre==='tout' || c.origine===attFiltre)
       && (attFiltreType==='tout' || (attFiltreType==='__consultation' ? c.statut==='Consultation' : c.type===attFiltreType))
-      && (!soN || (c.so||'').toLowerCase().includes(soN))
+      && (!soN || [c.so, c.carte, c.ipn, c.mpn].join(' ').toLowerCase().includes(soN))
     );
     window.attSetVisibles(visibles);
     const liste = document.getElementById('att-liste');
@@ -3904,66 +3947,61 @@ async function sendChat() {
       liste.innerHTML = '<p style="font-size:13px; color:var(--text3)">Rien en attente sur ce filtre.</p>';
       return;
     }
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const stylePP = 'background:rgba(91,196,216,0.12); color:#8FD8E6; border-color:rgba(91,196,216,0.35);';
+    const styleClore = 'background:rgba(234,182,118,0.12); color:var(--amber); border-color:rgba(234,182,118,0.35);';
+    const styleSel = 'padding:6px 10px; border-radius:var(--radius); border:1px solid var(--border2); background:var(--surface2); color:var(--text); font-size:12px; min-width:180px;';
+    const opts = ph => '<option value="">' + ph + '</option>' + ATT_FOURNISSEURS.map(f => '<option value="' + f + '">' + f + '</option>').join('') + '<option value="__autre">Autre fournisseur…</option>';
+
     liste.innerHTML = visibles.map((c,i) => {
       const [blbl,bbg,bfg] = attBadge(c);
       const titre = [c.so, c.carte].filter(Boolean).join(' — ') || '(sans SO)';
-      const sousTitre = [c.ipn && ('IPN ' + c.ipn), c.mpn && ('MPN ' + c.mpn), c.qte && (c.qte + ' pcs'), c.depuis && ('depuis ' + c.depuis)].filter(Boolean).join(' · ');
+      const sousTitre = [c.ipn && ('IPN ' + c.ipn), c.mpn && ('MPN ' + c.mpn), c.qte && (c.qte + ' pcs'), c.fournisseur && ('chez ' + c.fournisseur.replace(/^\?/,'') + (c.refFourn ? ' · ' + c.refFourn : ''))].filter(Boolean).join(' · ');
       const cmdables = c.origine !== 'client';
-      /* Pastels charte (Olivier 03/09) : actions en bleu PP pastel, Clore en
-         orange pastel — teintes a faible opacite sur fond sombre. */
-      const stylePP = 'background:rgba(91,196,216,0.12); color:#8FD8E6; border-color:rgba(91,196,216,0.35);';
-      const styleClore = 'background:rgba(234,182,118,0.12); color:var(--amber); border-color:rgba(234,182,118,0.35);';
-      const dpBtn = '<button class="btn" style="' + stylePP + '" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
+
+      const commentaire = cmdables
+        ? '<textarea id="att-com-' + i + '" rows="1" placeholder="Commentaire (colonne N)" data-init="' + esc(c.commentaire) + '" onblur="attCommenter(' + i + ')" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();this.blur();}" style="width:100%; box-sizing:border-box; margin-top:8px; padding:6px 8px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--text2); font-size:12px; font-family:var(--sans); resize:vertical; min-height:30px;">' + esc(c.commentaire) + '</textarea>'
+          + '<div id="att-com-msg-' + i + '" style="font-size:11px; color:var(--text3); min-height:0;"></div>'
+        : (c.commentaire ? '<div style="font-size:12px; color:var(--text3); margin-top:4px; white-space:pre-wrap;">' + esc(c.commentaire) + '</div>' : '');
+
+      const menus = cmdables
+        ? '<select id="att-sel-cmd-' + i + '" style="' + styleSel + ' ' + stylePP + '" onchange="attMenuCommande(' + i + ', this)" title="Marque la ligne COMMANDÉE chez ce fournisseur, sur la sheet appro et dans Paniers en attente">' + opts('Commandé chez…') + '</select>'
+          + '<select id="att-sel-att-' + i + '" style="' + styleSel + '" onchange="attMenuACommander(' + i + ', this)" title="Change le fournisseur et repasse la ligne En attente — rien n est marqué commandé">' + opts('À commander chez…') + '</select>'
+          + '<span style="width:1px; align-self:stretch; background:var(--border); margin:0 2px;"></span>'
+        : '';
+      const dpBtn = '<button class="btn" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
       const substBtn = c.origine === 'reception'
-        ? '<button class="btn" style="' + stylePP + '" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
+        ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
       const cloreBtn = '<button class="btn" style="' + styleClore + '" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
-      /* v9.2 (04/09, ch.111) : le libelle "Cmde X" n induit en erreur que sur
-         cette file "En attente" -- rien n a ete reellement commande tant que
-         le montant de la ligne seule n atteint pas le seuil franco du
-         fournisseur. Sous le seuil : "A commander chez X" (meme bouton, meme
-         action -- juste un mot plus honnete). Au-dessus : commande directe,
-         libelle inchange. */
-      const libCmd = f => {
-        const seuil = attSeuils[attFournCle(f)] !== undefined ? attSeuils[attFournCle(f)] : attSeuils.defaut;
-        return (c.montant && c.montant >= seuil) ? ('Cmdé ' + f) : ('À commander chez ' + f);
-      };
-      const libAutre = (c.montant && c.montant >= attSeuils.defaut) ? 'Cmdé autre…' : 'À commander chez…';
-      /* Modifier fournisseur/ref (ch.111, 04/09) : pour une ligne "Sans
-         solution" une fois un equivalent trouve -- corrige et repasse en
-         "En attente" (n8n : action modifier, pas de marquage Commande). */
-      const modifBtn = cmdables
-        ? '<button class="btn" onclick="attToggleModifier(' + i + ')"><i class="ti ti-edit" aria-hidden="true"></i> Modifier</button>'
+      const loupe = '<button class="btn" style="margin-left:auto;" onclick="attToggleRecherche(' + i + ')" title="Liens de recherche DigiKey / Mouser / Octopart / Farnell" aria-label="Liens de recherche"><i class="ti ti-search" aria-hidden="true"></i></button>';
+
+      const barre = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center;">'
+        + menus + dpBtn + substBtn + cloreBtn + loupe + '</div>';
+
+      const panneau = cmdables
+        ? '<div id="att-mod-' + i + '" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius);">'
+          + '<div style="font-size:11px; color:var(--text3); margin-bottom:6px;">Nouveau fournisseur — la ligne repasse <b>En attente</b>, rien n\'est marqué commandé.</div>'
+          + '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">'
+          + '<input type="text" id="att-mod-fourn-' + i + '" placeholder="Fournisseur" style="flex:1; min-width:140px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;">'
+          + '<input type="text" id="att-mod-ref-' + i + '" placeholder="Réf. fournisseur" style="flex:1; min-width:140px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;">'
+          + '<button class="btn" style="' + stylePP + '" onclick="attACommanderValider(' + i + ')">Valider → En attente</button>'
+          + '<button class="btn" onclick="attACommanderAnnuler(' + i + ')">Annuler</button>'
+          + '</div></div>'
         : '';
-      const cmdBtns = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
-        + (cmdables
-          ? ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="' + stylePP + '" onclick="attCommander(' + i + ',\'' + f + '\')"><i class="ti ti-shopping-cart" aria-hidden="true"></i> ' + libCmd(f) + '</button>').join('')
-            + '<button class="btn" style="' + stylePP + '" onclick="attCommander(' + i + ',\'__autre\')">' + libAutre + '</button>'
-          : '')
-        + dpBtn
-        + substBtn
-        + cloreBtn
-        + modifBtn
-        + '<button class="btn" onclick="attToggleRecherche(' + i + ')"><i class="ti ti-search" aria-hidden="true"></i> Trouver réf</button>'
-        + '</div>'
-        + (cmdables
-          ? '<div id="att-mod-' + i + '" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius);">'
-            + '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">'
-            + '<input type="text" id="att-mod-fourn-' + i + '" placeholder="Fournisseur" value="' + (c.fournisseur||'').replace(/^\?/,'').replace(/"/g,'&quot;') + '" style="flex:1; min-width:140px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;">'
-            + '<input type="text" id="att-mod-ref-' + i + '" placeholder="Réf. fournisseur" value="' + (c.refFourn||'').replace(/"/g,'&quot;') + '" style="flex:1; min-width:140px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;">'
-            + '<button class="btn" style="' + stylePP + '" onclick="attModifier(' + i + ')">Valider → En attente</button>'
-            + '</div></div>'
-          : '');
+
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
         + '<div style="flex:1; min-width:240px;">'
-        + '<div style="font-size:13px; font-weight:500;">' + titre + '</div>'
-        + '<div style="font-size:12px; color:var(--text2); margin-top:2px;">' + sousTitre + '</div>'
-        + (c.commentaire ? '<div style="font-size:12px; color:var(--text3); margin-top:4px; white-space:pre-wrap;">' + c.commentaire + '</div>' : '')
+        + '<div style="font-size:13px; font-weight:500;">' + esc(titre) + '</div>'
+        + '<div style="font-size:12px; color:var(--text2); margin-top:2px;">' + esc(sousTitre) + '</div>'
         + '</div>'
-        + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span>'
+        + '<div style="display:flex; gap:6px; align-items:center;">' + attBadgeAge(c)
+        + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span></div>'
         + '</div>'
-        + cmdBtns
+        + commentaire
+        + barre
+        + panneau
         + '<div id="att-rech-' + i + '" style="display:none;">' + attRecherche(c) + '</div>'
         + '</div>';
     }).join('');
@@ -3974,16 +4012,47 @@ async function sendChat() {
     if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
   };
 
-  window.attToggleModifier = function(i){
-    const el = document.getElementById('att-mod-' + i);
-    if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+  /* Menu "Commande chez..." : action inchangee (attCommander), seule la
+     porte d entree change. Le menu revient a vide apres le choix. */
+  window.attMenuCommande = function(i, sel){
+    const f = sel.value;
+    sel.value = '';
+    if (!f) return;
+    attCommander(i, f);
   };
 
-  /* Modifier fournisseur/ref sur une ligne (ch.111, 04/09) : cas "Sans
-     solution" -> equivalent trouve -- corrige et repasse la ligne en "En
-     attente" pour qu elle entre dans le circuit de commande normal. N ecrit
-     jamais Commande (ca reste le role des boutons Cmde/A commander). */
-  window.attModifier = async function(i){
+  /* Menu "A commander chez..." : ouvre le panneau fournisseur + ref, pre-
+     rempli avec le choix ; ref fournisseur cherchee automatiquement pour
+     Mouser/DigiKey (ref-info) — modifiable avant validation. */
+  window.attMenuACommander = async function(i, sel){
+    const f = sel.value;
+    sel.value = '';
+    if (!f) return;
+    const c = attVisibles[i];
+    const pan = document.getElementById('att-mod-' + i);
+    const inF = document.getElementById('att-mod-fourn-' + i);
+    const inR = document.getElementById('att-mod-ref-' + i);
+    if (!pan || !inF || !inR) return;
+    inF.value = (f === '__autre') ? '' : f;
+    inR.value = '';
+    pan.style.display = 'block';
+    (f === '__autre' ? inF : inR).focus();
+    if (c && f !== '__autre') {
+      inR.placeholder = 'Recherche réf…';
+      const ref = await attRefAuto(c.mpn, f);
+      if (ref && !inR.value) inR.value = ref;
+      inR.placeholder = 'Réf. fournisseur';
+    }
+  };
+
+  window.attACommanderAnnuler = function(i){
+    const pan = document.getElementById('att-mod-' + i);
+    if (pan) pan.style.display = 'none';
+  };
+
+  /* Ex-attModifier (v9.2) : backend action modifier — corrige fournisseur+ref
+     et repasse la ligne En attente. N ecrit jamais Commande. */
+  window.attACommanderValider = async function(i){
     const c = attVisibles[i];
     if (!c) return;
     const fournisseur = (document.getElementById('att-mod-fourn-' + i).value || '').trim();
@@ -4003,6 +4072,35 @@ async function sendChat() {
       }
     } catch(e) {
       alert('Erreur réseau : ' + e.message);
+    }
+  };
+
+  /* Commentaire (colonne N) : sauve au blur si le texte a change.
+     Backend achats-panier v1.6, action commenter (remplacement total). */
+  window.attCommenter = async function(i){
+    const c = attVisibles[i];
+    const ta = document.getElementById('att-com-' + i);
+    const msg = document.getElementById('att-com-msg-' + i);
+    if (!c || !ta) return;
+    const texte = ta.value.trim();
+    if (texte === (ta.getAttribute('data-init') || '').trim()) return;
+    if (msg) msg.textContent = 'Enregistrement…';
+    try {
+      const r = await fetch(ATT_PANIER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'commenter', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, commentaire: texte }] })
+      });
+      const d = await r.json();
+      if (d.success && d.nb > 0) {
+        ta.setAttribute('data-init', texte);
+        c.commentaire = texte;
+        if (msg) { msg.textContent = 'Enregistré'; setTimeout(() => { if (msg.textContent === 'Enregistré') msg.textContent = ''; }, 2000); }
+      } else {
+        if (msg) msg.innerHTML = '<span style="color:var(--red)">Non enregistré : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet' : (d.reason || 'inconnu')) + '</span>';
+      }
+    } catch(e) {
+      if (msg) msg.innerHTML = '<span style="color:var(--red)">Erreur réseau : ' + e.message + '</span>';
     }
   };
 
