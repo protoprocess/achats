@@ -1097,8 +1097,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "10.2";
-const APP_DATE = "07/09/2026";
+const APP_VERSION = "11.0";
+const APP_DATE = "10/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -3835,6 +3835,8 @@ async function sendChat() {
         depuis: depuis,
         jours: attJours(depuis),
         commentaire: q.reponse_texte ? ('Client : ' + q.reponse_texte) : attNorm(q.texte).split('\n')[0],
+        texteQuestion: attNorm(q.texte),
+        reponseTexte: attNorm(q.reponse_texte),
         etat: q.etat,
         fournisseur: '',
         refFourn: '',
@@ -3927,6 +3929,8 @@ async function sendChat() {
       const lbl = ch.label ? '<div style="font-size:11px; color:var(--text3); margin-bottom:4px;">' + attEsc(ch.label) + '</div>' : '';
       let ctrl;
       if (ch.type === 'textarea') ctrl = '<textarea id="attm-' + ch.id + '" placeholder="' + attEsc(ch.placeholder||'') + '" style="width:100%; box-sizing:border-box; min-height:90px; font-family:var(--sans); font-size:13px; resize:vertical;">' + attEsc(ch.valeur||'') + '</textarea>';
+      else if (ch.type === 'liste') ctrl = '<input type="text" id="attm-' + ch.id + '" list="attm-dl-' + ch.id + '" value="' + attEsc(ch.valeur||'') + '" placeholder="' + attEsc(ch.placeholder||'') + '" style="width:100%; box-sizing:border-box;"><datalist id="attm-dl-' + ch.id + '">' + (ch.options||[]).map(o => '<option value="' + attEsc(o) + '">').join('') + '</datalist>';
+      else if (ch.type === 'case') ctrl = '<label style="display:flex; gap:8px; align-items:center; font-size:13px; cursor:pointer;"><input type="checkbox" id="attm-' + ch.id + '"' + (ch.valeur ? ' checked' : '') + '> ' + attEsc(ch.texte||'') + '</label>';
       else if (ch.type === 'choix') ctrl = '<div style="display:flex; flex-direction:column; gap:6px;">' + ch.options.map(([v,l],k) => '<label style="display:flex; gap:8px; align-items:center; font-size:13px; cursor:pointer;"><input type="radio" name="attm-' + ch.id + '" value="' + attEsc(v) + '"' + ((ch.valeur||'')===v ? ' checked' : '') + '> ' + attEsc(l) + '</label>').join('') + '</div>';
       else ctrl = '<input type="text" id="attm-' + ch.id + '" value="' + attEsc(ch.valeur||'') + '" placeholder="' + attEsc(ch.placeholder||'') + '" style="width:100%; box-sizing:border-box;">';
       return '<div style="margin-bottom:12px;">' + lbl + ctrl + '</div>';
@@ -3945,6 +3949,7 @@ async function sendChat() {
       const v = {};
       for (const ch of (cfg.champs||[])) {
         if (ch.type === 'choix') { const r = fond.querySelector('input[name="attm-' + ch.id + '"]:checked'); v[ch.id] = r ? r.value : ''; }
+        else if (ch.type === 'case') { const el = document.getElementById('attm-' + ch.id); v[ch.id] = !!(el && el.checked); }
         else { const el = document.getElementById('attm-' + ch.id); v[ch.id] = el ? el.value.trim() : ''; }
       }
       return v;
@@ -4036,10 +4041,15 @@ async function sendChat() {
         ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
       const rechBtn = '<button class="btn" onclick="attToggleRecherche(' + i + ')" title="Liens de recherche DigiKey / Mouser / Octopart / Farnell"><i class="ti ti-search" aria-hidden="true"></i> Chercher</button>';
+      /* v11.0 : Changer de ref sur toutes les cartes. Sans SO, la sheet appro
+         de l affaire est introuvable -> bouton grise. */
+      const chgBtn = c.so && c.mpn
+        ? '<button class="btn" style="' + stylePP + '" onclick="attChangerRef(' + i + ')" title="Nouveau MPN + fournisseur + réf écrits sur la sheet appro de l affaire (note de traçabilité en colonne O)"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Changer de réf</button>'
+        : '<button class="btn" disabled style="opacity:0.45; cursor:not-allowed;" title="' + (c.so ? 'MPN inconnu sur cette entrée' : 'SO inconnue sur cette question FabStory — sheet appro introuvable') + '"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Changer de réf</button>';
       const cloreBtn = '<button class="btn" style="' + styleClore + '" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
 
       const barre = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center;">'
-        + menus + dpBtn + comBtn + substBtn + rechBtn + cloreBtn + '</div>';
+        + menus + dpBtn + chgBtn + comBtn + substBtn + rechBtn + cloreBtn + '</div>';
 
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
@@ -4785,6 +4795,149 @@ async function sendChat() {
      la ligne par un autre IPN pris en stock. Controle qty+MPN dans le
      referentiel deja charge, puis ecriture Inventory + IPN + MPN + note. */
   const ATT_SUBST_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-substitution';
+
+  /* ============================================================
+     CHANGER DE REF (v11.0 — 10/09/2026)
+     Toutes les cartes. Orchestration de backends existants, aucun
+     nouveau workflow :
+       1. achats-resolution (panier:'skip', vert:false) : sheet appro de
+          l affaire -> A fournisseur, B ref, K nouveau MPN, O note
+          "Equivalent spec: remplace <ancien>" (+ accord client FabStory).
+          Echec ici = on s arrete, rien d autre n est touche.
+       2. achats-panier 'clore' sur SO + ANCIEN MPN : la ligne d exception
+          (ou celle masquee par le dedoublonnage FabStory) sort de la file ;
+          la commande se fait ensuite depuis la sheet appro (outil de
+          commande). Absence de ligne panier = normal, ignore.
+       3. Carte client + case cochee : fabstory-question-clore.
+     ============================================================ */
+  /* MPN propose : dans la reponse client d abord, sinon "proposer : X" de la
+     question. Jeton alphanumerique >= 6 car. avec lettre ET chiffre, different
+     de l ancien MPN. Se tait si rien de net (charte §5). */
+  function attMpnPropose(c){
+    const ancien = (c.mpn||'').toUpperCase();
+    const jetons = t => ((t||'').match(/[A-Za-z0-9][A-Za-z0-9\-\/#+.]{4,}[A-Za-z0-9#]/g) || [])
+      .filter(j => /[A-Za-z]/.test(j) && /\d/.test(j) && j.toUpperCase() !== ancien && !/^https?/i.test(j) && !/^\d+(\.\d+)?[a-zµ]*$/i.test(j));
+    const r = jetons(c.reponseTexte);
+    if (r.length) return r[r.length - 1];
+    const m = (c.texteQuestion||'').match(/proposer\s*:\s*([^\s—,]+)/i);
+    if (m) { const j = jetons(m[1]); if (j.length) return j[0]; }
+    return '';
+  }
+
+  window.attChangerRef = function(i){
+    const c = attVisibles[i];
+    if (!c || !c.so || !c.mpn) return;
+    const client = c.origine === 'client';
+    const propose = client ? attMpnPropose(c) : '';
+    const fournInit = client ? '' : (c.fournisseur || '').replace(/^\?/, '');
+    const champs = [
+      { id:'nmpn', label:'Nouveau MPN' + (propose ? ' (repris de la réponse client — à vérifier)' : ''), valeur: propose, placeholder:'MPN de remplacement' },
+      { id:'fourn', type:'liste', label:'Fournisseur', valeur: fournInit, options: ATT_FOURNISSEURS, placeholder:'DigiKey, Mouser, Farnell, ou saisie libre' },
+      { id:'ref', label:'Réf. fournisseur', valeur:'', placeholder:'Cherchée automatiquement pour Mouser / DigiKey' },
+      { id:'nipn', label:'Nouvel IPN (facultatif — inchangé si non modifié)', valeur: c.ipn || '', placeholder:'Lecture de la sheet appro…' }
+    ];
+    if (client) champs.push({ id:'clore', type:'case', valeur:true, texte:'Fermer la question FabStory ensuite' });
+    attModal({
+      titre: 'Changer de réf',  /* v11.0 : + Nouvel IPN (Resolution v1.6) */
+      aide: c.so + ' — ancien MPN ' + c.mpn + '\nÉcrit sur la sheet appro : nouveau MPN, fournisseur, réf + note de traçabilité (colonne O). Rien n\'est marqué commandé : la commande se fait ensuite depuis la sheet.',
+      champs,
+      valider: 'Valider le changement',
+      onValider: async (v, msg) => {
+        const nmpn = (v.nmpn||'').trim();
+        const fourn = (v.fourn||'').trim();
+        const ref = (v.ref||'').trim();
+        if (!nmpn) { msg('Nouveau MPN requis.'); return false; }
+        if (nmpn.toUpperCase() === c.mpn.toUpperCase()) { msg('Le nouveau MPN est identique à l\'ancien.'); return false; }
+        if (!fourn) { msg('Fournisseur requis.'); return false; }
+        if (!ref) { msg('Réf. fournisseur requise (sinon l\'ancienne réf resterait sur la sheet).'); return false; }
+        const nipn = (v.nipn||'').trim();
+        const ipnModifie = nipn && nipn.toUpperCase() !== (ipnActuel || c.ipn || '').toUpperCase();
+        msg('Écriture sheet appro…');
+        const date = new Date().toLocaleDateString('fr-FR');
+        const r1 = await fetch(ATT_RESOL_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ so: c.so, mpn: c.mpn, ipn: c.ipn || '', fournisseur: fourn, ref_fournisseur: ref,
+            nouveau_mpn: nmpn, nouveau_ipn: ipnModifie ? nipn : '', panier: 'skip', vert: false,
+            note: client ? ('Accord client FabStory #' + c.id + ' (' + date + ')') : '' })
+        });
+        const d1 = await r1.json();
+        if (!d1.success) {
+          const raisons = { not_found: 'sheet appro de ' + c.so + ' introuvable', ambiguous: 'plusieurs sheets appro pour ' + c.so, ligne_introuvable: c.mpn + ' introuvable dans la sheet appro de ' + c.so, ligne_ambigue: c.mpn + ' présent plusieurs fois dans la sheet appro' };
+          msg('Rien n\'a été modifié : ' + (raisons[d1.reason] || d1.reason || 'erreur inconnue') + (d1.detail ? ' (' + d1.detail + ')' : ''));
+          return false;
+        }
+        msg('Sheet appro à jour — sortie de la file…');
+        try {
+          await fetch(ATT_PANIER_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'clore', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn || '' }] })
+          });
+        } catch(e) {}
+        if (client && v.clore) {
+          try {
+            await fetch('https://protoprocess.app.n8n.cloud/webhook/fabstory-question-clore', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id })
+            });
+          } catch(e) {}
+        }
+        attCharger();
+        return true;
+      }
+    });
+    /* IPN actuel : lu dans la sheet appro (les cartes client n en portent pas).
+       Pre-remplit le champ si l utilisateur n y a pas deja touche. Sous le
+       champ : presence de l IPN saisi dans le stock PP (info, non bloquant). */
+    let ipnActuel = c.ipn || '';
+    let ipnTouche = false;
+    const elI = document.getElementById('attm-nipn');
+    let infoI = null;
+    if (elI) {
+      infoI = document.createElement('div');
+      infoI.style.cssText = 'font-size:11px; color:var(--text3); margin-top:4px;';
+      elI.parentNode.appendChild(infoI);
+      const majInfoI = () => {
+        const val = elI.value.trim();
+        if (!val) { infoI.textContent = ''; return; }
+        const modif = ipnActuel && val.toUpperCase() !== ipnActuel.toUpperCase();
+        const q = (typeof stockByIPN === 'object' && Object.keys(stockByIPN).length) ? stockByIPN[val] : undefined;
+        const stock = (typeof stockByIPN !== 'object' || !Object.keys(stockByIPN).length) ? 'stock PP non chargé'
+          : (q !== undefined ? 'en stock PP : ' + q + ' pcs' : 'IPN inconnu du stock PP');
+        infoI.textContent = (modif ? 'Remplace ' + ipnActuel + ' · ' : (ipnActuel ? 'IPN actuel · ' : '')) + stock;
+        infoI.style.color = modif ? 'var(--amber)' : 'var(--text3)';
+      };
+      elI.addEventListener('input', () => { ipnTouche = true; majInfoI(); });
+      majInfoI();
+      if (!ipnActuel) {
+        fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(c.so)).then(r => r.json()).then(d => {
+          if (!d || !d.ok || document.getElementById('attm-nipn') !== elI) return;
+          const l = (d.lignes || []).find(x => (x['MPN']||'').trim().toUpperCase() === c.mpn.toUpperCase());
+          ipnActuel = l ? (l['Approved internal part number'] || '').trim() : '';
+          elI.placeholder = ipnActuel ? '' : 'IPN non trouvé dans la sheet';
+          if (!ipnTouche && ipnActuel) elI.value = ipnActuel;
+          majInfoI();
+        }).catch(() => { if (document.getElementById('attm-nipn') === elI) elI.placeholder = 'Lecture sheet impossible — saisie libre'; });
+      }
+    }
+    /* Ref auto Mouser/DigiKey : a l ouverture puis a chaque changement de
+       fournisseur ou de MPN. N ecrase jamais une saisie manuelle. */
+    let refManuelle = false;
+    const elRef = document.getElementById('attm-ref');
+    const elF = document.getElementById('attm-fourn');
+    const elM = document.getElementById('attm-nmpn');
+    if (elRef) elRef.addEventListener('input', () => { refManuelle = !!elRef.value.trim(); });
+    const majRef = async () => {
+      if (!elRef || refManuelle) return;
+      const f = (elF && elF.value || '').trim();
+      const m = (elM && elM.value || '').trim();
+      if (!m || (f !== 'Mouser' && f !== 'DigiKey')) return;
+      elRef.placeholder = 'Recherche en cours…';
+      const spn = await attRefAuto(m, f);
+      if (!refManuelle && document.getElementById('attm-ref') === elRef) { elRef.value = spn || ''; elRef.placeholder = spn ? '' : 'Non trouvée — saisir la réf'; }
+    };
+    if (elF) elF.addEventListener('change', majRef);
+    if (elM) elM.addEventListener('change', majRef);
+    majRef();
+  };
 
   window.attCarteClore = function(i){
     const c = attVisibles[i];
