@@ -1097,7 +1097,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "11.0";
+const APP_VERSION = "11.1";
 const APP_DATE = "10/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -4804,10 +4804,11 @@ async function sendChat() {
           l affaire -> A fournisseur, B ref, K nouveau MPN, O note
           "Equivalent spec: remplace <ancien>" (+ accord client FabStory).
           Echec ici = on s arrete, rien d autre n est touche.
-       2. achats-panier 'clore' sur SO + ANCIEN MPN : la ligne d exception
-          (ou celle masquee par le dedoublonnage FabStory) sort de la file ;
-          la commande se fait ensuite depuis la sheet appro (outil de
-          commande). Absence de ligne panier = normal, ignore.
+       2. achats-panier 'clore' sur SO + ANCIEN MPN (historique conserve),
+          puis v11.1 : achats-panier 'attente' = nouvelle ligne Panier
+          incomplet / En attente avec la nouvelle ref -- changer n est pas
+          commander (Olivier 10/09). Carte/qte/montant : ancienne ligne
+          panier, sinon sheet appro (Purchase qty / Purchase price).
        3. Carte client + case cochee : fabstory-question-clore.
      ============================================================ */
   /* MPN propose : dans la reponse client d abord, sinon "proposer : X" de la
@@ -4839,7 +4840,7 @@ async function sendChat() {
     if (client) champs.push({ id:'clore', type:'case', valeur:true, texte:'Fermer la question FabStory ensuite' });
     attModal({
       titre: 'Changer de réf',  /* v11.0 : + Nouvel IPN (Resolution v1.6) */
-      aide: c.so + ' — ancien MPN ' + c.mpn + '\nÉcrit sur la sheet appro : nouveau MPN, fournisseur, réf + note de traçabilité (colonne O). Rien n\'est marqué commandé : la commande se fait ensuite depuis la sheet.',
+      aide: c.so + ' — ancien MPN ' + c.mpn + '\nÉcrit sur la sheet appro : nouveau MPN, fournisseur, réf + note de traçabilité (colonne O). Rien n\'est marqué commandé : la ligne repasse Panier incomplet / En attente chez le nouveau fournisseur.',
       champs,
       valider: 'Valider le changement',
       onValider: async (v, msg) => {
@@ -4866,13 +4867,40 @@ async function sendChat() {
           msg('Rien n\'a été modifié : ' + (raisons[d1.reason] || d1.reason || 'erreur inconnue') + (d1.detail ? ' (' + d1.detail + ')' : ''));
           return false;
         }
-        msg('Sheet appro à jour — sortie de la file…');
+        msg('Sheet appro à jour — mise en Panier incomplet…');
         try {
           await fetch(ATT_PANIER_URL, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'clore', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn || '' }] })
           });
         } catch(e) {}
+        /* v11.1 : nouvelle ligne Panier incomplet / En attente */
+        let qte = c.qte || '';
+        let montant = c.montant || '';
+        if (!qte || !montant) {
+          if (!ligneSheet) {
+            try {
+              const rs = await fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(c.so));
+              const ds = await rs.json();
+              if (ds && ds.ok) ligneSheet = (ds.lignes || []).find(x => { const m = (x['MPN']||'').trim().toUpperCase(); return m === nmpn.toUpperCase() || m === c.mpn.toUpperCase(); }) || null;
+            } catch(e) {}
+          }
+          if (ligneSheet) {
+            if (!qte) qte = (ligneSheet['Purchase qty'] || '').toString().trim();
+            if (!montant) montant = attPrixNum(ligneSheet['Purchase price']) || '';
+          }
+        }
+        let attenteOk = false;
+        try {
+          const r3 = await fetch(ATT_PANIER_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'attente', so: c.so, carte: c.carte || '', fournisseur: fourn,
+              lignes: [{ fournisseur: fourn, refFour: ref, ipn: nipn || ipnActuel || c.ipn || '', qte: qte, mpn: nmpn, montant: montant }] })
+          });
+          const d3 = await r3.json();
+          attenteOk = !!d3.success;
+        } catch(e) {}
+        if (!attenteOk) alert('Sheet appro mise à jour, mais la ligne Panier incomplet n\'a pas pu être ajoutée dans Paniers en attente — à ajouter à la main (' + c.so + ' / ' + nmpn + ').');
         if (client && v.clore) {
           try {
             await fetch('https://protoprocess.app.n8n.cloud/webhook/fabstory-question-clore', {
@@ -4889,6 +4917,7 @@ async function sendChat() {
        champ : presence de l IPN saisi dans le stock PP (info, non bloquant). */
     let ipnActuel = c.ipn || '';
     let ipnTouche = false;
+    let ligneSheet = null;
     const elI = document.getElementById('attm-nipn');
     let infoI = null;
     if (elI) {
@@ -4907,16 +4936,16 @@ async function sendChat() {
       };
       elI.addEventListener('input', () => { ipnTouche = true; majInfoI(); });
       majInfoI();
-      if (!ipnActuel) {
-        fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(c.so)).then(r => r.json()).then(d => {
-          if (!d || !d.ok || document.getElementById('attm-nipn') !== elI) return;
-          const l = (d.lignes || []).find(x => (x['MPN']||'').trim().toUpperCase() === c.mpn.toUpperCase());
-          ipnActuel = l ? (l['Approved internal part number'] || '').trim() : '';
-          elI.placeholder = ipnActuel ? '' : 'IPN non trouvé dans la sheet';
-          if (!ipnTouche && ipnActuel) elI.value = ipnActuel;
-          majInfoI();
-        }).catch(() => { if (document.getElementById('attm-nipn') === elI) elI.placeholder = 'Lecture sheet impossible — saisie libre'; });
-      }
+      fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(c.so)).then(r => r.json()).then(d => {
+        if (!d || !d.ok) return;
+        const l = (d.lignes || []).find(x => (x['MPN']||'').trim().toUpperCase() === c.mpn.toUpperCase());
+        ligneSheet = l || null;
+        if (document.getElementById('attm-nipn') !== elI || ipnActuel) return;
+        ipnActuel = l ? (l['Approved internal part number'] || '').trim() : '';
+        elI.placeholder = ipnActuel ? '' : 'IPN non trouvé dans la sheet';
+        if (!ipnTouche && ipnActuel) elI.value = ipnActuel;
+        majInfoI();
+      }).catch(() => { if (document.getElementById('attm-nipn') === elI && !ipnActuel) elI.placeholder = 'Lecture sheet impossible — saisie libre'; });
     }
     /* Ref auto Mouser/DigiKey : a l ouverture puis a chaque changement de
        fournisseur ou de MPN. N ecrase jamais une saisie manuelle. */
