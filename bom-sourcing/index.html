@@ -1097,7 +1097,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "11.3";
+const APP_VERSION = "11.4";
 const APP_DATE = "11/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -2166,12 +2166,10 @@ function besoinLigne(row) {
 }
 function renderStockCell(si, idx, besoin) {
   const needSplit = besoin!==undefined && si.qty>0 && si.qty<besoin;
-  const couvre = besoin!==undefined && besoin>0 && si.qty>=besoin && !(bomData[idx] && String(getColValue(bomData[idx],'Supplier')||'').toLowerCase()==='inventory');
+  // Stock ≥ besoin : rien à faire ici, la GSheet achat gère déjà la couverture (Reçus / Manquant).
   const splitBtn = needSplit
     ? `<button class="stock-split-btn" onclick="splitPartialStock(${idx})" title="${si.qty} en stock, ${besoin-si.qty} à commander (besoin ${besoin})">Utiliser la qté en stock</button>`
-    : couvre
-      ? `<button class="stock-split-btn" onclick="splitPartialStock(${idx})" title="${si.qty} en stock pour un besoin de ${besoin} : rien à commander">Couvrir par le stock</button>`
-      : '';
+    : '';
 
   if (si.status==='na') {
     const cands = si.fuzzy || [];
@@ -2627,20 +2625,7 @@ function splitPartialStock(idx) {
   const si = resolveStockQty(row, idx, meta.ipn);
   const stockQty = si.qty || 0;
   const purchaseQty = besoinLigne(row) || 0; // besoin réel, pas le MOQ
-  if (!(stockQty > 0 && purchaseQty > 0)) return;
-
-  // v11.3 — le stock couvre tout le besoin : la ligne passe entièrement en Inventory,
-  // le MOQ fournisseur n'a plus lieu d'être.
-  if (stockQty >= purchaseQty) {
-    row['Aggregated qty'] = String(purchaseQty);
-    row['Purchase qty'] = String(purchaseQty);
-    row['Purchase price'] = '0';
-    row['Supplier'] = 'Inventory';
-    meta.stockNote = `Couvert par le stock : ${purchaseQty} pris en inventaire (${stockQty} disponibles), rien à commander.`;
-    stockOverrides[idx] = { qty: stockQty, source: si.source, matchedKey: si.matchedKey, suppressed: true };
-    rerenderBomTable(false);
-    return;
-  }
+  if (!(stockQty > 0 && stockQty < purchaseQty)) return;
 
   const remainQty = purchaseQty - stockQty;
 
