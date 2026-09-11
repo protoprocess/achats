@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appro — tableau de bord</title>
+<style>
+:root{--bg:#0a0c12;--surface:#1a2030;--border:#262e42;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--accent:#F07B1F;--radius:6px;--mono:"SF Mono","Cascadia Code",Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:13px/1.45 var(--sans);display:flex;flex-direction:column}
+header{background:#0f1117;height:52px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--border);flex:none}
+.logo-text{display:flex;align-items:center;font-size:13px;font-weight:500}.lt{color:#fff}.ls{color:#444;margin:0 3px}.lo{color:var(--accent)}
+.actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn-s{padding:6px 13px;background:transparent;color:var(--text2);border:.5px solid var(--border);border-radius:var(--radius);font-size:12px;text-decoration:none}
+.btn-s:hover{color:var(--text);border-color:var(--text3)}
+.ver{color:var(--text3);font-size:11px;font-family:var(--mono)}
+iframe{flex:1;width:100%;border:0;background:var(--bg)}
+#fallback{display:none;padding:24px;color:var(--text2)}#fallback a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <img src="../shared/picto-pp.png" alt="Proto Process" width="24" height="24" style="object-fit:contain" onerror="this.style.display='none'">
+  <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">Appro — tableau de bord</span></span>
+  <div class="actions">
+    <a class="btn-s" id="open" href="#" target="_blank" rel="noopener">Ouvrir en plein écran</a>
+    <span class="ver" id="ver"></span>
+  </div>
+</header>
+<iframe id="dash" title="Tableau de bord appro"></iframe>
+<div id="fallback">Le tableau de bord ne peut pas s'afficher ici. <a id="fb" href="#" target="_blank" rel="noopener">Ouvrir le tableau de bord</a></div>
+<script>
+const APP_VERSION = "1.0";
+const APP_DATE = "11/09/2026";
+// Tableau de bord généré par le script Luminovo "appro-so" (page hébergée, mise à jour à chaque analyse).
+const DASHBOARD_URL = "https://reports.luminovo.com/r/appro-tableau-de-bord-wnIro11y7qiexgm8";
+document.title += " — v" + APP_VERSION;
+document.getElementById("ver").textContent = "v" + APP_VERSION + " — " + APP_DATE;
+document.getElementById("open").href = DASHBOARD_URL;
+document.getElementById("fb").href = DASHBOARD_URL;
+const f = document.getElementById("dash");
+f.src = DASHBOARD_URL;
+// Si Luminovo interdit l'affichage en iframe, le navigateur rend une page vide : on bascule vers le lien.
+setTimeout(() => { try { if (f.contentDocument && f.contentDocument.body && f.contentDocument.body.childElementCount === 0) throw 0; } catch (e) { /* cross-origin = chargé normalement */ return; } f.style.display = "none"; document.getElementById("fallback").style.display = "block"; }, 4000);
+</script>
+</body>
+</html>
