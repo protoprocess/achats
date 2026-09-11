@@ -1097,8 +1097,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "11.1";
-const APP_DATE = "10/09/2026";
+const APP_VERSION = "11.2";
+const APP_DATE = "11/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1229,6 +1229,52 @@ let aliasParLibelle = {};
 // Libellé client du fichier en cours, conservé pour pouvoir l'enregistrer
 // comme alias si l'utilisateur choisit lui-même le client.
 let libelleFichierEnCours = '';
+// v11.2 — Le SO ne se devine pas : il est lu dans le nom du fichier (Appro_SOxxxx.xlsx)
+// ou dans le nom d'un onglet (Achats SOxxxx), puis Odoo (webhook so-info) donne le
+// partenaire par identifiant. Plus aucune comparaison de noms de clients.
+let infoSOCourant = null;
+const RE_SO = /SO\d{4}-\d{3}[A-Z0-9-]*/i;
+function detecterSO(filename, sheetNames) {
+  const m = String(filename || '').match(RE_SO);
+  if (m) return m[0].toUpperCase();
+  for (const n of (sheetNames || [])) { const k = String(n).match(RE_SO); if (k) return k[0].toUpperCase(); }
+  return null;
+}
+// Index de l'onglet à analyser : celui dont le nom porte le SO (de préférence "Achats …").
+// Plusieurs onglets Achats pour le même SO → on ne choisit pas, on prévient.
+function choisirOngletParSO(sheetNames, so) {
+  if (!so || !Array.isArray(sheetNames)) return { idx: 0, ambigu: false };
+  const cand = sheetNames.map((n, i) => ({ n: String(n), i })).filter(x => x.n.toUpperCase().includes(so));
+  if (!cand.length) return { idx: 0, ambigu: false };
+  const achats = cand.filter(x => /^achats/i.test(x.n.trim()));
+  if (achats.length > 1) return { idx: achats[0].i, ambigu: true };
+  return { idx: (achats[0] || cand[0]).i, ambigu: false };
+}
+async function appliquerInfoSO(so) {
+  infoSOCourant = null;
+  const soEl = document.getElementById('so-reference');
+  if (soEl && so) soEl.value = so;
+  if (!so || !webhookUrl) return null;
+  const base = webhookUrl.replace(/\/[^\/]*$/, '');
+  try {
+    const r = await fetch(base + '/so-info?so=' + encodeURIComponent(so));
+    const d = await r.json();
+    if (!d || !d.ok) return null;
+    infoSOCourant = d;
+    if (!Array.isArray(clientsList) || !clientsList.length) { try { await chargerClientsOdoo(); } catch (e) {} }
+    const sel = document.getElementById('client-select');
+    const pid = d.partenaire && d.partenaire.id;
+    if (sel && pid && Array.isArray(clientsList)) {
+      const trouve = clientsList.find(c => Number(c.odoo_partner_id) === Number(pid));
+      if (trouve) { sel.value = trouve.nom; onClientChange(); }
+    }
+    return d;
+  } catch (e) { return null; }
+}
+function libelleInfoSO(d) {
+  if (!d) return '';
+  return d.so + ' · ' + (d.partenaire && d.partenaire.nom || '?') + (d.carte ? ' · ' + d.carte + ' × ' + d.qte : '') + ' (Odoo)';
+}
 let activeClient = { nom:'Standard', mpn_strict:false, notes:'' };
 let sourceStatus = { clients:'none', stock:'none', rules:'none' };
 let apiKey = "";
@@ -1723,8 +1769,18 @@ function handleFileUpload(input) {
           sheetSel.style.display = 'none';
         }
 
-        // Load first sheet by default
-        loadBOMSheet(0, file.name, zone, label);
+        // v11.2 — onglet choisi par le SO lu (fichier ou onglet), jamais par défaut le premier.
+        const soLu = detecterSO(file.name, wb.SheetNames);
+        const choix = choisirOngletParSO(wb.SheetNames, soLu);
+        if (wb.SheetNames.length > 1) sheetSelect.value = String(choix.idx);
+        loadBOMSheet(choix.idx, file.name, zone, label);
+        if (choix.ambigu) {
+          label.innerHTML += ' <span style="color:var(--amber)">— plusieurs onglets Achats pour ' + soLu + ' : vérifiez l\'onglet</span>';
+        }
+        appliquerInfoSO(soLu).then(d => {
+          if (d) label.innerHTML += ' <span style="color:var(--text2)">— ' + libelleInfoSO(d) + '</span>';
+          else if (soLu) label.innerHTML += ' <span style="color:var(--amber)">— ' + soLu + ' introuvable dans Odoo, client à choisir</span>';
+        });
       } catch(err) {
         zone.className = 'upload-drop-zone';
         label.innerHTML = `<span style="color:var(--red)">Erreur lecture : ${err.message}</span>`;
@@ -2818,23 +2874,13 @@ function showGSheetBar(filename) {
   if (parsed && infoEl) {
     infoEl.textContent = parsed.client + ' — ' + parsed.carte + ' — ' + parsed.date;
   }
-  // Auto-select client from filename
-  if (parsed && parsed.client) {
-    const sel = document.getElementById('client-select');
-    if (sel) {
-      // Find matching client (case-insensitive)
-      const opt = Array.from(sel.options).find(o =>
-        o.value.toLowerCase() === parsed.client.toLowerCase() ||
-        parsed.client.toLowerCase().includes(o.value.toLowerCase()) ||
-        o.value.toLowerCase().includes(parsed.client.toLowerCase())
-      );
-      if (opt) {
-        sel.value = opt.value;
-        onClientChange();
-        if (infoEl) infoEl.textContent += ' — client sélectionné automatiquement ✓';
-      }
-    }
+  // v11.2 — plus de rapprochement approximatif ici : le client vient d'Odoo via le SO
+  // (appliquerInfoSO au chargement). On se contente d'afficher d'où il vient.
+  if (infoSOCourant && infoEl) {
+    infoEl.textContent = libelleInfoSO(infoSOCourant) + ' — client posé depuis Odoo ✓';
   }
+  const soEl = document.getElementById('so-reference');
+  if (soEl && !soEl.value && infoSOCourant) soEl.value = infoSOCourant.so;
 }
 
 async function writeToGSheet() {
@@ -3117,7 +3163,12 @@ function loadBOMSheet(sheetIdx, filename, zone, label) {
     (bomWorkbook.SheetNames.length > 1 ? ' — onglet <strong>' + sheetName + '</strong>' : '') +
     ' — ' + rows.length + ' composant(s) détecté(s)';
   document.getElementById('bom-sheet-info').textContent = rows.length + ' composants';
-  // Auto-select client from filename
+  // Repli : nom de fichier (équivalence stricte). Si Odoo a déjà répondu, c'est lui qui prime.
+  if (infoSOCourant && infoSOCourant.partenaire && infoSOCourant.partenaire.id) {
+    const sel = document.getElementById('client-select');
+    const trouve = (clientsList || []).find(c => Number(c.odoo_partner_id) === Number(infoSOCourant.partenaire.id));
+    if (sel && trouve) { sel.value = trouve.nom; onClientChange(); return; }
+  }
   autoSelectClientFromFilename(fn);
 }
 
