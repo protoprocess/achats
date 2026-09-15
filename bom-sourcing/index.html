@@ -1097,8 +1097,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "11.4";
-const APP_DATE = "11/09/2026";
+const APP_VERSION = "11.5";
+const APP_DATE = "15/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -3909,16 +3909,13 @@ async function sendChat() {
     return cartes;
   }
 
+  /* v11.5 (15/09, decision Olivier) : la pastille = le STATUT de la sheet, plus le type.
+     Les 5 statuts suffisent (Commande / Clos ne remontent pas). Type -> plus a l ecran. */
   function attBadge(c){
-    if (c.statut === 'Consultation') return ['Consultation','var(--blue-bg)','var(--blue)'];
-    if (c.origine === 'reception') return ['Stock manquant','var(--amber-bg)','var(--amber-badge)'];
-    if (c.origine === 'client') {
-      return c.etat === 'en_attente'
-        ? ['Attente client','var(--pink-bg)','var(--pink-badge)']
-        : ['Réponse client','var(--green-bg)','var(--green-badge)'];
-    }
-    if (c.type === 'Panier incomplet') return ['Panier incomplet','var(--amber-bg)','var(--amber-badge)'];
-    return ['Sans solution','var(--red-bg)','var(--red-badge)'];
+    if (c.statut === 'Consultation') return ['Consultation','rgba(91,196,216,0.15)','#8FD8E6'];
+    if (c.statut === 'Sans solution') return ['Sans solution','var(--red-bg)','var(--red-badge)'];
+    if (c.statut === 'En attente') return ['En attente','var(--blue-bg)','var(--blue)'];
+    return [c.statut || 'Sans statut','transparent','var(--text3)'];
   }
 
   function attBadgeAge(c){
@@ -3930,9 +3927,10 @@ async function sendChat() {
   }
 
   function attLisere(c){
-    if (c.origine === 'reception') return 'var(--amber-badge)';
-    if (c.origine === 'client') return c.etat === 'en_attente' ? 'var(--pink-badge)' : 'var(--green-badge)';
-    return 'var(--red-badge)';
+    if (c.statut === 'Consultation') return 'var(--pp-blue)';
+    if (c.statut === 'En attente') return 'var(--blue)';
+    if (c.statut === 'Sans solution') return 'var(--red-badge)';
+    return 'var(--border2)';
   }
 
   window.attFiltrer = function(f){
@@ -4035,11 +4033,11 @@ async function sendChat() {
 
   function attRender(){
     const cartes = attCartes();
+    /* v11.5 : une tuile par statut */
     const compte = {
-      sansSolution: cartes.filter(c => c.origine==='sourcing' && c.type==='Sans solution' && c.statut!=='Consultation').length,
-      autresSourcing: cartes.filter(c => c.origine==='sourcing' && !(c.type==='Sans solution' && c.statut!=='Consultation')).length,
-      reception: cartes.filter(c => c.origine==='reception').length,
-      client: cartes.filter(c => c.origine==='client').length
+      enAttente: cartes.filter(c => c.statut==='En attente').length,
+      consultation: cartes.filter(c => c.statut==='Consultation').length,
+      sansSolution: cartes.filter(c => c.statut==='Sans solution').length
     };
 
     const badge = document.getElementById('att-tab-badge');
@@ -4048,19 +4046,14 @@ async function sendChat() {
 
     const tuile = (lbl, n, couleur) => '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">' + lbl + '</div><div style="font-size:20px; font-weight:500;' + (couleur ? ' color:' + couleur + ';' : '') + '">' + n + '</div></div>';
     document.getElementById('att-compteurs').innerHTML =
-      tuile('Sans solution', compte.sansSolution, compte.sansSolution ? 'var(--red)' : '')
-      + tuile('Panier incomplet · Consultation', compte.autresSourcing, '')
-      + tuile('Stock manquant (réception)', compte.reception, 'var(--amber)')
-      + tuile('Questions client FabStory', compte.client, '');
+      tuile('En attente', compte.enAttente, compte.enAttente ? 'var(--blue)' : '')
+      + tuile('Consultation', compte.consultation, compte.consultation ? 'var(--pp-blue)' : '')
+      + tuile('Sans solution', compte.sansSolution, compte.sansSolution ? 'var(--red)' : '');
 
-    const filtres = [['tout','Tout'],['sourcing','Sourcing'],['reception','Réception'],['client','Client']];
-    const types = [['tout','Tous types'],['Sans solution','Sans solution'],['Panier incomplet','Panier incomplet'],['Stock manquant','Stock manquant'],['Attente réponse client','Attente client'],['Réponse client reçue','Réponse client'],['__consultation','Consultation']];
+    /* v11.5 : un seul jeu de filtres = le statut (plus d origine ni de type) */
+    const types = [['tout','Tous'],['En attente','En attente'],['Consultation','Consultation'],['Sans solution','Sans solution']];
     document.getElementById('att-filtres').innerHTML =
-      filtres.map(([k,lbl]) =>
-        '<button class="filter-btn' + (attFiltre===k?' active':'') + '" onclick="attFiltrer(\'' + k + '\')">' + lbl + '</button>'
-      ).join('')
-      + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
-      + types.map(([k,lbl]) =>
+      types.map(([k,lbl]) =>
         '<button class="filter-btn' + (attFiltreType===k?' active':'') + '" onclick="attFiltrerType(\'' + k.replace(/'/g,"\\'") + '\')">' + lbl + '</button>'
       ).join('')
       + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
@@ -4068,8 +4061,7 @@ async function sendChat() {
 
     const soN = (attFiltreSO||'').trim().toLowerCase();
     const visibles = cartes.filter(c =>
-      (attFiltre==='tout' || c.origine===attFiltre)
-      && (attFiltreType==='tout' || (attFiltreType==='__consultation' ? c.statut==='Consultation' : c.type===attFiltreType))
+      (attFiltreType==='tout' || c.statut===attFiltreType)
       && (!soN || [c.so, c.carte, c.ipn, c.mpn].join(' ').toLowerCase().includes(soN))
     );
     window.attSetVisibles(visibles);
@@ -4117,7 +4109,8 @@ async function sendChat() {
         + '<div style="flex:1; min-width:240px;">'
         + '<div style="font-size:13px; font-weight:500; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' + attEsc(titre) + attLienFabStory(c.produit_id) + '</div>'
         + '<div style="font-size:12px; color:var(--text2); margin-top:2px;">' + attEsc(sousTitre) + '</div>'
-        + (c.commentaire ? '<div style="font-size:12px; color:var(--text3); margin-top:4px; white-space:pre-wrap;">' + attEsc(c.commentaire) + '</div>' : '')
+        /* v11.5 : commentaire en bleu PP ; orange (accent) quand la ligne vient d une reponse client FabStory */
+        + (c.commentaire ? '<div style="font-size:12px; color:' + (c.type === 'Reponse client' ? 'var(--blue)' : 'var(--pp-blue)') + '; margin-top:4px; white-space:pre-wrap;">' + attEsc(c.commentaire) + '</div>' : '')
         + '</div>'
         + '<div style="display:flex; gap:6px; align-items:center;">' + attBadgeAge(c)
         + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span></div>'
