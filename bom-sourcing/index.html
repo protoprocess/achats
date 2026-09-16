@@ -1097,8 +1097,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "11.5";
-const APP_DATE = "15/09/2026";
+const APP_VERSION = "11.6";
+const APP_DATE = "16/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1250,6 +1250,23 @@ function choisirOngletParSO(sheetNames, so) {
   if (achats.length > 1) return { idx: achats[0].i, ambigu: true };
   return { idx: (achats[0] || cand[0]).i, ambigu: false };
 }
+// v11.6 — Plusieurs onglets "Achats SOxxx" et aucun SO dans le nom du fichier (export Luminovo
+// brut) : on ne prend plus le premier venu. La liste des SO encore "AF" au planning (webhook
+// appro-af) désigne le bon ; à défaut, le SO le plus récent.
+async function choisirSOParmi(candidats) {
+  const uniq = [...new Set(candidats.map(s => s.toUpperCase()))];
+  if (uniq.length <= 1) return { so: uniq[0] || null, motif: uniq.length ? 'seul onglet SO' : null };
+  try {
+    const base = webhookUrl.replace(/\/[^\/]*$/, '');
+    const r = await fetch(base + '/appro-af');
+    const d = await r.json();
+    const af = (d && Array.isArray(d.af) ? d.af : []).map(x => String(x).toUpperCase());
+    const enAF = uniq.filter(x => af.includes(x));
+    if (enAF.length === 1) return { so: enAF[0], motif: 'seul SO encore AF au planning' };
+    if (enAF.length > 1) return { so: enAF.sort().reverse()[0], motif: enAF.length + ' SO encore AF au planning, le plus récent retenu — vérifier l\'onglet' };
+  } catch (e) {}
+  return { so: uniq.sort().reverse()[0], motif: 'aucun de ces SO n\'est AF au planning, le plus récent retenu — vérifier l\'onglet' };
+}
 async function appliquerInfoSO(so) {
   infoSOCourant = null;
   const soEl = document.getElementById('so-reference');
@@ -1270,6 +1287,17 @@ async function appliquerInfoSO(so) {
     }
     return d;
   } catch (e) { return null; }
+}
+// v11.6 — Nouveau fichier = nouvelle affaire : on efface ce qui appartenait à la précédente
+// (message d'écriture GSheet, onglet Achats), sinon on croit lire l'affaire en cours.
+function nouveauDossier(so) {
+  const st = document.getElementById('gsheet-write-status'); if (st) st.innerHTML = '';
+  const champ = document.getElementById('att-sheet-so');
+  if (champ && (champ.value || '').trim().toUpperCase() !== String(so || '').toUpperCase()) {
+    champ.value = ''; // vidé : l'onglet Achats rechargera l'affaire courante à l'ouverture (switchTab)
+    const c = document.getElementById('att-sheet-contenu'); if (c) c.innerHTML = '';
+    ['att-sheet-lien','att-sheet-fabstory'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  }
 }
 function libelleInfoSO(d) {
   if (!d) return '';
@@ -1294,7 +1322,7 @@ function switchTab(name) {
     try {
       const soAnalyse = (document.getElementById('so-reference')||{}).value || '';
       const champ = document.getElementById('att-sheet-so');
-      if (soAnalyse.trim() && champ && !champ.value.trim()) {
+      if (soAnalyse.trim() && champ && champ.value.trim().toUpperCase() !== soAnalyse.trim().toUpperCase()) {
         champ.value = soAnalyse.trim();
         attSheetCharger();
       }
@@ -1770,17 +1798,25 @@ function handleFileUpload(input) {
         }
 
         // v11.2 — onglet choisi par le SO lu (fichier ou onglet), jamais par défaut le premier.
-        const soLu = detecterSO(file.name, wb.SheetNames);
-        const choix = choisirOngletParSO(wb.SheetNames, soLu);
-        if (wb.SheetNames.length > 1) sheetSelect.value = String(choix.idx);
-        loadBOMSheet(choix.idx, file.name, zone, label);
-        if (choix.ambigu) {
-          label.innerHTML += ' <span style="color:var(--amber)">— plusieurs onglets Achats pour ' + soLu + ' : vérifiez l\'onglet</span>';
-        }
-        appliquerInfoSO(soLu).then(d => {
+        // v11.6 — sans SO dans le nom de fichier et plusieurs onglets SO : le planning tranche.
+        (async () => {
+          let soLu = String(file.name || '').match(RE_SO) ? String(file.name).match(RE_SO)[0].toUpperCase() : null;
+          let motif = null;
+          if (!soLu) {
+            const cands = wb.SheetNames.map(n => (String(n).match(RE_SO) || [null])[0]).filter(Boolean);
+            const c = await choisirSOParmi(cands);
+            soLu = c.so; motif = c.motif;
+          }
+          const choix = choisirOngletParSO(wb.SheetNames, soLu);
+          if (wb.SheetNames.length > 1) sheetSelect.value = String(choix.idx);
+          nouveauDossier(soLu);
+          loadBOMSheet(choix.idx, file.name, zone, label);
+          if (choix.ambigu) label.innerHTML += ' <span style="color:var(--amber)">— plusieurs onglets Achats pour ' + soLu + ' : vérifiez l\'onglet</span>';
+          else if (motif && /vérifier/.test(motif)) label.innerHTML += ' <span style="color:var(--amber)">— ' + motif + '</span>';
+          const d = await appliquerInfoSO(soLu);
           if (d) label.innerHTML += ' <span style="color:var(--text2)">— ' + libelleInfoSO(d) + '</span>';
           else if (soLu) label.innerHTML += ' <span style="color:var(--amber)">— ' + soLu + ' introuvable dans Odoo, client à choisir</span>';
-        });
+        })();
       } catch(err) {
         zone.className = 'upload-drop-zone';
         label.innerHTML = `<span style="color:var(--red)">Erreur lecture : ${err.message}</span>`;
