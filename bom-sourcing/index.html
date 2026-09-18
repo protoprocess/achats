@@ -420,6 +420,7 @@ tr:hover td { background: var(--surface2); }
 .row-warn td:first-child { box-shadow: inset 3px 0 0 var(--amber-badge); }
 .row-err td:first-child { box-shadow: inset 3px 0 0 var(--red-badge); }
 .row-mpnwarn td:first-child { box-shadow: inset 3px 0 0 var(--pink-badge); }
+.row-mpnmissing td:first-child { box-shadow: inset 3px 0 0 var(--red-badge); }
 
 .editable-ipn {
   font-family: var(--mono);
@@ -1097,8 +1098,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "11.6";
-const APP_DATE = "16/09/2026";
+const APP_VERSION = "12.0";
+const APP_DATE = "18/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -2561,15 +2562,23 @@ function buildBomRow(row, meta, idx) {
   const labels={sensor:'Capteur',battery:'Batterie','not-sealed':'Non étanche','msl4+':'MSL≥4'};
   const warnBadges=warns.map(w=>`<span class="badge b-warn" style="margin-bottom:2px"><i class="ti ${icons[w]||'ti-alert-triangle'}" aria-hidden="true"></i> ${labels[w]||w}</span>`).join(' ');
   const isFreeRow = (mfrFree||'').toLowerCase().trim() === 'yes';
+  // v12.0 (18/09/2026, decision Olivier) : client MPN strict + ligne SANS reference
+  // fabricant = trou a faire combler par le client. L'IPN du devis reste affiche a
+  // titre indicatif, mais la ligne n'est pas achetee tant que le client n'a pas repondu.
+  const mpnMissing = !!(activeClient.mpn_strict && !isFreeRow && !String(mpn||'').trim());
+  meta.mpnMissing = mpnMissing;
+  const missingBadge = mpnMissing
+    ? `<span class="badge b-err" style="margin-bottom:2px" title="Client MPN strict : aucune référence fabricant sur cette ligne — pas d'achat avant réponse du client"><i class="ti ti-lock-question" aria-hidden="true"></i> MPN à obtenir</span>`
+    : '';
   const mpnBadge=si.mpnWarn
     ?`<span class="badge b-strict" style="margin-bottom:2px"><i class="ti ti-lock" aria-hidden="true"></i> MPN strict</span>`
     :(activeClient.mpn_strict && isFreeRow)
       ?`<span class="badge b-ok" style="margin-bottom:2px"><i class="ti ti-check" aria-hidden="true"></i> IPN autorisé</span>`
       :'';
-  const statusBadge=status==='ok'&&!warns.length&&!si.mpnWarn
+  const statusBadge=status==='ok'&&!warns.length&&!si.mpnWarn&&!mpnMissing
     ?`<span class="badge b-ok"><i class="ti ti-check" aria-hidden="true"></i></span>`
     :status==='error'?`<span class="badge b-err"><i class="ti ti-x" aria-hidden="true"></i></span>`:'';
-  const rowClass=status==='error'?'row-err':si.mpnWarn?'row-mpnwarn':warns.length?'row-warn':'';
+  const rowClass=status==='error'?'row-err':mpnMissing?'row-mpnmissing':si.mpnWarn?'row-mpnwarn':warns.length?'row-warn':'';
   const tr=document.createElement('tr');
   tr.className=rowClass;
   tr.innerHTML=`
@@ -2583,7 +2592,7 @@ function buildBomRow(row, meta, idx) {
       </span>
     </td>
     <td>${renderStockCell(si, idx, purchaseQty)}</td>
-    <td style="vertical-align:top">${statusBadge}${mpnBadge}${warnBadges}</td>
+    <td style="vertical-align:top">${statusBadge}${missingBadge}${mpnBadge}${warnBadges}</td>
     <td style="font-size:12px">${notes}${(meta.qc_issues&&meta.qc_issues.length)?`<br><span style="color:var(--amber);font-size:11px">${meta.qc_issues.map(q=>'• '+q).join('<br>')}</span>`:''}${meta.stockNote?`<br><span style="color:var(--blue);font-size:11px">• ${meta.stockNote}</span>`:''}</td>`;
   return { tr, si };
 }
@@ -2595,6 +2604,7 @@ function rerenderBomTable(resetFilter) {
   const tbody=document.getElementById('bom-tbody');
   tbody.innerHTML='';
   let cntOk=0,cntWarn=0,cntErr=0,cntMpnWarn=0;
+  const mpnMissingList=[];   // v12.0 : reperes sans MPN chez un client strict
   const warnSummary={sensor:[],battery:[],'not-sealed':[],'msl4+':[]};
   const icons={sensor:'ti-radar',battery:'ti-battery','not-sealed':'ti-droplet-off','msl4+':'ti-moisture'};
   const wlabels={sensor:'Capteurs',battery:'Piles / batteries','not-sealed':'Composants non étanches','msl4+':'MSL niveau ≥ 4'};
@@ -2604,8 +2614,9 @@ function rerenderBomTable(resetFilter) {
     const ref=findCol(row,['designator','reference','ref']);
     const mpn=findCol(row,['mpn','manufacturer part','part number']);
     const { tr, si } = buildBomRow(row, meta, i);
+    if (meta.mpnMissing) mpnMissingList.push({ ref: ref||'?', desc: findCol(row,['value','valeur','description','desc','notes']) || '' });
     if (si.mpnWarn) cntMpnWarn++;
-    if (meta.status==='ok' && !(meta.warnings||[]).length && !si.mpnWarn) cntOk++;
+    if (meta.status==='ok' && !(meta.warnings||[]).length && !si.mpnWarn && !meta.mpnMissing) cntOk++;
     else if (meta.status==='error') cntErr++;
     else cntWarn++;
     (meta.warnings||[]).forEach(w=>{ if(warnSummary[w]) warnSummary[w].push(ref||mpn); });
@@ -2618,6 +2629,7 @@ function rerenderBomTable(resetFilter) {
     <div class="counter"><div class="counter-val" style="color:var(--green)">${cntOk}</div><div class="counter-lbl">OK</div></div>
     <div class="counter"><div class="counter-val" style="color:var(--amber)">${cntWarn}</div><div class="counter-lbl">Warnings</div></div>
     ${activeClient.mpn_strict?`<div class="counter"><div class="counter-val" style="color:var(--pink)">${cntMpnWarn}</div><div class="counter-lbl">MPN non conf.${cl}</div></div>`:''}
+    ${activeClient.mpn_strict?`<div class="counter"><div class="counter-val" style="color:var(--red)">${mpnMissingList.length}</div><div class="counter-lbl">MPN à obtenir</div></div>`:''}
     <div class="counter"><div class="counter-val" style="color:var(--red)">${cntErr}</div><div class="counter-lbl">Erreurs</div></div>`;
 
   updateFilterCounts();
@@ -2627,11 +2639,68 @@ function rerenderBomTable(resetFilter) {
   }
   applyFilter();
 
+  MPN_MISSING = mpnMissingList;
   const warnItems=Object.entries(warnSummary).filter(([,v])=>v.length);
-  document.getElementById('bom-warnings-section').innerHTML=warnItems.length?`<div class="warn-box">
+  document.getElementById('bom-warnings-section').innerHTML=(mpnMissingList.length?renderMpnMissingBox(mpnMissingList):'')+(warnItems.length?`<div class="warn-box">
     <div class="section-label" style="margin-top:0">Composants sensibles détectés</div>
     ${warnItems.map(([k,v])=>`<div class="warn-item"><i class="ti ${icons[k]}" aria-hidden="true"></i><div><strong>${wlabels[k]}</strong><br><span style="font-size:12px;color:var(--text2)">${v.join(', ')}</span></div></div>`).join('')}
-  </div>`:'';
+  </div>`:'');
+}
+
+// ============================================================
+// v12.0 (18/09/2026) — CLIENT MPN STRICT, LIGNES SANS REFERENCE FABRICANT
+// Decision Olivier : le devis peut avancer avec un IPN, mais RIEN n'est achete
+// sur ces lignes a la commande tant que le client n'a pas donne sa reference.
+// Une seule question client, groupee, creee dans FabStory sur le geste
+// "Demander au client" (jamais automatiquement) ; le mail part depuis FabStory.
+// ============================================================
+let MPN_MISSING = [];
+let MPN_QUESTION_POSEE = null;   // { so, id } pour la session : pas de doublon
+function renderMpnMissingBox(list) {
+  const so = (document.getElementById('so-reference')||{}).value || '';
+  const deja = MPN_QUESTION_POSEE && MPN_QUESTION_POSEE.so === so.trim();
+  return `<div class="warn-box" style="border-left:3px solid var(--red-badge)">
+    <div class="section-label" style="margin-top:0;color:var(--red)"><i class="ti ti-lock-question" aria-hidden="true"></i> Client MPN strict — ${list.length} repère${list.length>1?'s':''} sans référence fabricant</div>
+    <div style="font-size:12.5px;color:var(--text2);margin:4px 0 8px">Ces lignes ne sont pas achetées (quantité d'achat à 0 dans la feuille) tant que le client n'a pas indiqué sa référence. L'IPN affiché est celui du devis, à titre indicatif.</div>
+    <div class="mono" style="font-size:11.5px;color:var(--text);margin-bottom:9px">${list.map(x=>x.ref+(x.desc?' <span style="color:var(--text3)">('+x.desc+')</span>':'')).join(', ')}</div>
+    ${deja
+      ? `<span class="badge b-ok"><i class="ti ti-check" aria-hidden="true"></i> Question créée dans FabStory (n°${MPN_QUESTION_POSEE.id}) — préparer le mail client depuis FabStory</span>`
+      : `<button class="btn-p" onclick="demanderMpnClient()"><i class="ti ti-message-question" aria-hidden="true"></i> Demander au client (question groupée FabStory)</button>
+         <span id="mpn-missing-status" style="font-size:12px;color:var(--text2);margin-left:8px"></span>`}
+  </div>`;
+}
+async function demanderMpnClient() {
+  const so = ((document.getElementById('so-reference')||{}).value || '').trim();
+  const st = document.getElementById('mpn-missing-status');
+  if (!so) { alert('Renseigne le N° SO avant de créer la question : FabStory rattache la question à la commande.'); return; }
+  if (!MPN_MISSING.length) return;
+  if (!confirm('Créer UNE question client groupée dans FabStory pour ' + MPN_MISSING.length + ' repère(s) sans référence fabricant, sur ' + so + ' ?\n\nLe mail au client sera préparé ensuite depuis FabStory.')) return;
+  const lignes = MPN_MISSING.map(x => '- ' + x.ref + (x.desc ? ' : ' + x.desc : ''));
+  const texte = 'Votre nomenclature ne précise aucune référence fabricant pour les repères suivants :\n' + lignes.join('\n') +
+    '\n\nVotre règle « référence fabricant obligatoire » ne nous autorise pas à choisir un composant équivalent à votre place. ' +
+    'Merci de nous indiquer la référence fabricant à approvisionner pour chacun de ces repères.';
+  if (st) st.textContent = 'Création en cours…';
+  try {
+    const r = await fetch('https://protoprocess.app.n8n.cloud/webhook/fabstory-note', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        so_canonique: so, etape_code: 'APPRO', poles: ['COMMERCIAL'],
+        auteur: 'BOM Sourcing', source: 'bom-sourcing',
+        type: 'question_client', visible_client: true,
+        repere: MPN_MISSING.map(x => x.ref).join(', '),
+        texte_brut: texte
+      })
+    });
+    const d = await r.json();
+    if (d && d.ok && d.id) {
+      MPN_QUESTION_POSEE = { so: so, id: d.id };
+      rerenderBomTable(false);
+    } else {
+      if (st) st.textContent = 'Échec : ' + ((d && d.motif) || 'réponse inattendue') + ' — la commande ' + so + ' est-elle connue de FabStory ?';
+    }
+  } catch (e) {
+    if (st) st.textContent = 'Échec réseau : ' + e.message;
+  }
 }
 
 function renderBOMTable(rows,results) {
@@ -3009,6 +3078,8 @@ async function writeToGSheet() {
     (meta.qc_issues || []).forEach(q => lines.push('• ' + q));
     (meta.warnings || []).forEach(w => lines.push('• ⚠ ' + (WARNING_LABELS[w] || w)));
     if (meta.stockNote) lines.push('• ' + meta.stockNote);
+    // v12.0 : client MPN strict, ligne sans reference fabricant -> pas d'achat
+    if (meta.mpnMissing) lines.unshift('• ⛔ MPN À OBTENIR (client MPN strict) — ne pas acheter avant la réponse du client, quantité d\'achat mise à 0');
     row['Vigilance'] = lines.join('\n');
   });
 
@@ -3022,9 +3093,11 @@ async function writeToGSheet() {
     'Mounting','Notes','Manufacturer free','Reçus','Manquant','Stock PP','Vigilance'
   ];
   const headers = ACHATS_COLUMNS;
-  const rowsPayload = bomData.map(r => {
+  const rowsPayload = bomData.map((r, i) => {
     const obj = {};
     ACHATS_COLUMNS.forEach(c => { obj[c] = String(getColValue(r, c) || ''); });
+    // v12.0 : ligne sans MPN chez un client strict -> quantite d'achat a 0, prix a 0
+    if (rowMeta[i] && rowMeta[i].mpnMissing) { obj['Purchase qty'] = '0'; obj['Purchase price'] = '0'; }
     // Prix : les en-tetes Luminovo varient (unit price (EUR), total price, …) —
     // recherche souple, puis repli calcule qte x unitaire si le total manque.
     if (!obj['Unit price']) obj['Unit price'] = String(findCol(r, ['unit price','prix unitaire','unitprice']) || '');
