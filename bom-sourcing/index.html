@@ -1098,7 +1098,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "12.1";
+const APP_VERSION = "12.3";
 const APP_DATE = "18/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -3914,6 +3914,7 @@ async function sendChat() {
 (function(){
   const ATT_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-en-attente';
   let attData = { panier: [], fabstory: [] };
+  let attQuestions = {};   // v12.2 : cle "SO|MPN" -> question client en attente
   /* v10.2 : table SO -> produit_id (commandes_so) pour le lien direct FabStory */
   let attSoProduits = {};
   const ATT_FABSTORY_URL = 'https://protoprocess.github.io/commercial/fabstory/';
@@ -3940,6 +3941,15 @@ async function sendChat() {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       attData = { panier: d.panier || [], fabstory: d.fabstory || [] };
+      // v12.2 (18/09/2026) : questions client ENCORE EN ATTENTE (API v1.9). Elles ne
+      // font PAS de cartes (decision du 11/09 : une seule liste) -- elles servent
+      // uniquement a marquer la carte correspondante, pour ne pas redemander deux
+      // fois la meme chose au client.
+      attQuestions = {};
+      (d.questions || []).forEach(function(q){
+        if (!q || !q.so || !q.mpn) return;
+        attQuestions[String(q.so).trim().toUpperCase() + '|' + String(q.mpn).trim().toUpperCase()] = q;
+      });
       if (d.seuils_franco) attSeuils = d.seuils_franco;
       attSoProduits = d.so_produits || attSoProduits;
       window.__attLoaded = true;
@@ -3993,7 +4003,8 @@ async function sendChat() {
         fournisseur: attNorm(l['Fournisseur']),
         refFourn: attNorm(l['Ref. fournisseur']),
         montant: attPrixNum(l['Montant']),
-        produit_id: attProduitId(attNorm(l['SO']))
+        produit_id: attProduitId(attNorm(l['SO'])),
+        question: attQuestions[attNorm(l['SO']).toUpperCase() + '|' + attNorm(l['MPN']).toUpperCase()] || null
       });
     }
     for (const q of attData.fabstory) {
@@ -4030,6 +4041,19 @@ async function sendChat() {
     if (c.statut === 'Sans solution') return ['Sans solution','var(--red-bg)','var(--red-badge)'];
     if (c.statut === 'En attente') return ['En attente','var(--blue-bg)','var(--blue)'];
     return [c.statut || 'Sans statut','transparent','var(--text3)'];
+  }
+
+  /* v12.2 (18/09/2026, demande Olivier) : une question client est deja partie sur
+     cette reference -- ne pas la redemander. Cliquable vers la fiche FabStory. */
+  function attBadgeQuestion(c){
+    if (!c.question) return '';
+    const pid = c.question.produit_id || c.produit_id;
+    const j = attJours((c.question.cree_le || '').slice(0,10));
+    const txt = 'Question client' + (j != null ? ' · ' + j + ' j' : '');
+    const st = 'background:var(--amber-bg); color:var(--amber-badge); font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap; text-decoration:none;';
+    const t = 'Une question client est en attente sur cette référence (FabStory n°' + c.question.id + ') — ne pas la redemander. La réponse se lit dans FabStory.';
+    if (!pid) return '<span style="' + st + '" title="' + attEsc(t) + '"><i class="ti ti-message-question" aria-hidden="true"></i> ' + txt + '</span>';
+    return '<a target="_blank" href="' + ATT_FABSTORY_URL + '?produit=' + encodeURIComponent(pid) + '" style="' + st + '" title="' + attEsc(t) + '"><i class="ti ti-message-question" aria-hidden="true"></i> ' + txt + '</a>';
   }
 
   function attBadgeAge(c){
@@ -4226,7 +4250,7 @@ async function sendChat() {
         /* v11.5 : commentaire en bleu PP ; orange (accent) quand la ligne vient d une reponse client FabStory */
         + (c.commentaire ? '<div style="font-size:12px; color:' + (c.type === 'Reponse client' ? 'var(--blue)' : 'var(--pp-blue)') + '; margin-top:4px; white-space:pre-wrap;">' + attEsc(c.commentaire) + '</div>' : '')
         + '</div>'
-        + '<div style="display:flex; gap:6px; align-items:center;">' + attBadgeAge(c)
+        + '<div style="display:flex; gap:6px; align-items:center;">' + attBadgeQuestion(c) + attBadgeAge(c)
         + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span></div>'
         + '</div>'
         + barre
@@ -4325,6 +4349,34 @@ async function sendChat() {
   };
 
   /* ---- Section sheet achat d'une affaire ---- */
+  /* ============================================================
+     v12.3 (18/09/2026, decision Olivier) — SIGNALEMENTS DE L'APPRO
+     Le tableau de bord appro (achats/appro/ v1.4) envoie ici les lignes
+     reperees dans le scenario Luminovo (aucune offre, delai long). Il ne
+     s'adresse plus au client directement : l'ordre de travail reel est
+     Luminovo -> bom-sourcing, et une solution a pu etre trouvee entre-temps.
+     Transport : localStorage, meme origine protoprocess.github.io, donc
+     LIMITE CONNUE -- le signalement ne suit pas d'un poste a l'autre.
+     Ce n'est qu'une preselection : la donnee de reference reste la sheet.
+     ============================================================ */
+  const ATT_SIGNAL_KEY = 'pp_appro_signalements';
+  function attSignalements(so){
+    try {
+      const d = JSON.parse(localStorage.getItem(ATT_SIGNAL_KEY) || '{}');
+      const e = d[String(so||'').trim().toUpperCase()];
+      if (!e || !Array.isArray(e.mpns)) return null;
+      return e;
+    } catch(err) { return null; }
+  }
+  window.attSignalEffacer = function(so){
+    try {
+      const d = JSON.parse(localStorage.getItem(ATT_SIGNAL_KEY) || '{}');
+      delete d[String(so||'').trim().toUpperCase()];
+      localStorage.setItem(ATT_SIGNAL_KEY, JSON.stringify(d));
+    } catch(err) {}
+    attSheetRender();
+  };
+
   const ATT_SHEET_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-sheet';
   let attSheetData = null;
   let attSheetActives = [];
@@ -4393,6 +4445,10 @@ async function sendChat() {
        la consultation broker vaut rarement le coup) */
     const SEUIL_PRIX_LIGNE = 500;
     let nbChers = 0;
+    /* v12.3 : lignes signalees par l appro (MPN normalises) */
+    const sig = attSignalements(d.so);
+    const sigSet = sig ? new Set(sig.mpns.map(function(m){ return String(m||'').trim().toUpperCase(); })) : null;
+    let nbSignales = 0;
     /* Tri du process achats (Olivier 02/09) : consultations en cours puis lignes
        cheres (candidates demande de prix) en tete, le reste dans l'ordre sheet. */
     actives.forEach((l, i) => {
@@ -4412,6 +4468,8 @@ async function sendChat() {
       const prix = l._prix;
       const cher = prix >= SEUIL_PRIX_LIGNE;
       if (cher) nbChers++;
+      const signale = !!(sigSet && sigSet.has(String(l['MPN']||'').trim().toUpperCase()));
+      if (signale) nbSignales++;
       const cmdBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap;">'
         + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'' + f + '\')">' + f + '</button>').join('')
         + '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'__autre\')">autre…</button>'
@@ -4423,7 +4481,10 @@ async function sendChat() {
           ? '<span style="color:var(--amber); font-weight:500;" title="Demande de prix conseillée — un broker peut faire mieux que les distributeurs sur ce montant">' + prix.toFixed(2) + ' € <i class="ti ti-alert-triangle" aria-hidden="true"></i></span>'
           : prix.toFixed(2) + ' €')
         : '';
-      const teinte = sansSol ? ' style="background:rgba(237,147,177,0.07)"' : (cher ? ' style="background:rgba(234,182,118,0.06)"' : '');
+      const teinte = sansSol ? ' style="background:rgba(237,147,177,0.07)"' : (signale ? ' style="background:rgba(91,196,216,0.07)"' : (cher ? ' style="background:rgba(234,182,118,0.06)"' : ''));
+      const sigBadge = signale
+        ? '<span style="background:rgba(91,196,216,0.15); color:#8FD8E6; font-size:10.5px; padding:2px 7px; border-radius:20px; white-space:nowrap; margin-left:6px;" title="Repérée dans le scénario Luminovo par l\'appro — à trancher ici : autre fournisseur, ou Sans solution."><i class="ti ti-flag" aria-hidden="true"></i> appro</span>'
+        : '';
       return '<tr' + teinte + '>'
         + '<td style="padding:5px 6px;"><input type="checkbox" class="att-dp-check" data-i="' + i + '" onchange="attDpMaj()"' + (cher ? ' title="Prix élevé"' : '') + '></td>'
         + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + (fourn || '—') + '</td>'
@@ -4431,11 +4492,17 @@ async function sendChat() {
         + '<td style="padding:5px 8px; ' + (manquant && manquant !== '0' ? 'color:var(--red); font-weight:500;' : 'color:var(--text3);') + '">' + (manquant || '') + '</td>'
         + '<td style="padding:5px 8px;">' + prixHtml + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['Approved internal part number']||'') + '</td>'
-        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['MPN']||'') + '</td>'
+        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['MPN']||'') + sigBadge + '</td>'
         + '<td style="padding:5px 8px; font-size:11px;">' + (l['Supplier part number']||'') + '</td>'
         + '<td style="padding:5px 8px;">' + cmdBtn + '</td>'
         + '</tr>';
     }).join('');
+    const bandeauSig = nbSignales
+      ? '<div style="background:rgba(91,196,216,0.12); color:#8FD8E6; border-left:3px solid var(--pp-blue); border-radius:var(--radius); padding:8px 12px; font-size:12px; margin-bottom:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">'
+        + '<span><i class="ti ti-flag" aria-hidden="true"></i> ' + nbSignales + ' ligne' + (nbSignales>1?'s':'') + ' signalée' + (nbSignales>1?'s':'') + ' par l\'appro depuis Luminovo' + (sig && sig.at ? ' (' + attEsc(sig.at) + ')' : '') + ' — à trancher ici : autre fournisseur, ou « Sans solution » si rien ne convient.</span>'
+        + '<button class="btn" style="padding:3px 9px; font-size:11px;" onclick="attSignalEffacer(\'' + attEsc(d.so) + '\')">Effacer le signalement</button>'
+        + '</div>'
+      : '';
     const bandeau = nbChers
       ? '<div style="background:var(--amber-bg); color:var(--amber-badge); border-radius:var(--radius); padding:8px 12px; font-size:12px; margin-bottom:8px;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + nbChers + ' ligne' + (nbChers>1?'s':'') + ' au-dessus de ' + SEUIL_PRIX_LIGNE + ' € — une demande de prix broker peut valoir le coup : coche les lignes puis clique "Demande de prix (meilleur prix)".</div>'
       : '';
@@ -4452,7 +4519,7 @@ async function sendChat() {
         + Object.keys(parFourn).map(cle => '<button class="btn primary" style="padding:4px 10px; font-size:12px;" onclick="attPanierOuvrir(\'' + cle + '\')"><i class="ti ti-basket" aria-hidden="true"></i> ' + attPanierFormats[cle].titre + ' (' + parFourn[cle].length + ')</button>').join('')
         + '</div><div id="att-panier-panel"></div>'
       : '<div id="att-panier-panel"></div>';
-    zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + ' — ' + actives.length + ' ligne(s) à traiter' + (masquees ? ' · masquées : ' + masquees : '') + '</div>'
+    zone.innerHTML = bandeauSig + '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + ' — ' + actives.length + ' ligne(s) à traiter' + (masquees ? ' · masquées : ' + masquees : '') + '</div>'
       + bandeau
       + panierBtns
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">'
