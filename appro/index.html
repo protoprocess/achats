@@ -101,7 +101,7 @@ iframe{flex:1;width:100%;border:0;background:var(--bg)}
 <iframe id="dash" title="Tableau de bord appro"></iframe>
 <div id="fallback">Le tableau de bord ne peut pas s'afficher ici. <a id="fb" href="#" target="_blank" rel="noopener">Ouvrir le tableau de bord</a></div>
 <script>
-const APP_VERSION = "1.3";
+const APP_VERSION = "1.4";
 const APP_DATE = "18/09/2026";
 // Tableau de bord généré par le script Luminovo "appro-so" (page hébergée, mise à jour à chaque analyse).
 const DASHBOARD_URL = "https://reports.luminovo.com/r/appro-tableau-de-bord-wnIro11y7qiexgm8";
@@ -123,32 +123,39 @@ function envoyerAF() { if (!afListe || !f.contentWindow) return; f.contentWindow
 f.addEventListener("load", envoyerAF);
 chargerAF();
 setInterval(chargerAF, 5 * 60 * 1000);
-// v1.3 (18/09/2026) — « Signaler au client » depuis une page carte appro-so (v2.17) : la page carte,
-// hébergée chez Luminovo, n'a pas le code d'accès n8n ; elle envoie les lignes cochées ici, et c'est cette
-// page qui crée UNE question client groupée dans FabStory (modèle rupture), rattachée au SO.
-const FABSTORY_NOTE_URL = "https://protoprocess.app.n8n.cloud/webhook/fabstory-note";
-window.addEventListener("message", async function (e) {
+// v1.4 (18/09/2026, decision Olivier) — « Envoyer vers BOM Sourcing ».
+// v1.3 ecrivait directement au client. Or l'ordre de travail reel est
+// Luminovo -> bom-sourcing : une reference indisponible dans le scenario a
+// souvent ete reglee entre-temps. La page carte (appro-so v2.17, hebergee chez
+// Luminovo) envoie donc ses lignes cochees ICI, et cette page les depose pour
+// bom-sourcing, qui les marque « appro » dans l'onglet Achats. C'est LA qu'on
+// tranche : autre fournisseur, ou « Sans solution » (qui, lui, ecrit au client).
+// Transport : localStorage, meme origine protoprocess.github.io. LIMITE CONNUE :
+// le signalement ne suit pas d'un poste a l'autre. Simple preselection, la
+// donnee de reference reste la sheet achat.
+const SIGNAL_KEY = "pp_appro_signalements";
+window.addEventListener("message", function (e) {
   if (e.origin !== "https://reports.luminovo.com") return;
   const d = e.data || {};
   if (d.type !== "pp-appro-signaler" || !Array.isArray(d.lignes) || !d.lignes.length) return;
   const repondre = r => { try { f.contentWindow.postMessage(Object.assign({ type: "pp-appro-signale" }, r), "https://reports.luminovo.com"); } catch (err) {} };
   const so = String(d.so || "").trim();
   if (!so) { repondre({ ok: false, motif: "SO inconnu sur la page carte" }); return; }
-  const delai = l => (l.flags || []).some(x => /stock_critique|statut_error|statut_notsourced/.test(x))
-    ? "aucune offre en stock chez nos distributeurs"
-    : (l.days != null ? "délai " + l.days + " jours" + (l.supplier ? " chez " + l.supplier : "") : "délai non garanti");
-  const lignes = d.lignes.map(l => "- " + l.mpn + (l.manufacturer ? " (" + l.manufacturer + ")" : "") + (l.desc ? " — " + l.desc : "") + (l.need != null ? " — besoin " + l.need : "") + " : " + delai(l));
-  const texte = "Les références suivantes ne sont pas disponibles ou hors délai chez nos distributeurs :\n" + lignes.join("\n") +
-    "\n\nMerci de nous indiquer, pour chacune, si vous pouvez nous fournir le composant, valider une alternative, ou accepter le délai.";
-  if (!confirm("Créer UNE question client groupée dans FabStory sur " + so + " (" + d.lignes.length + " référence" + (d.lignes.length > 1 ? "s" : "") + ") ?\n\n" + texte + "\n\nLe mail au client sera préparé ensuite depuis FabStory.")) { repondre({ ok: false, motif: "annulé" }); return; }
+  const mpns = d.lignes.map(l => String(l.mpn || "").trim()).filter(Boolean);
+  if (!mpns.length) { repondre({ ok: false, motif: "aucune référence exploitable" }); return; }
+  if (!confirm("Envoyer " + mpns.length + " référence" + (mpns.length > 1 ? "s" : "") + " vers BOM Sourcing (" + so + ") ?\n\n" + mpns.join("\n") + "\n\nElles y seront marquées « appro ». C'est là que tu décides : autre fournisseur, ou « Sans solution » (qui écrit au client).")) { repondre({ ok: false, motif: "annulé" }); return; }
   try {
-    const r = await fetch(FABSTORY_NOTE_URL, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ so_canonique: so, etape_code: "APPRO", poles: ["COMMERCIAL"], auteur: "Appro", source: "appro-so",
-        type: "question_client", visible_client: true, mpn: d.lignes.map(l => l.mpn).join(", "), texte_brut: texte }) });
-    const j = await r.json();
-    if (j && j.ok && j.id) repondre({ ok: true, id: j.id });
-    else repondre({ ok: false, motif: (j && j.motif) || "réponse inattendue — la commande " + so + " est-elle connue de FabStory ?" });
-  } catch (err) { repondre({ ok: false, motif: "réseau : " + err.message }); }
+    const store = JSON.parse(localStorage.getItem(SIGNAL_KEY) || "{}");
+    const cle = so.toUpperCase();
+    const avant = (store[cle] && Array.isArray(store[cle].mpns)) ? store[cle].mpns : [];
+    const fusion = Array.from(new Set(avant.concat(mpns).map(m => m.trim()).filter(Boolean)));
+    const n = new Date();
+    store[cle] = { mpns: fusion, at: n.toLocaleDateString("fr-FR") + " " + n.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) };
+    localStorage.setItem(SIGNAL_KEY, JSON.stringify(store));
+    repondre({ ok: true, id: fusion.length, cible: "bom-sourcing" });
+  } catch (err) {
+    repondre({ ok: false, motif: "stockage local indisponible : " + err.message });
+  }
 });
 // Pas de détection automatique : une page cross-origin n'est pas inspectable, et un faux positif masquait l'iframe (v1.0).
 // Si le tableau de bord n'apparaît pas, utiliser "Ouvrir en plein écran".
