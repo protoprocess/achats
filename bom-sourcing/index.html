@@ -1098,7 +1098,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "12.0";
+const APP_VERSION = "12.1";
 const APP_DATE = "18/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -2661,7 +2661,7 @@ function renderMpnMissingBox(list) {
   const deja = MPN_QUESTION_POSEE && MPN_QUESTION_POSEE.so === so.trim();
   return `<div class="warn-box" style="border-left:3px solid var(--red-badge)">
     <div class="section-label" style="margin-top:0;color:var(--red)"><i class="ti ti-lock-question" aria-hidden="true"></i> Client MPN strict — ${list.length} repère${list.length>1?'s':''} sans référence fabricant</div>
-    <div style="font-size:12.5px;color:var(--text2);margin:4px 0 8px">Ces lignes ne sont pas achetées (quantité d'achat à 0 dans la feuille) tant que le client n'a pas indiqué sa référence. L'IPN affiché est celui du devis, à titre indicatif.</div>
+    <div style="font-size:12.5px;color:var(--text2);margin:4px 0 8px">Ces lignes ne sont pas commandées (fournisseur préfixé <code>?</code> dans la feuille achat, quantité conservée) tant que le client n'a pas indiqué sa référence. L'IPN affiché est celui du devis, à titre indicatif.</div>
     <div class="mono" style="font-size:11.5px;color:var(--text);margin-bottom:9px">${list.map(x=>x.ref+(x.desc?' <span style="color:var(--text3)">('+x.desc+')</span>':'')).join(', ')}</div>
     ${deja
       ? `<span class="badge b-ok"><i class="ti ti-check" aria-hidden="true"></i> Question créée dans FabStory (n°${MPN_QUESTION_POSEE.id}) — préparer le mail client depuis FabStory</span>`
@@ -3079,7 +3079,7 @@ async function writeToGSheet() {
     (meta.warnings || []).forEach(w => lines.push('• ⚠ ' + (WARNING_LABELS[w] || w)));
     if (meta.stockNote) lines.push('• ' + meta.stockNote);
     // v12.0 : client MPN strict, ligne sans reference fabricant -> pas d'achat
-    if (meta.mpnMissing) lines.unshift('• ⛔ MPN À OBTENIR (client MPN strict) — ne pas acheter avant la réponse du client, quantité d\'achat mise à 0');
+    if (meta.mpnMissing) lines.unshift('• ⛔ MPN À OBTENIR (client MPN strict) — ne pas commander avant la réponse du client (fournisseur préfixé ?)');
     row['Vigilance'] = lines.join('\n');
   });
 
@@ -3096,8 +3096,13 @@ async function writeToGSheet() {
   const rowsPayload = bomData.map((r, i) => {
     const obj = {};
     ACHATS_COLUMNS.forEach(c => { obj[c] = String(getColValue(r, c) || ''); });
-    // v12.0 : ligne sans MPN chez un client strict -> quantite d'achat a 0, prix a 0
-    if (rowMeta[i] && rowMeta[i].mpnMissing) { obj['Purchase qty'] = '0'; obj['Purchase price'] = '0'; }
+    // v12.1 (retour Olivier) : ligne sans MPN chez un client strict -> la QUANTITE
+    // reste (elle est connue), c'est le FOURNISSEUR qui bloque : prefixe ? comme
+    // le bouton Sans solution. L'acheteur retire le ? quand le MPN arrive.
+    if (rowMeta[i] && rowMeta[i].mpnMissing) {
+      const f = String(obj['Supplier'] || '').trim();
+      obj['Supplier'] = f ? (f.startsWith('?') ? f : '?' + f) : '? MPN à obtenir';
+    }
     // Prix : les en-tetes Luminovo varient (unit price (EUR), total price, …) —
     // recherche souple, puis repli calcule qte x unitaire si le total manque.
     if (!obj['Unit price']) obj['Unit price'] = String(findCol(r, ['unit price','prix unitaire','unitprice']) || '');
