@@ -213,7 +213,7 @@ td.num input{text-align:right}
 
 <script>
 "use strict";
-const APP_VERSION = "v1.1", APP_DATE = "31/07/2026";
+const APP_VERSION = "v1.2", APP_DATE = "21/09/2026";
 const BASE = "https://protoprocess.app.n8n.cloud";
 const MODE_TEST = new URLSearchParams(location.search).get("test") === "1";
 const PREFIX = MODE_TEST ? "/webhook-test/" : "/webhook/";
@@ -848,5 +848,6 @@ function doublon(d) {
 })();
 </script>
 
+<script src="../shared/retour-accueil.js" defer></script>
 </body>
 </html>
