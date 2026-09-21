@@ -444,8 +444,8 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "3.0";
-const APP_DATE = "21/08/2026";
+const APP_VERSION = "3.1";
+const APP_DATE = "21/09/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1367,5 +1367,6 @@ chargerSuivi();
 })();
 </script>
 
+<script src="../shared/retour-accueil.js" defer></script>
 </body>
 </html>
