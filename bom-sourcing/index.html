@@ -894,6 +894,7 @@ tr:hover td { background: var(--surface2); }
             <i class="ti ti-send" aria-hidden="true"></i> Écrire dans GSheet achat
           </button>
           <div id="gsheet-write-status" style="font-size:12px; width:100%;"></div>
+          <div id="fourn-avis" style="display:none; width:100%;"></div>
         </div>
       </div>
 
@@ -1099,8 +1100,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "12.5";
-const APP_DATE = "21/09/2026";
+const APP_VERSION = "12.6";
+const APP_DATE = "22/09/2026";
 document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1294,6 +1295,7 @@ async function appliquerInfoSO(so) {
 // (message d'écriture GSheet, onglet Achats), sinon on croit lire l'affaire en cours.
 function nouveauDossier(so) {
   const st = document.getElementById('gsheet-write-status'); if (st) st.innerHTML = '';
+  fournChoix = null; const fa = document.getElementById('fourn-avis'); if (fa) { fa.style.display = 'none'; fa.innerHTML = ''; }
   const champ = document.getElementById('att-sheet-so');
   if (champ && (champ.value || '').trim().toUpperCase() !== String(so || '').toUpperCase()) {
     champ.value = ''; // vidé : l'onglet Achats rechargera l'affaire courante à l'ouverture (switchTab)
@@ -1312,6 +1314,7 @@ let mouserKey = "";
 let farnellKey = "";
 let proxyUrl = "";
 let writerUrl = "";
+let fournChoix = null;   // v12.6 (ch.171) : [{cle, motif}] des fournitures client a MASQUER sur FabStory, null = pas encore vu
 let webhookUrl = "";
 
 function switchTab(name) {
@@ -2981,6 +2984,54 @@ function parseLuminovoFilename(filename) {
 
 
 
+// v12.6 (ch.171) : avis « N fournitures client » avant l ecriture de la feuille achat.
+// Toutes cochees = reportees sur FabStory (defaut). Decochee = masquee au client, motif obligatoire.
+function afficherAvisFournitures(lignes, statusEl) {
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const z = document.getElementById('fourn-avis');
+  if (!z) { fournChoix = []; writeToGSheet(); return; }
+  statusEl.innerHTML = '';
+  const n = lignes.length;
+  let h = '<div style="margin-top:10px; padding:12px 14px; background:var(--amber-bg); border:1px solid #e0b96b; border-radius:var(--radius); color:var(--amber-badge);">'
+    + '<div style="display:flex; gap:9px; align-items:flex-start;"><i class="ti ti-alert-triangle" style="font-size:18px; margin-top:1px;" aria-hidden="true"></i><div style="flex:1; min-width:0;">'
+    + '<div style="font-size:13px; font-weight:600;">' + n + ' fourniture' + (n > 1 ? 's' : '') + ' client dans cette feuille</div>'
+    + '<div style="font-size:12px; margin-top:2px;">Elle' + (n > 1 ? 's seront reportées' : ' sera reportée') + ' sur le suivi FabStory du client. Décochez celles qu\u2019il ne doit pas voir (motif obligatoire).</div>'
+    + '<div style="margin-top:9px; display:flex; flex-direction:column; gap:7px;">';
+  lignes.forEach((l, i) => {
+    h += '<div><label style="display:flex; gap:8px; align-items:center; margin:0; font-size:12.5px; color:var(--amber-badge); font-weight:400; cursor:pointer;">'
+      + '<input type="checkbox" checked data-cle="' + esc(l.cle) + '" onchange="fournCoche(this)">'
+      + '<span style="font-family:var(--mono);">' + esc(l.cle) + '</span>' + (l.qte ? '<span style="opacity:0.7;">\u00d7 ' + esc(l.qte) + '</span>' : '') + '</label>'
+      + '<input type="text" class="fourn-motif" data-cle="' + esc(l.cle) + '" maxlength="120" placeholder="Motif (obligatoire), ex : pas une fourniture client" style="display:none; margin:5px 0 0 24px; width:min(100%,420px); font-size:12px; padding:5px 8px; border:1px solid #e0b96b; border-radius:6px; background:var(--surface); color:var(--text);"></div>';
+  });
+  h += '</div><div style="margin-top:11px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">'
+    + '<button class="btn" onclick="fournValider()" style="background:var(--green-badge); color:white; border-color:transparent;"><i class="ti ti-send" aria-hidden="true"></i> \u00c9crire la feuille achat</button>'
+    + '<span id="fourn-avis-err" style="font-size:12px; color:var(--red);"></span></div></div></div></div>';
+  z.innerHTML = h;
+  z.style.display = 'block';
+}
+function fournCoche(cb) {
+  const inp = cb.closest('div').querySelector('.fourn-motif');
+  if (inp) { inp.style.display = cb.checked ? 'none' : 'block'; if (!cb.checked) inp.focus(); }
+  const e = document.getElementById('fourn-avis-err'); if (e) e.textContent = '';
+}
+function fournValider() {
+  const z = document.getElementById('fourn-avis');
+  const err = document.getElementById('fourn-avis-err');
+  const choix = [];
+  let manque = null;
+  z.querySelectorAll('input[type=checkbox][data-cle]').forEach(cb => {
+    if (cb.checked) return;
+    const inp = z.querySelector('.fourn-motif[data-cle="' + cb.dataset.cle.replace(/"/g, '\\"') + '"]');
+    const motif = inp ? inp.value.trim() : '';
+    if (!motif) { if (!manque) manque = cb.dataset.cle; return; }
+    choix.push({ cle: cb.dataset.cle, motif });
+  });
+  if (manque) { if (err) err.textContent = 'Motif manquant pour ' + manque; return; }
+  fournChoix = choix;
+  z.style.display = 'none'; z.innerHTML = '';
+  writeToGSheet();
+}
+
 function showGSheetBar(filename) {
   const bar = document.getElementById('gsheet-write-bar');
   if (!bar || !writerUrl) return;
@@ -3116,6 +3167,22 @@ async function writeToGSheet() {
     return obj;
   });
 
+  // v12.6 (ch.171, decision Olivier 21/09) : les lignes SANS fournisseur (ou « client ») sont des
+  // fournitures client : elles seront reportees sur le suivi FabStory du client. Avant d ecrire,
+  // on le dit et on laisse decocher celles qu il ne doit pas voir (motif obligatoire).
+  const lignesClient = [];
+  rowsPayload.forEach(o => {
+    const f = String(o['Supplier'] || '').trim().toLowerCase();
+    if (f !== '' && f !== 'client') return;
+    const cle = (String(o['MPN'] || '').trim() || String(o['Approved internal part number'] || '').trim()).toUpperCase();
+    if (!cle || lignesClient.some(x => x.cle === cle)) return;
+    lignesClient.push({ cle, qte: o['Purchase qty'] || o['Aggregated qty'] || '' });
+  });
+  if (lignesClient.length && fournChoix === null) {
+    afficherAvisFournitures(lignesClient, statusEl);
+    return;
+  }
+  const fournituresMasquees = Array.isArray(fournChoix) ? fournChoix : [];
 
   // Build warnings summary from rowMeta
   const warningsSummary = { sensor:[], battery:[], 'not-sealed':[], 'msl4+':[], error:[], uncodified:[] };
@@ -3148,7 +3215,9 @@ async function writeToGSheet() {
         client: parsed?.client || '',
         carte: parsed?.carte || '',
         headers, rows: rowsPayload,
-        warnings: warningsSummary
+        warnings: warningsSummary,
+        fournitures_masquees: fournituresMasquees,
+        auteur: 'BOM Sourcing'
       })
     });
     const text = await resp.text();
@@ -3167,6 +3236,7 @@ async function writeToGSheet() {
       // client. apprendreAlias() se protège seule (libellé connu, alias déjà pris,
       // pas de client actif → no-op ; conflit géré côté serveur).
       try { apprendreAlias(); } catch(e) {}
+      fournChoix = null; const fa2 = document.getElementById('fourn-avis'); if (fa2) { fa2.style.display = 'none'; fa2.innerHTML = ''; }
     } else if (result.reason === 'not_found') {
       statusEl.innerHTML = '<span style="color:var(--red)">Aucune GSheet trouvée pour le SO "' + so + '"</span>';
     } else if (result.reason === 'ambiguous') {
