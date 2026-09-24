@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BOM Sourcing — Codification &amp; Vérification Qualité — v1.2 — 25/07/2026</title>
+<title>Achats PP — v13.2 — 24/09/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
 :root {
@@ -685,11 +685,11 @@ tr:hover td { background: var(--surface2); }
 
 
 
-<div style="background:#2a1f10;color:#eab676;font-size:12px;padding:6px 18px;border-bottom:.5px solid #4a3418"><b>RECETTE</b> — copie de test de BOM Sourcing (panier : « J'ai commandé » branché, copie des SO, panier gardé ; sheet mise en forme à l'écriture). Les écritures sont réelles. La prod est <a href="../" style="color:#F07B1F">ici</a>.</div>
+<div style="background:#2a1f10;color:#eab676;font-size:12px;padding:6px 18px;border-bottom:.5px solid #4a3418"><b>RECETTE</b> — copie de test d'Achats PP, ex-BOM Sourcing (onglet Commandes = ex-page Analyse Achats ; panier : « J'ai commandé » branché, copie des SO, panier gardé ; sheet mise en forme à l'écriture). Les écritures sont réelles. La prod est <a href="../" style="color:#F07B1F">ici</a>.</div>
 <header>
   <div class="logo">
     <img src="../../shared/picto-pp.png" alt="Proto Process" width="24" height="24" style="object-fit:contain" onerror="this.style.display='none'">
-    <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">BOM Sourcing</span></span>
+    <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">Achats PP</span></span>
   </div>
   <div class="header-chips" id="header-chips"></div>
   <span class="hdr-note" id="hdr-version">v1.2 — 25/07/2026</span>
@@ -793,15 +793,29 @@ tr:hover td { background: var(--surface2); }
     </div>
 
     <div class="tabs">
-      <button class="tab active" onclick="switchTab('bom')">Analyse BOM</button>
-      <button class="tab" onclick="switchTab('codif')">Codification IPN</button>
-      <button class="tab" onclick="switchTab('config')">Règles &amp; Config</button>
-      <button class="tab" onclick="switchTab('achats')">Achats</button>
-      <button class="tab" onclick="switchTab('attente')">En attente <span id="att-tab-badge" style="display:none; background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 7px; font-size:11px; margin-left:4px;"></span></button>
+      <button class="tab active" data-tab="cmd" onclick="switchTab('cmd')">Commandes</button>
+      <button class="tab" data-tab="bom" onclick="switchTab('bom')">Analyse BOM</button>
+      <button class="tab" data-tab="achats" onclick="switchTab('achats')">Achats</button>
+      <button class="tab" data-tab="attente" onclick="switchTab('attente')">En attente <span id="att-tab-badge" style="display:none; background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 7px; font-size:11px; margin-left:4px;"></span></button>
+      <button class="tab" data-tab="codif" onclick="switchTab('codif')">Codification IPN</button>
+      <button class="tab" data-tab="config" onclick="switchTab('config')">Règles &amp; Config</button>
+    </div>
+
+    <!-- COMMANDES TAB (v13.2 : ex-page achats/appro/, tableau de bord Luminovo des SO « AF ») -->
+    <div class="panel active" id="tab-cmd">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--text2)">Commandes à approvisionner : analyse Luminovo lancée automatiquement à chaque commande validée (« AF » au planning). Une carte par SO : prix vs devis, délai, stock critique.</span>
+        <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span class="hdr-note" id="cmd-maj-info"></span>
+          <button class="btn sm" type="button" id="cmd-maj" title="Relire la liste des SO « AF » du planning et recharger le tableau de bord"><i class="ti ti-refresh" aria-hidden="true"></i> Actualiser</button>
+          <a class="btn sm" id="cmd-open" href="#" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Plein écran</a>
+        </span>
+      </div>
+      <iframe id="cmd-dash" title="Tableau de bord appro" style="width:100%;height:calc(100vh - 230px);min-height:520px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg)"></iframe>
     </div>
 
     <!-- BOM TAB -->
-    <div class="panel active" id="tab-bom">
+    <div class="panel" id="tab-bom">
       <div id="bom-import-zone">
       <!-- BOM SOURCE: Upload ou URL ou paste -->
       <div class="card" style="margin-bottom:12px;">
@@ -1100,7 +1114,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "13.1-recette";
+const APP_VERSION = "13.2-recette";
 const APP_DATE = "24/09/2026";
 /* COPIE DE RECETTE (24/09/2026) — base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
@@ -1111,8 +1125,37 @@ const APP_DATE = "24/09/2026";
    (doublon de « J ai commande ») ; une seule demande de prix, texte neutre ; filtre au-dessus du tableau ;
    tableau defilant avec en-tete fixe ; liens fiche produit DigiKey/Mouser ; menu bascule manuelle raccourci.
    Chemins partages en ../../shared/. */
-document.title = `RECETTE — BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
+document.title = `RECETTE — Achats PP — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
+
+/* ===== v13.2 — onglet Commandes (ex achats/appro/ v1.5) =====
+   Tableau de bord généré par le script Luminovo « appro-so » (page hébergée, mise à jour à chaque analyse).
+   La liste des SO encore « AF » au planning est lue via n8n (appro-af) à l'ouverture puis sur « Actualiser »
+   seulement (pas de réveil périodique : quota n8n), et transmise à l'iframe qui masque les cartes passées EC.
+   L'en-tête X-PP-Auth est posé par le bloc d'accès (interception de fetch). */
+(function(){
+  const DASHBOARD_URL = "https://reports.luminovo.com/r/appro-tableau-de-bord-wnIro11y7qiexgm8";
+  const AF_URL = "https://protoprocess.app.n8n.cloud/webhook/appro-af";
+  const f = document.getElementById("cmd-dash"), btn = document.getElementById("cmd-maj"), info = document.getElementById("cmd-maj-info");
+  if (!f) return;
+  document.getElementById("cmd-open").href = DASHBOARD_URL;
+  f.src = DASHBOARD_URL;
+  let afListe = null;
+  async function chargerAF() {
+    try { const r = await fetch(AF_URL); const d = await r.json(); if (d && Array.isArray(d.af)) afListe = { af: d.af, at: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) }; } catch (e) { afListe = null; }
+    envoyerAF();
+    info.textContent = afListe ? ("AF relus à " + afListe.at + " (" + afListe.af.length + " SO)") : "liste AF indisponible";
+  }
+  function envoyerAF() { if (!afListe || !f.contentWindow) return; try { f.contentWindow.postMessage({ type: "pp-appro-af", af: afListe.af, at: afListe.at }, "https://reports.luminovo.com"); } catch (e) {} }
+  f.addEventListener("load", envoyerAF);
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; info.textContent = "…";
+    await chargerAF();
+    f.src = DASHBOARD_URL + "?t=" + Date.now();
+    setTimeout(() => { btn.disabled = false; }, 3000);
+  });
+  chargerAF();
+})();
 
 const DEFAULT_RULES_BOM = {
   capacitor: `Format: C(valeur)-(boitier)-(tensionV)-(tolP)-(diélectrique)
@@ -1327,9 +1370,9 @@ let fournChoix = null;   // v12.6 (ch.171) : [{cle, motif}] des fournitures clie
 let webhookUrl = "";
 
 function switchTab(name) {
-  const names = ['bom','codif','config','achats','attente'];
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
-  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', names[i]===name));
+  // v13.2 : sélection par nom (data-tab / id), plus par position — permet de réordonner les onglets librement
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
   if ((name === 'attente' || name === 'achats') && !window.__attLoaded) { attCharger(); }
   /* Enchainement analyse -> achats : pre-remplit le SO de l'affaire en cours */
   if (name === 'achats') {
@@ -3861,7 +3904,7 @@ async function sendChat() {
 <div id="help-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:2000; align-items:center; justify-content:center;">
   <div style="background:var(--surface); border-radius:var(--radius-lg); padding:2rem; max-width:700px; width:calc(100vw - 40px); max-height:80vh; overflow-y:auto; position:relative; box-shadow:0 16px 48px rgba(0,0,0,0.2);">
     <button onclick="document.getElementById('help-overlay').style.display='none'" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2)"><i class="ti ti-x"></i></button>
-    <h2 style="font-size:18px;font-weight:600;margin-bottom:4px">BOM Sourcing — Guide rapide</h2>
+    <h2 style="font-size:18px;font-weight:600;margin-bottom:4px">Achats PP — Guide rapide</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.5rem">Outil de codification et de vérification qualité des BOM Luminovo pour la production. La codification et la vérification croisée (Digikey/Mouser/Gemini) sont gérées par N8N.</p>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem">
