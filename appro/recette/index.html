@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appro — tableau de bord</title>
+<style>
+:root{--bg:#0a0c12;--surface:#1a2030;--border:#262e42;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--accent:#F07B1F;--radius:6px;--mono:"SF Mono","Cascadia Code",Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:13px/1.45 var(--sans);display:flex;flex-direction:column}
+header{background:#0f1117;height:52px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--border);flex:none}
+.logo-text{display:flex;align-items:center;font-size:13px;font-weight:500}.lt{color:#fff}.ls{color:#444;margin:0 3px}.lo{color:var(--accent)}
+.actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn-s{padding:6px 13px;background:transparent;color:var(--text2);border:.5px solid var(--border);border-radius:var(--radius);font-size:12px;text-decoration:none}
+.btn-s:hover{color:var(--text);border-color:var(--text3)}
+.btn-p{padding:6px 13px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);font-size:12px;font-weight:500;cursor:pointer}
+.btn-p:disabled{opacity:.5;cursor:default}
+.ver{color:var(--text3);font-size:11px;font-family:var(--mono)}
+iframe{flex:1;width:100%;border:0;background:var(--bg)}
+#fallback{display:none;padding:24px;color:var(--text2)}#fallback a{color:var(--accent)}
+</style>
+</head>
+<body>
+<!-- ===== ACCES PROTO PROCESS ===== -->
+<script>
+(function(){
+  var KEY='pp_access_code', HDR='X-PP-Auth', HOST='protoprocess.app.n8n.cloud';
+  function get(){try{return localStorage.getItem(KEY)||''}catch(e){return ''}}
+  function set(v){try{localStorage.setItem(KEY,v)}catch(e){}}
+  function del(){try{localStorage.removeItem(KEY)}catch(e){}}
+
+  /* 1) Interception installee EN PREMIER : ne depend d'aucun element HTML */
+  var _f = window.fetch;
+  window.fetch = function(input, init){
+    var url = '';
+    try { url = (typeof input === 'string') ? input : ((input && input.url) || ''); } catch(e){}
+    if (url.indexOf(HOST) === -1) { return _f.apply(this, arguments); }
+    init = init || {};
+    try { var h = new Headers(init.headers || {}); h.set(HDR, get()); init.headers = h; } catch(e){}
+    return _f.call(this, input, init).then(function(r){
+      if (r && (r.status === 401 || r.status === 403)) { del(); demander("Code d'acces refuse. Ressaisissez-le."); }
+      return r;
+    });
+  };
+
+  /* 2) Ecran construit en JS : aucune dependance au HTML de l'appli */
+  var box = null;
+  function construire(){
+    if (box) return box;
+    box = document.createElement('div');
+    box.id = 'pp-gate';
+    box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0a0c12;display:none;'
+      + 'align-items:center;justify-content:center;padding:20px;'
+      + 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif';
+    box.innerHTML =
+      '<div style="background:#1a2030;border:1px solid #262e42;border-radius:10px;padding:26px;max-width:380px;width:100%">'
+      + '<div style="font-size:13px;font-weight:500;margin-bottom:14px">'
+      +   '<span style="color:#fff">PROTO PROCESS</span><span style="color:#444;margin:0 3px">/</span>'
+      +   '<span style="color:#F07B1F">Acces</span></div>'
+      + '<div style="font-size:12.5px;color:#94a3b8;line-height:1.55;margin-bottom:16px">'
+      +   "Saisissez le code d'acces interne. Il ne vous sera demande qu'une fois sur cet appareil.</div>"
+      + '<input id="pp-in" type="password" placeholder="Code d acces" autocomplete="off" '
+      +   'style="width:100%;background:#161b27;border:1px solid #262e42;border-radius:6px;color:#e2e8f0;'
+      +   'padding:9px 11px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">'
+      + '<div id="pp-err" style="font-size:12px;color:#f09595;margin-top:9px;min-height:16px"></div>'
+      + '<button id="pp-btn" style="width:100%;margin-top:12px;padding:9px;background:#F07B1F;color:#fff;'
+      +   'border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Valider</button>'
+      + '</div>';
+    document.body.appendChild(box);
+    var inp = box.querySelector('#pp-in'), btn = box.querySelector('#pp-btn');
+    btn.addEventListener('click', function(){
+      var v = (inp.value || '').trim();
+      if (!v) { box.querySelector('#pp-err').textContent = 'Code requis.'; return; }
+      set(v); inp.value = ''; box.style.display = 'none'; location.reload();
+    });
+    inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') { btn.click(); } });
+    return box;
+  }
+
+  function demander(msg){
+    if (!document.body) { document.addEventListener('DOMContentLoaded', function(){ demander(msg); }); return; }
+    var b = construire();
+    b.querySelector('#pp-err').textContent = msg || '';
+    b.style.display = 'flex';
+    setTimeout(function(){ try { b.querySelector('#pp-in').focus(); } catch(e){} }, 50);
+  }
+
+  window.ppChangerCode = function(){ del(); demander(''); };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ if (!get()) demander(''); });
+  } else if (!get()) { demander(''); }
+})();
+</script>
+<!-- ===== FIN ACCES ===== -->
+<header>
+  <img src="../../shared/picto-pp.png" alt="Proto Process" width="24" height="24" style="object-fit:contain" onerror="this.style.display='none'">
+  <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">Appro — tableau de bord <span style="color:var(--amber)">RECETTE</span></span></span>
+  <div class="actions">
+    <button class="btn-p" id="maj" type="button" title="Relire la liste des SO « AF » du planning et recharger le tableau de bord">⟳ Actualiser</button>
+    <span class="ver" id="maj-info"></span>
+    <a class="btn-s" id="open" href="#" target="_blank" rel="noopener">Ouvrir en plein écran</a>
+    <span class="ver" id="ver"></span>
+  </div>
+</header>
+<iframe id="dash" title="Tableau de bord appro"></iframe>
+<div id="fallback">Le tableau de bord ne peut pas s'afficher ici. <a id="fb" href="#" target="_blank" rel="noopener">Ouvrir le tableau de bord</a></div>
+<script>
+const APP_VERSION = "1.5";
+const APP_DATE = "24/09/2026";
+// Tableau de bord généré par le script Luminovo "appro-so" (page hébergée, mise à jour à chaque analyse).
+const DASHBOARD_URL = "https://reports.luminovo.com/r/appro-tableau-de-bord-wnIro11y7qiexgm8";
+document.title += " — v" + APP_VERSION;
+document.getElementById("ver").textContent = "v" + APP_VERSION + " — " + APP_DATE;
+document.getElementById("open").href = DASHBOARD_URL;
+document.getElementById("fb").href = DASHBOARD_URL;
+const f = document.getElementById("dash");
+f.src = DASHBOARD_URL;
+// v1.2 — filtre en direct : la liste des SO encore "AF" au planning est lue via n8n à chaque ouverture,
+// puis transmise au tableau de bord (iframe) qui masque les cartes passées EC et recompte.
+const AF_URL = "https://protoprocess.app.n8n.cloud/webhook/appro-af";
+let afListe = null;
+async function chargerAF() {
+  try { const r = await fetch(AF_URL); const d = await r.json(); if (d && Array.isArray(d.af)) afListe = { af: d.af, at: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) }; } catch (e) { afListe = null; }
+  envoyerAF();
+}
+function envoyerAF() { if (!afListe || !f.contentWindow) return; f.contentWindow.postMessage({ type: "pp-appro-af", af: afListe.af, at: afListe.at }, "https://reports.luminovo.com"); }
+f.addEventListener("load", envoyerAF);
+// v1.5 (24/09/2026, décision Olivier) — plus de réveil toutes les 5 min (≈ 96 exécutions n8n par jour et par onglet ouvert) :
+// la liste AF est lue à l'ouverture, puis seulement sur le bouton « Actualiser », qui recharge aussi le tableau de bord.
+// L'analyse d'une commande validée est désormais lancée par n8n dès la pose de « AF » au planning (workflow « PP — Appro : lancer analyse SO »).
+const btnMaj = document.getElementById("maj"), majInfo = document.getElementById("maj-info");
+async function actualiser() {
+  btnMaj.disabled = true; majInfo.textContent = "…";
+  await chargerAF();
+  f.src = DASHBOARD_URL + (DASHBOARD_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
+  majInfo.textContent = afListe ? ("AF relus à " + afListe.at + " (" + afListe.af.length + " SO)") : "liste AF indisponible";
+  setTimeout(() => { btnMaj.disabled = false; }, 3000);
+}
+btnMaj.addEventListener("click", actualiser);
+chargerAF().then(() => { if (afListe) majInfo.textContent = "AF lus à " + afListe.at + " (" + afListe.af.length + " SO)"; });
+// v1.4 (18/09/2026, decision Olivier) — « Envoyer vers BOM Sourcing ».
+// v1.3 ecrivait directement au client. Or l'ordre de travail reel est
+// Luminovo -> bom-sourcing : une reference indisponible dans le scenario a
+// souvent ete reglee entre-temps. La page carte (appro-so v2.17, hebergee chez
+// Luminovo) envoie donc ses lignes cochees ICI, et cette page les depose pour
+// bom-sourcing, qui les marque « appro » dans l'onglet Achats. C'est LA qu'on
+// tranche : autre fournisseur, ou « Sans solution » (qui, lui, ecrit au client).
+// Transport : localStorage, meme origine protoprocess.github.io. LIMITE CONNUE :
+// le signalement ne suit pas d'un poste a l'autre. Simple preselection, la
+// donnee de reference reste la sheet achat.
+const SIGNAL_KEY = "pp_appro_signalements";
+window.addEventListener("message", function (e) {
+  if (e.origin !== "https://reports.luminovo.com") return;
+  const d = e.data || {};
+  if (d.type !== "pp-appro-signaler" || !Array.isArray(d.lignes) || !d.lignes.length) return;
+  const repondre = r => { try { f.contentWindow.postMessage(Object.assign({ type: "pp-appro-signale" }, r), "https://reports.luminovo.com"); } catch (err) {} };
+  const so = String(d.so || "").trim();
+  if (!so) { repondre({ ok: false, motif: "SO inconnu sur la page carte" }); return; }
+  const mpns = d.lignes.map(l => String(l.mpn || "").trim()).filter(Boolean);
+  if (!mpns.length) { repondre({ ok: false, motif: "aucune référence exploitable" }); return; }
+  if (!confirm("Envoyer " + mpns.length + " référence" + (mpns.length > 1 ? "s" : "") + " vers BOM Sourcing (" + so + ") ?\n\n" + mpns.join("\n") + "\n\nElles y seront marquées « appro ». C'est là que tu décides : autre fournisseur, ou « Sans solution » (qui écrit au client).")) { repondre({ ok: false, motif: "annulé" }); return; }
+  try {
+    const store = JSON.parse(localStorage.getItem(SIGNAL_KEY) || "{}");
+    const cle = so.toUpperCase();
+    const avant = (store[cle] && Array.isArray(store[cle].mpns)) ? store[cle].mpns : [];
+    const fusion = Array.from(new Set(avant.concat(mpns).map(m => m.trim()).filter(Boolean)));
+    const n = new Date();
+    store[cle] = { mpns: fusion, at: n.toLocaleDateString("fr-FR") + " " + n.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) };
+    localStorage.setItem(SIGNAL_KEY, JSON.stringify(store));
+    repondre({ ok: true, id: fusion.length, cible: "bom-sourcing" });
+  } catch (err) {
+    repondre({ ok: false, motif: "stockage local indisponible : " + err.message });
+  }
+});
+// Pas de détection automatique : une page cross-origin n'est pas inspectable, et un faux positif masquait l'iframe (v1.0).
+// Si le tableau de bord n'apparaît pas, utiliser "Ouvrir en plein écran".
+</script>
+</body>
+</html>
