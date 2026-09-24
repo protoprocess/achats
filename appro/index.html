@@ -94,6 +94,8 @@ iframe{flex:1;width:100%;border:0;background:var(--bg)}
   <img src="../shared/picto-pp.png" alt="Proto Process" width="24" height="24" style="object-fit:contain" onerror="this.style.display='none'">
   <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">Appro — tableau de bord</span></span>
   <div class="actions">
+    <button class="btn-p" id="maj" type="button" title="Relire la liste des SO « AF » du planning et recharger le tableau de bord">⟳ Actualiser</button>
+    <span class="ver" id="maj-info"></span>
     <a class="btn-s" id="open" href="#" target="_blank" rel="noopener">Ouvrir en plein écran</a>
     <span class="ver" id="ver"></span>
   </div>
@@ -101,8 +103,8 @@ iframe{flex:1;width:100%;border:0;background:var(--bg)}
 <iframe id="dash" title="Tableau de bord appro"></iframe>
 <div id="fallback">Le tableau de bord ne peut pas s'afficher ici. <a id="fb" href="#" target="_blank" rel="noopener">Ouvrir le tableau de bord</a></div>
 <script>
-const APP_VERSION = "1.4";
-const APP_DATE = "18/09/2026";
+const APP_VERSION = "1.5";
+const APP_DATE = "24/09/2026";
 // Tableau de bord généré par le script Luminovo "appro-so" (page hébergée, mise à jour à chaque analyse).
 const DASHBOARD_URL = "https://reports.luminovo.com/r/appro-tableau-de-bord-wnIro11y7qiexgm8";
 document.title += " — v" + APP_VERSION;
@@ -121,8 +123,19 @@ async function chargerAF() {
 }
 function envoyerAF() { if (!afListe || !f.contentWindow) return; f.contentWindow.postMessage({ type: "pp-appro-af", af: afListe.af, at: afListe.at }, "https://reports.luminovo.com"); }
 f.addEventListener("load", envoyerAF);
-chargerAF();
-setInterval(chargerAF, 5 * 60 * 1000);
+// v1.5 (24/09/2026, décision Olivier) — plus de réveil toutes les 5 min (≈ 96 exécutions n8n par jour et par onglet ouvert) :
+// la liste AF est lue à l'ouverture, puis seulement sur le bouton « Actualiser », qui recharge aussi le tableau de bord.
+// L'analyse d'une commande validée est désormais lancée par n8n dès la pose de « AF » au planning (workflow « PP — Appro : lancer analyse SO »).
+const btnMaj = document.getElementById("maj"), majInfo = document.getElementById("maj-info");
+async function actualiser() {
+  btnMaj.disabled = true; majInfo.textContent = "…";
+  await chargerAF();
+  f.src = DASHBOARD_URL + (DASHBOARD_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
+  majInfo.textContent = afListe ? ("AF relus à " + afListe.at + " (" + afListe.af.length + " SO)") : "liste AF indisponible";
+  setTimeout(() => { btnMaj.disabled = false; }, 3000);
+}
+btnMaj.addEventListener("click", actualiser);
+chargerAF().then(() => { if (afListe) majInfo.textContent = "AF lus à " + afListe.at + " (" + afListe.af.length + " SO)"; });
 // v1.4 (18/09/2026, decision Olivier) — « Envoyer vers BOM Sourcing ».
 // v1.3 ecrivait directement au client. Or l'ordre de travail reel est
 // Luminovo -> bom-sourcing : une reference indisponible dans le scenario a
