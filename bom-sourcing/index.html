@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BOM Sourcing — Codification &amp; Vérification Qualité — v1.2 — 25/07/2026</title>
+<title>Achats PP — v13.2 — 24/09/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
 :root {
@@ -688,7 +688,7 @@ tr:hover td { background: var(--surface2); }
 <header>
   <div class="logo">
     <img src="../shared/picto-pp.png" alt="Proto Process" width="24" height="24" style="object-fit:contain" onerror="this.style.display='none'">
-    <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">BOM Sourcing</span></span>
+    <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">Achats PP</span></span>
   </div>
   <div class="header-chips" id="header-chips"></div>
   <span class="hdr-note" id="hdr-version">v1.2 — 25/07/2026</span>
@@ -792,15 +792,29 @@ tr:hover td { background: var(--surface2); }
     </div>
 
     <div class="tabs">
-      <button class="tab active" onclick="switchTab('bom')">Analyse BOM</button>
-      <button class="tab" onclick="switchTab('codif')">Codification IPN</button>
-      <button class="tab" onclick="switchTab('config')">Règles &amp; Config</button>
-      <button class="tab" onclick="switchTab('achats')">Achats</button>
-      <button class="tab" onclick="switchTab('attente')">En attente <span id="att-tab-badge" style="display:none; background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 7px; font-size:11px; margin-left:4px;"></span></button>
+      <button class="tab active" data-tab="cmd" onclick="switchTab('cmd')">Commandes</button>
+      <button class="tab" data-tab="bom" onclick="switchTab('bom')">Analyse BOM</button>
+      <button class="tab" data-tab="achats" onclick="switchTab('achats')">Achats</button>
+      <button class="tab" data-tab="attente" onclick="switchTab('attente')">En attente <span id="att-tab-badge" style="display:none; background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 7px; font-size:11px; margin-left:4px;"></span></button>
+      <button class="tab" data-tab="codif" onclick="switchTab('codif')">Codification IPN</button>
+      <button class="tab" data-tab="config" onclick="switchTab('config')">Règles &amp; Config</button>
+    </div>
+
+    <!-- COMMANDES TAB (v13.2 : ex-page achats/appro/, tableau de bord Luminovo des SO « AF ») -->
+    <div class="panel active" id="tab-cmd">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--text2)">Commandes à approvisionner : analyse Luminovo lancée automatiquement à chaque commande validée (« AF » au planning). Une carte par SO : prix vs devis, délai, stock critique.</span>
+        <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span class="hdr-note" id="cmd-maj-info"></span>
+          <button class="btn sm" type="button" id="cmd-maj" title="Relire la liste des SO « AF » du planning et recharger le tableau de bord"><i class="ti ti-refresh" aria-hidden="true"></i> Actualiser</button>
+          <a class="btn sm" id="cmd-open" href="#" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Plein écran</a>
+        </span>
+      </div>
+      <iframe id="cmd-dash" title="Tableau de bord appro" style="width:100%;height:calc(100vh - 230px);min-height:520px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg)"></iframe>
     </div>
 
     <!-- BOM TAB -->
-    <div class="panel active" id="tab-bom">
+    <div class="panel" id="tab-bom">
       <div id="bom-import-zone">
       <!-- BOM SOURCE: Upload ou URL ou paste -->
       <div class="card" style="margin-bottom:12px;">
@@ -1068,7 +1082,6 @@ tr:hover td { background: var(--surface2); }
           <span class="section-label" style="margin:0;">Achats de l'affaire</span>
           <input type="text" id="att-sheet-so" placeholder="SO2607-400" style="width:150px;" onkeydown="if(event.key==='Enter')attSheetCharger()" />
           <button class="btn primary" onclick="attSheetCharger()"><i class="ti ti-download" aria-hidden="true"></i> Charger</button>
-          <input type="text" id="att-sheet-filtre" placeholder="Filtrer : ?, MPN, IPN, réf, repère…" title="Filtre sur fournisseur, réf fournisseur, IPN, MPN et repère. Un ? seul affiche les lignes sans solution." style="width:230px;" oninput="attSheetFiltrer(this.value)" />
           <a id="att-sheet-lien" href="#" target="_blank" style="display:none; font-size:12px; color:var(--blue);">Ouvrir dans Sheets</a>
           <a id="att-sheet-fabstory" href="#" target="_blank" style="display:none; font-size:12px; color:var(--blue);"><i class="ti ti-external-link" aria-hidden="true"></i> Fiche FabStory</a>
         </div>
@@ -1100,10 +1113,49 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "12.7";
-const APP_DATE = "22/09/2026";
-document.title = `BOM Sourcing — Codification & Vérification Qualité — v${APP_VERSION} — ${APP_DATE}`;
+const APP_VERSION = "13.3";
+const APP_DATE = "24/09/2026";
+/* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
+   l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
+   = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
+   C) bouton « Copier les SO » (SO-xxx+yyy, DigiKey 20 caracteres) ; D) panier en cours garde jusqu a validation.
+   13.1 (retours Olivier) : onglet Achats - colonnes Fournisseur, Ref. fourn., MPN, IPN, Qte, Prix, Reperes
+   (3 premiers + « +N ») ; Manquant retire ; bouton basculer colle au prix ; boutons « Cmde chez » retires
+   (doublon de « J ai commande ») ; une seule demande de prix, texte neutre ; filtre au-dessus du tableau ;
+   tableau defilant avec en-tete fixe ; liens fiche produit DigiKey/Mouser ; menu bascule manuelle raccourci.
+   Chemins partages en ../../shared/. 
+   13.3 (25/09/2026) : signalements Ariel 52 (bouton « Copier » seul, message « N ligne(s) copiée(s) », « Seuil franco atteint » sans « commande possible ») et 53 (filtre ~1,5 x un MPN). */
+document.title = `Achats PP — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
+
+/* ===== v13.2 — onglet Commandes (ex achats/appro/ v1.5) =====
+   Tableau de bord généré par le script Luminovo « appro-so » (page hébergée, mise à jour à chaque analyse).
+   La liste des SO encore « AF » au planning est lue via n8n (appro-af) à l'ouverture puis sur « Actualiser »
+   seulement (pas de réveil périodique : quota n8n), et transmise à l'iframe qui masque les cartes passées EC.
+   L'en-tête X-PP-Auth est posé par le bloc d'accès (interception de fetch). */
+(function(){
+  const DASHBOARD_URL = "https://reports.luminovo.com/r/appro-tableau-de-bord-wnIro11y7qiexgm8";
+  const AF_URL = "https://protoprocess.app.n8n.cloud/webhook/appro-af";
+  const f = document.getElementById("cmd-dash"), btn = document.getElementById("cmd-maj"), info = document.getElementById("cmd-maj-info");
+  if (!f) return;
+  document.getElementById("cmd-open").href = DASHBOARD_URL;
+  f.src = DASHBOARD_URL;
+  let afListe = null;
+  async function chargerAF() {
+    try { const r = await fetch(AF_URL); const d = await r.json(); if (d && Array.isArray(d.af)) afListe = { af: d.af, at: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) }; } catch (e) { afListe = null; }
+    envoyerAF();
+    info.textContent = afListe ? ("AF relus à " + afListe.at + " (" + afListe.af.length + " SO)") : "liste AF indisponible";
+  }
+  function envoyerAF() { if (!afListe || !f.contentWindow) return; try { f.contentWindow.postMessage({ type: "pp-appro-af", af: afListe.af, at: afListe.at }, "https://reports.luminovo.com"); } catch (e) {} }
+  f.addEventListener("load", envoyerAF);
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; info.textContent = "…";
+    await chargerAF();
+    f.src = DASHBOARD_URL + "?t=" + Date.now();
+    setTimeout(() => { btn.disabled = false; }, 3000);
+  });
+  chargerAF();
+})();
 
 const DEFAULT_RULES_BOM = {
   capacitor: `Format: C(valeur)-(boitier)-(tensionV)-(tolP)-(diélectrique)
@@ -1318,9 +1370,9 @@ let fournChoix = null;   // v12.6 (ch.171) : [{cle, motif}] des fournitures clie
 let webhookUrl = "";
 
 function switchTab(name) {
-  const names = ['bom','codif','config','achats','attente'];
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
-  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', names[i]===name));
+  // v13.2 : sélection par nom (data-tab / id), plus par position — permet de réordonner les onglets librement
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
   if ((name === 'attente' || name === 'achats') && !window.__attLoaded) { attCharger(); }
   /* Enchainement analyse -> achats : pre-remplit le SO de l'affaire en cours */
   if (name === 'achats') {
@@ -3234,7 +3286,8 @@ async function writeToGSheet() {
         headers, rows: rowsPayload,
         warnings: warningsSummary,
         fournitures_masquees: fournituresMasquees,
-        auteur: 'BOM Sourcing'
+        auteur: 'BOM Sourcing',
+        mise_en_forme: true /* 13.0 recette : tri, Manquant, gris Inventory apres ecriture */
       })
     });
     const text = await resp.text();
@@ -3851,7 +3904,7 @@ async function sendChat() {
 <div id="help-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:2000; align-items:center; justify-content:center;">
   <div style="background:var(--surface); border-radius:var(--radius-lg); padding:2rem; max-width:700px; width:calc(100vw - 40px); max-height:80vh; overflow-y:auto; position:relative; box-shadow:0 16px 48px rgba(0,0,0,0.2);">
     <button onclick="document.getElementById('help-overlay').style.display='none'" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2)"><i class="ti ti-x"></i></button>
-    <h2 style="font-size:18px;font-weight:600;margin-bottom:4px">BOM Sourcing — Guide rapide</h2>
+    <h2 style="font-size:18px;font-weight:600;margin-bottom:4px">Achats PP — Guide rapide</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.5rem">Outil de codification et de vérification qualité des BOM Luminovo pour la production. La codification et la vérification croisée (Digikey/Mouser/Gemini) sont gérées par N8N.</p>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem">
@@ -4516,8 +4569,24 @@ async function sendChat() {
   let attSheetFiltre = '';
   window.attSheetFiltrer = function(v){
     attSheetFiltre = String(v || '');
-    if (attSheetData) attSheetRender();
+    if (!attSheetData) return;
+    attSheetRender();
+    /* 13.1 : le champ est redessine avec le tableau -> on lui rend le curseur */
+    const f = document.getElementById('att-sheet-filtre');
+    if (f) { f.focus(); const n = f.value.length; try { f.setSelectionRange(n, n); } catch(e) {} }
   };
+  function attFiltreHtml(){
+    return '<div style="display:flex; align-items:center; gap:6px; margin:4px 0 6px;">'
+      + '<i class="ti ti-search" aria-hidden="true" style="color:var(--text3)"></i>'
+      + '<input type="text" id="att-sheet-filtre" value="' + attEsc(attSheetFiltre) + '" placeholder="Filtrer : ?, MPN, IPN, réf, repère…" title="Filtre sur fournisseur, réf fournisseur, IPN, MPN et repère. Un ? seul affiche les lignes sans solution." style="width:280px; max-width:100%;" oninput="attSheetFiltrer(this.value)" />' /* 13.3 : ~1,5 x un MPN (signalement Ariel 53) */
+      + '</div>';
+  }
+  /* 13.1 : 3 premiers reperes, le reste au survol (hauteur de ligne constante) */
+  function attReperes(v){
+    const t = String(v || '').split(/\s*[,;]\s*/).filter(Boolean);
+    if (t.length <= 3) return attEsc(t.join(', '));
+    return '<span title="' + attEsc(t.join(', ')) + '">' + attEsc(t.slice(0,3).join(', ')) + ' <span style="color:var(--text3)">+' + (t.length - 3) + '</span></span>';
+  }
   function attSheetMatch(l){
     const q = attSheetFiltre.trim().toLowerCase();
     if (!q) return true;
@@ -4547,7 +4616,7 @@ async function sendChat() {
     if (!actives.length) {
       zone.innerHTML = '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + (masquees ? ' — masquées : ' + masquees : '') + '</div>'
         + (attSheetFiltre.trim()
-            ? '<p style="font-size:13px; color:var(--text3);">Aucune ligne ne correspond à « ' + attEsc(attSheetFiltre.trim()) + ' » (' + toutesActives.length + ' ligne(s) à traiter au total).</p>'
+            ? attFiltreHtml() + '<p style="font-size:13px; color:var(--text3);">Aucune ligne ne correspond à « ' + attEsc(attSheetFiltre.trim()) + ' » (' + toutesActives.length + ' ligne(s) à traiter au total).</p>'
             : '<p style="font-size:13px; color:var(--green);"><i class="ti ti-check" aria-hidden="true"></i> Rien à traiter ici.</p>');
       return;
     }
@@ -4575,18 +4644,14 @@ async function sendChat() {
       const inv = fourn.toLowerCase() === 'inventory';
       const consult = fourn.toLowerCase() === 'consultation';
       const sansSol = fourn.charAt(0) === '?';
-      const manquant = (l['Manquant']||'').toString().trim();
       const prix = l._prix;
       const cher = prix >= SEUIL_PRIX_LIGNE;
       if (cher) nbChers++;
       const signale = !!(sigSet && sigSet.has(String(l['MPN']||'').trim().toUpperCase()));
       if (signale) nbSignales++;
-      const cmdBtn = '<div style="display:flex; gap:4px; flex-wrap:wrap;">'
-        + ['DigiKey','Mouser','Farnell'].map(f => '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'' + f + '\')">' + f + '</button>').join('')
-        + '<button class="btn" style="padding:3px 8px; font-size:11px;" onclick="attSheetCommander(' + i + ',\'__autre\')">autre…</button>'
-        + '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pp-blue); border-color:var(--pp-blue);" onclick="attBasculer(' + i + ')" title="Chercher ce composant chez un autre fournisseur (stock)">↔ Fourn.</button>'
-        + '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink);" onclick="attSheetSansSolution(' + i + ')" title="Préfixe le fournisseur avec ? et crée la question client FabStory">Sans solution</button>'
-        + '</div>';
+      /* 13.1 : « Cmde chez … » retires (doublon de « J ai commande » du panier) ; reste Sans solution */
+      const cmdBtn = '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink); white-space:nowrap;" onclick="attSheetSansSolution(' + i + ')" title="Préfixe le fournisseur avec ? et crée la question client FabStory">Sans solution</button>';
+      const bascBtn = '<button class="btn" style="padding:1px 6px; font-size:11px; color:var(--pp-blue); border-color:var(--pp-blue); margin-left:4px;" onclick="attBasculer(' + i + ')" title="Changer de fournisseur (stock et prix chez les autres)" aria-label="Changer de fournisseur"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></button>';
       const prixHtml = prix
         ? (cher
           ? '<span style="color:var(--amber); font-weight:500;" title="Demande de prix conseillée — un broker peut faire mieux que les distributeurs sur ce montant">' + prix.toFixed(2) + ' € <i class="ti ti-alert-triangle" aria-hidden="true"></i></span>'
@@ -4599,12 +4664,12 @@ async function sendChat() {
       return '<tr' + teinte + '>'
         + '<td style="padding:5px 6px;"><input type="checkbox" class="att-dp-check" data-i="' + i + '" onchange="attDpMaj()"' + (cher ? ' title="Prix élevé"' : '') + '></td>'
         + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + (fourn || '—') + '</td>'
+        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Supplier part number']||'') + '</td>'
+        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['MPN']||'') + sigBadge + '</td>'
+        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Approved internal part number']||'') + '</td>'
         + '<td style="padding:5px 8px;">' + (l['Purchase qty']||'') + '</td>'
-        + '<td style="padding:5px 8px; ' + (manquant && manquant !== '0' ? 'color:var(--red); font-weight:500;' : 'color:var(--text3);') + '">' + (manquant || '') + '</td>'
-        + '<td style="padding:5px 8px;">' + prixHtml + '</td>'
-        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['Approved internal part number']||'') + '</td>'
-        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + (l['MPN']||'') + sigBadge + '</td>'
-        + '<td style="padding:5px 8px; font-size:11px;">' + (l['Supplier part number']||'') + '</td>'
+        + '<td style="padding:5px 8px; white-space:nowrap;">' + prixHtml + bascBtn + '</td>'
+        + '<td style="padding:5px 8px; font-size:11px; white-space:nowrap;">' + attReperes(l['Designator']) + '</td>'
         + '<td style="padding:5px 8px;">' + cmdBtn + '</td>'
         + '</tr>';
     }).join('');
@@ -4634,12 +4699,15 @@ async function sendChat() {
       + bandeau
       + panierBtns
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">'
-      + '<button class="btn" id="att-dp-dispo" disabled onclick="attDemandePrix(\'dispo\')"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix (indispo)</button>'
-      + '<button class="btn" id="att-dp-prix" disabled onclick="attDemandePrix(\'prix\')"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix (meilleur prix)</button>'
+      + '<button class="btn" id="att-dp-dispo" disabled onclick="attDemandePrix(\'neutre\')" title="Brouillon Gmail commercial@ — texte neutre, sans dire pourquoi on consulte"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>'
       + '<span id="att-dp-compte" style="font-size:12px; color:var(--text3); align-self:center;">0 sélectionnée</span>'
       + '</div>'
-      + '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px;">'
-      + '<thead><tr style="color:var(--text3); text-align:left;"><th style="padding:5px 6px;"></th><th style="padding:5px 8px;">Fournisseur</th><th style="padding:5px 8px;">Qté</th><th style="padding:5px 8px;">Manquant</th><th style="padding:5px 8px;">Prix</th><th style="padding:5px 8px;">IPN</th><th style="padding:5px 8px;">MPN</th><th style="padding:5px 8px;">Réf fourn.</th><th style="padding:5px 8px;">Cmdé chez</th></tr></thead>'
+      + attFiltreHtml()
+      /* 13.1 : le tableau defile seul (la page ne bouge pas), en-tete fixe */
+      + '<div style="overflow:auto; max-height:calc(100vh - 260px); min-height:200px; border:1px solid var(--border); border-radius:var(--radius);"><table style="width:100%; border-collapse:collapse; font-size:12px;">'
+      + '<thead style="position:sticky; top:0; z-index:1; background:var(--surface2);"><tr style="color:var(--text3); text-align:left;">'
+      + ['', 'Fournisseur', 'Réf. fourn.', 'MPN', 'IPN', 'Qté', 'Prix', 'Repères', ''].map(h => '<th style="padding:6px 8px; background:var(--surface2);">' + h + '</th>').join('')
+      + '</tr></thead>'
       + '<tbody>' + rows + '</tbody></table></div>';
   }
 
@@ -4670,7 +4738,7 @@ async function sendChat() {
         qte: (l['Purchase qty']||'').toString().trim()
       };
     }).filter(l => l.ref || l.mpn);
-    if (!confirm('Préparer un brouillon Gmail (commercial@) — ' + lignes.length + ' référence' + (lignes.length>1?'s':'') + ', motif : ' + (motif==='prix'?'recherche meilleur prix':'indisponibilité') + ' ?\n\nDestinataire à choisir dans Gmail avant envoi.')) return;
+    if (!confirm('Préparer un brouillon Gmail (commercial@) — ' + lignes.length + ' référence' + (lignes.length>1?'s':'') + ', motif : ' + (motif==='neutre'?'texte neutre':(motif==='prix'?'recherche meilleur prix':'indisponibilité')) + ' ?\n\nDestinataire à choisir dans Gmail avant envoi.')) return;
     try {
       const r = await fetch(ATT_DP_URL, {
         method: 'POST',
@@ -4822,8 +4890,50 @@ async function sendChat() {
         montant: num(p['Montant'])
       });
     });
-    attPanier = { cle, aff, att, reprendre: false };
+    attPanier = { cle, aff, att, reprendre: false, restaure: false };
+    /* 13.0 (D) : panier en cours garde jusqu a validation (on passe a un autre fournisseur
+       puis on revient : coches et reprise retrouvees). Efface a la validation. */
+    try {
+      const sv = JSON.parse(localStorage.getItem(attPanierCleMemo(cle)) || 'null');
+      if (sv) {
+        const dec = sv.decoches || [];
+        aff.forEach(l => { if (dec.indexOf(attLigneCle(l)) >= 0) l.coche = false; });
+        attPanier.reprendre = !!sv.reprendre;
+        attPanier.restaure = true;
+      }
+    } catch(e) {}
     attPanierRender();
+  };
+  window.attPanierCleMemo = function(cle){ return 'pp_bs_panier_' + ((attSheetData && attSheetData.so) || '') + '_' + cle; };
+  window.attLigneCle = function(l){ return [l.refFour, l.ipn, l.mpn].join('|'); };
+  window.attPanierMemoriser = function(){
+    const P = attPanier; if (!P) return;
+    try { localStorage.setItem(attPanierCleMemo(P.cle), JSON.stringify({ decoches: P.aff.filter(l => !l.coche).map(attLigneCle), reprendre: P.reprendre })); } catch(e) {}
+  };
+  window.attPanierOublier = function(cle){ try { localStorage.removeItem(attPanierCleMemo(cle)); } catch(e) {} };
+
+  /* 13.0 (C) : reference de commande fournisseur = n° de SO du panier, forme SO-468+470+471
+     (decision Olivier 24/09/2026). DigiKey limite ce champ a 20 caracteres : au-dela on retire
+     « SO- » (458+475+489+501+504 = 19) ; si ca ne tient toujours pas, on NE COUPE PAS (la
+     reception doit avoir tous les SO) : alerte, et on retire un en attente du panier. */
+  window.attSoRef = function(P){
+    const sos = [];
+    if (P.aff.some(l => l.coche)) sos.push(attSheetData.so);
+    if (P.reprendre) P.att.forEach(l => { if (l.so && sos.indexOf(l.so) < 0) sos.push(l.so); });
+    const suf = sos.map(s => { const m = String(s).match(/-(\d{3,})$/); return m ? m[1] : String(s); });
+    const max = P.cle === 'digikey' ? 20 : 0;
+    let ref = suf.length ? 'SO-' + suf.join('+') : '';
+    if (max && ref.length > max) ref = suf.join('+');
+    return { ref, n: ref.length, max, trop: !!(max && ref.length > max), nb: suf.length };
+  };
+  window.attPanierCopierSO = function(){
+    const P = attPanier; if (!P) return;
+    const r = attSoRef(P);
+    if (!r.ref || r.trop) return;
+    navigator.clipboard.writeText(r.ref).then(() => {
+      const m = document.getElementById('att-panier-msg');
+      if (m) m.textContent = 'Référence copiée : ' + r.ref;
+    }).catch(() => alert('Copie impossible — référence à saisir : ' + r.ref));
   };
 
   function attPanierRender(){
@@ -4838,7 +4948,7 @@ async function sendChat() {
     const atteint = totFinal >= seuil;
     const eur = v => v.toFixed(2) + ' €';
     const verdict = atteint
-      ? '<span style="color:var(--green); font-weight:500;"><i class="ti ti-check" aria-hidden="true"></i> Seuil franco atteint (' + eur(totFinal) + ' ≥ ' + seuil + ' €) — commande possible.</span>'
+      ? '<span style="color:var(--green); font-weight:500;"><i class="ti ti-check" aria-hidden="true"></i> Seuil franco atteint (' + eur(totFinal) + ' ≥ ' + seuil + ' €)</span>'
       : '<span style="color:var(--amber); font-weight:500;"><i class="ti ti-hourglass" aria-hidden="true"></i> Sous le seuil (' + eur(totFinal) + ' < ' + seuil + ' €) — mise en attente conseillée' + (P.att.length && !P.reprendre ? ', ou coche la reprise ci-dessous' : '') + '.</span>';
     const ligneAff = (l, ix) => '<label style="display:flex; gap:8px; align-items:center; font-size:12px; padding:3px 0;">'
       + '<input type="checkbox" ' + (l.coche?'checked':'') + ' onchange="attPanierToggle(' + ix + ')">'
@@ -4856,9 +4966,21 @@ async function sendChat() {
       + '<button class="btn" style="padding:2px 8px;" onclick="attPanierFermer()"><i class="ti ti-x" aria-hidden="true"></i></button></div>'
       + P.aff.map(ligneAff).join('')
       + blocAtt
+      + (function(){
+          const r = attSoRef(P);
+          if (!r.ref) return '';
+          return '<div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border); font-size:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">'
+            + 'Réf. commande fournisseur : <code style="font-family:var(--mono); font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:4px; padding:1px 6px;">' + r.ref + '</code>'
+            + (r.max ? '<span style="color:' + (r.trop ? 'var(--red)' : 'var(--text3)') + ';">' + r.n + '/' + r.max + ' car.</span>' : '')
+            + (r.trop
+                ? '<span style="color:var(--red); font-weight:500;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + r.nb + ' SO ne tiennent pas dans les 20 caractères DigiKey : retire un en attente de ce panier.</span>'
+                : '<button class="btn" style="padding:3px 9px;" onclick="attPanierCopierSO()"><i class="ti ti-copy" aria-hidden="true"></i> Copier les SO</button>')
+            + '</div>';
+        })()
+      + (P.restaure ? '<div style="margin-top:6px; font-size:11px; color:var(--text3);"><i class="ti ti-history" aria-hidden="true"></i> Panier repris tel que tu l\'avais laissé.</div>' : '')
       + '<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border); font-size:12px;">Affaire : <b>' + eur(totAff) + '</b>' + (P.reprendre ? ' + attente : <b>' + eur(totAtt) + '</b>' : '') + ' — ' + verdict + '</div>'
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">'
-      + '<button class="btn primary" onclick="attPanierCopier()"><i class="ti ti-copy" aria-hidden="true"></i> Copier (' + fmt.entete + ')</button>'
+      + '<button class="btn primary" onclick="attPanierCopier()"><i class="ti ti-copy" aria-hidden="true"></i> Copier</button>' /* 13.3 : libelle court (signalement Ariel 52) */
       + '<button class="btn" onclick="attPanierValider()" ' + (atteint ? '' : 'disabled title="Seuil non atteint"') + '><i class="ti ti-check" aria-hidden="true"></i> J\'ai commandé</button>'
       + '<button class="btn" style="color:var(--amber); border-color:var(--amber);" onclick="attPanierAttente()"><i class="ti ti-hourglass" aria-hidden="true"></i> Mettre en attente</button>'
       + '<span id="att-panier-msg" style="font-size:12px; color:var(--green); align-self:center;"></span>'
@@ -4870,8 +4992,8 @@ async function sendChat() {
     if (z) z.innerHTML = '';
     attPanier = null;
   };
-  window.attPanierToggle = function(ix){ if (attPanier) { attPanier.aff[ix].coche = !attPanier.aff[ix].coche; attPanierRender(); } };
-  window.attPanierReprendre = function(){ if (attPanier) { attPanier.reprendre = !attPanier.reprendre; attPanierRender(); } };
+  window.attPanierToggle = function(ix){ if (attPanier) { attPanier.aff[ix].coche = !attPanier.aff[ix].coche; attPanierMemoriser(); attPanierRender(); } };
+  window.attPanierReprendre = function(){ if (attPanier) { attPanier.reprendre = !attPanier.reprendre; attPanierMemoriser(); attPanierRender(); } };
 
   window.attPanierCopier = function(){
     const P = attPanier;
@@ -4882,7 +5004,7 @@ async function sendChat() {
     const tsv = lignes.map(l => fmt.colonnes.map(c => l[c] || '').join('\t')).join('\n');
     navigator.clipboard.writeText(tsv).then(() => {
       const m = document.getElementById('att-panier-msg');
-      if (m) m.textContent = lignes.length + ' ligne(s) copiée(s) — coller dans le panier ' + fmt.titre + '.';
+      if (m) m.textContent = lignes.length + ' ligne(s) copiée(s)';
     }).catch(() => alert('Copie impossible — sélectionne et copie manuellement :\n\n' + tsv));
   };
 
@@ -4904,25 +5026,36 @@ async function sendChat() {
     } catch(e) { alert('Erreur réseau : ' + e.message); }
   };
 
+  /* 13.0 (B) : « J ai commande » = action 'valider' (achats-panier v1.9), le meme travail que le
+     popup de la sheet : vert colonne A des lignes commandees, reprise tracee (fournisseur dans la
+     sheet de l autre SO + note « Inclut X pcs SOyyyy » chez le commandeur), Paniers « via » +
+     Commande, planning AF -> EC + J+7 pour chaque SO encore AF. Reste grise sous le franco. */
   window.attPanierValider = async function(){
     const P = attPanier;
     if (!P) return;
-    if (!P.reprendre || !P.att.length) {
-      const m = document.getElementById('att-panier-msg');
-      if (m) m.textContent = 'Commande notée — pense au vert dans la sheet (menu Appro) pour les lignes de l\'affaire.';
-      return;
-    }
-    if (!confirm('Passer les ' + P.att.length + ' ligne(s) en attente reprises en Commandé ?')) return;
+    const fmt = attPanierFormats[P.cle];
+    const so = attSheetData.so;
+    const aff = P.aff.filter(l => l.coche).map(l => ({ ipn: l.ipn, mpn: l.mpn, qte: l.qte, refFour: l.refFour }));
+    const att = P.reprendre ? P.att : [];
+    if (!aff.length && !att.length) return;
+    const r = attSoRef(P);
+    const txt = 'Valider la commande ' + fmt.titre + (r.ref ? ' (réf. ' + r.ref + ')' : '') + ' ?\n\n'
+      + '• ' + aff.length + ' ligne(s) de ' + so + ' passent en vert dans la sheet achat\n'
+      + (att.length ? '• ' + att.length + ' en attente reprise(s) passent en Commandé, avec la note « Inclut … » pour la réception\n' : '')
+      + '• Planning : les SO encore « AF » passent en « EC », réception prévue J+7';
+    if (!confirm(txt)) return;
+    const m = document.getElementById('att-panier-msg');
+    if (m) m.textContent = 'Validation en cours…';
     try {
-      const r = await fetch(ATT_PANIER_URL, {
+      const rq = await fetch(ATT_PANIER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reprise', fournisseur: attPanierFormats[P.cle].titre, so_commandeur: attSheetData.so, lignes: P.att })
+        body: JSON.stringify({ action: 'valider', fournisseur: fmt.titre, so: so, so_commandeur: so, carte: attSheetData.fileName, lignes_affaire: aff, lignes: att })
       });
-      const res = await r.json();
-      alert(res.success ? res.message : ('Échec : ' + (res.reason || 'inconnu')));
-      if (res.success) { attPanierFermer(); attCharger(); }
-    } catch(e) { alert('Erreur réseau : ' + e.message); }
+      const res = await rq.json();
+      alert((res.success ? '✅ ' : '⚠ ') + (res.message || res.reason || 'Réponse inattendue'));
+      if (res.action === 'valider') { attPanierOublier(P.cle); attPanierFermer(); attCharger(); }
+    } catch(e) { alert('Erreur réseau : ' + e.message); if (m) m.textContent = ''; }
   };
 
   /* ============================================================
@@ -4993,6 +5126,12 @@ async function sendChat() {
       return '<div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:0.5px solid var(--border); font-size:12px;">'
         + '<b style="min-width:70px;">' + esc(o.distributeur||'?') + '</b>'
         + '<span style="font-family:var(--mono); font-size:11px;">' + esc(o.spn||'') + '</span>'
+        + (function(){
+            const dn = String(o.distributeur||'').toLowerCase();
+            const q = encodeURIComponent(o.spn || mpn || '');
+            const url = o.url || o.lien || (dn.indexOf('digikey') >= 0 ? 'https://www.digikey.fr/fr/products/result?keywords=' + q : (dn.indexOf('mouser') >= 0 ? 'https://www.mouser.fr/c/?q=' + q : ''));
+            return url ? '<a class="btn" style="padding:2px 8px; font-size:11px; text-decoration:none;" target="_blank" href="' + esc(url) + '" title="Ouvrir la fiche sur le site">Site ↗</a>' : '';
+          })()
         + '<span style="color:var(--text3); flex:1;">' + extras + '</span>'
         + (o.spn ? '<button class="btn" style="padding:3px 10px; font-size:11px;" onclick="attBasculerVers(' + i + ',\'' + esc(o.distributeur) + '\',\'' + esc(o.spn) + '\')">Basculer</button>' : '')
         + '</div>';
@@ -5024,8 +5163,8 @@ async function sendChat() {
       + '<span style="font-size:12px;">Bascule manuelle :</span>'
       /* Libelles = ceux que Luminovo ecrit (verifie 03/09 : PPLib normalise par
          prefixe et attFournCle par inclusion — Mouser / Mouser USA, meme groupe) */
-      + '<select id="att-basc-fourn-sel" onchange="attBascFournChange()" style="padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-      + ['Farnell','DigiKey USA','Mouser USA','RS Components GBR'].map(f => '<option value="' + f + '">' + f + '</option>').join('')
+      + '<select id="att-basc-fourn-sel" onchange="attBascFournChange()" style="width:auto; max-width:120px; padding:4px 6px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+      + [['Farnell','Farnell'],['DigiKey USA','DigiKey'],['Mouser USA','Mouser'],['RS Components GBR','RS']].map(f => '<option value="' + f[0] + '">' + f[1] + '</option>').join('')
       + '<option value="__autre">Autre…</option></select>'
       + '<input id="att-basc-fourn" placeholder="Fournisseur" style="display:none; width:130px; padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
       + '<input id="att-basc-ref" placeholder="Réf fournisseur" style="width:170px; padding:4px 8px; font-size:12px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
