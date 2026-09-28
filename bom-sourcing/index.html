@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v13.4 — 28/09/2026</title>
+<title>Achats PP — v13.5 — 28/09/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
 :root {
@@ -1113,7 +1113,7 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "13.4";
+const APP_VERSION = "13.5";
 const APP_DATE = "28/09/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
@@ -1125,7 +1125,9 @@ const APP_DATE = "28/09/2026";
    tableau defilant avec en-tete fixe ; liens fiche produit DigiKey/Mouser ; menu bascule manuelle raccourci.
    Chemins partages en ../../shared/. 
    13.3 (25/09/2026) : signalements Ariel 52 (bouton « Copier » seul, message « N ligne(s) copiée(s) », « Seuil franco atteint » sans « commande possible ») et 53 (filtre ~1,5 x un MPN).
-   13.4 (28/09/2026) : lecture des prix >= 1 000 € corrigee (attPrixNum : "€1,816.80" etait lu 1,82 € -- onglet Achats, panier, franco, en attente). */
+   13.4 (28/09/2026) : lecture des prix >= 1 000 € corrigee (attPrixNum : "€1,816.80" etait lu 1,82 € -- onglet Achats, panier, franco, en attente).
+   13.5 (28/09/2026) : apres « J ai commande », les lignes commandees sont masquees sur place (0 appel n8n) ;
+   relecture de la feuille seulement si n8n signale un probleme ; En attente recharge seulement s il y a eu une reprise. */
 document.title = `Achats PP — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -5070,7 +5072,27 @@ async function sendChat() {
       });
       const res = await rq.json();
       alert((res.success ? '✅ ' : '⚠ ') + (res.message || res.reason || 'Réponse inattendue'));
-      if (res.action === 'valider') { attPanierOublier(P.cle); attPanierFermer(); attCharger(); }
+      if (res.action === 'valider') {
+        attPanierOublier(P.cle); attPanierFermer();
+        /* 13.5 (28/09/2026, decision Olivier) : les lignes restaient affichees apres « J ai commande »
+           (l appli rechargeait l onglet En attente, pas l onglet Achats) -> risque de commander 2 fois.
+           Cas normal (n8n confirme, aucun probleme) : on masque sur place les lignes commandees,
+           0 appel n8n. Au moindre probleme signale : on relit la feuille (1 appel) pour montrer la
+           verite, rien n est masque a tort. En attente n est recharge que s il y a eu une reprise. */
+        const okSansPb = res.success && !((res.problemes || []).length);
+        if (okSansPb && attSheetData && Array.isArray(attSheetData.lignes)) {
+          const U = x => String(x || '').trim().toUpperCase();
+          aff.forEach(l => {
+            const I = U(l.ipn), M = U(l.mpn);
+            const cible = attSheetData.lignes.find(o => (I && U(o['Approved internal part number']) === I) || (M && U(o['MPN']) === M));
+            if (cible) cible._commande = true;
+          });
+          attSheetRender();
+        } else {
+          attSheetCharger();
+        }
+        if (att.length) attCharger();
+      }
     } catch(e) { alert('Erreur réseau : ' + e.message); if (m) m.textContent = ''; }
   };
 
