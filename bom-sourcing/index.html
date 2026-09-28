@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v13.2 — 24/09/2026</title>
+<title>Achats PP — v13.4 — 28/09/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
 :root {
@@ -1113,8 +1113,8 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "13.3";
-const APP_DATE = "24/09/2026";
+const APP_VERSION = "13.4";
+const APP_DATE = "28/09/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -1124,7 +1124,8 @@ const APP_DATE = "24/09/2026";
    (doublon de « J ai commande ») ; une seule demande de prix, texte neutre ; filtre au-dessus du tableau ;
    tableau defilant avec en-tete fixe ; liens fiche produit DigiKey/Mouser ; menu bascule manuelle raccourci.
    Chemins partages en ../../shared/. 
-   13.3 (25/09/2026) : signalements Ariel 52 (bouton « Copier » seul, message « N ligne(s) copiée(s) », « Seuil franco atteint » sans « commande possible ») et 53 (filtre ~1,5 x un MPN). */
+   13.3 (25/09/2026) : signalements Ariel 52 (bouton « Copier » seul, message « N ligne(s) copiée(s) », « Seuil franco atteint » sans « commande possible ») et 53 (filtre ~1,5 x un MPN).
+   13.4 (28/09/2026) : lecture des prix >= 1 000 € corrigee (attPrixNum : "€1,816.80" etait lu 1,82 € -- onglet Achats, panier, franco, en attente). */
 document.title = `Achats PP — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -4525,8 +4526,23 @@ async function sendChat() {
   /* Les prix de la sheet arrivent formatés ("€0.22", "1,26 €", "8.29") :
      parseFloat direct rend NaN sur le symbole — cause du "0.00 €" partout
      au contre-test du 02/09. On ne garde que chiffres, virgule, point, signe. */
+  /* 13.4 (28/09/2026) : la feuille achat (format anglais) envoie "€1,816.80" -- la 1re virgule
+     etait prise pour la virgule decimale -> 1.816 (PA84, SO2609-474 : 1 816,80 € lu 1,82 €).
+     Regle : si virgule ET point sont presents, le DERNIER des deux marque les decimales, l autre
+     est un separateur de milliers ; plusieurs points seuls -> milliers sauf le dernier ;
+     une virgule seule reste la virgule decimale francaise ("1,26 €"). */
   function attPrixNum(s){
-    return parseFloat((s||'').toString().replace(/[^0-9,.\-]/g,'').replace(',','.')) || 0;
+    let t = (s||'').toString().replace(/[^0-9,.\-]/g,'');
+    const v = t.lastIndexOf(','), pt = t.lastIndexOf('.');
+    if (v >= 0 && pt >= 0) {
+      if (v > pt) t = t.replace(/\./g,'').replace(',','.');
+      else t = t.replace(/,/g,'');
+    } else if (v >= 0) {
+      t = (t.split(',').length > 2) ? t.replace(/,/g,'') : t.replace(',','.');
+    } else if (t.split('.').length > 2) {
+      const i = t.lastIndexOf('.'); t = t.slice(0,i).replace(/\./g,'') + t.slice(i);
+    }
+    return parseFloat(t) || 0;
   }
 
   window.attSheetCharger = async function(){
