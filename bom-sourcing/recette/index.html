@@ -3187,6 +3187,7 @@ async function sendChat() {
   let attFiltre = 'tout';
   let attFiltreType = 'tout';
   let attFiltreSO = '';
+  let attTri = 'priorite';   /* v14.1 : priorite | ancien | recent | so */
 
   window.attCharger = async function(){
     const liste = document.getElementById('att-liste');
@@ -3309,13 +3310,27 @@ async function sendChat() {
       c.urgent = /urgen/i.test(c.commentaire || '') || /^\s*\?+\s*$/.test(c.fournisseur || '');   /* fournisseur = uniquement des « ? » (?, ??, ???) sans nom derriere = inconnu = urgence ; « ?DigiKey » (prefixe a ne pas commander) n en est pas une */
       c.retard = (c.statut === 'En attente' || c.statut === 'Sans solution') && c.joursOuvres != null && c.joursOuvres >= 3;
     });
-    /* les urgentes en tete, puis les retards, puis par anciennete */
-    cartes.sort((a, b) => (b.urgent - a.urgent) || (b.retard - a.retard) || ((a.jours == null ? 1e9 : a.jours) - (b.jours == null ? 1e9 : b.jours)));
+    attTrier(cartes);
     return cartes;
   }
 
   /* v11.5 (15/09, decision Olivier) : la pastille = le STATUT de la sheet, plus le type.
      Les 5 statuts suffisent (Commande / Clos ne remontent pas). Type -> plus a l ecran. */
+  /* v14.1 (decision Olivier 29/09/2026) : tri « Priorite » par defaut = urgentes, puis risques de retard,
+     puis SO regroupees (la SO dont la ligne la plus ancienne est la plus vieille en premier), plus ancien d abord
+     a l interieur d une SO. Autres tris : plus ancien, plus recent, par affaire. */
+  function attTrier(cartes){
+    const age = c => (c.jours == null ? -1 : c.jours);
+    const plusVieuxParSO = {};
+    cartes.forEach(c => { const k = c.so || ''; plusVieuxParSO[k] = Math.max(plusVieuxParSO[k] || -1, age(c)); });
+    const parSO = (a, b) => (plusVieuxParSO[b.so||''] - plusVieuxParSO[a.so||'']) || String(a.so||'').localeCompare(String(b.so||'')) || (age(b) - age(a));
+    if (attTri === 'ancien') cartes.sort((a, b) => age(b) - age(a));
+    else if (attTri === 'recent') cartes.sort((a, b) => age(a) - age(b));
+    else if (attTri === 'so') cartes.sort(parSO);
+    else cartes.sort((a, b) => (b.urgent - a.urgent) || (b.retard - a.retard) || parSO(a, b));
+  }
+  window.attTrierPar = function(v){ attTri = v; attRender(); };
+
   function attBadge(c){
     if (c.statut === 'Consultation') return ['Consultation','rgba(91,196,216,0.15)','#8FD8E6'];
     if (c.statut === 'Sans solution') return ['Sans solution','var(--red-bg)','var(--red-badge)'];
@@ -3463,6 +3478,11 @@ async function sendChat() {
       types.map(([k,lbl]) =>
         '<button class="filter-btn' + (attFiltreType===k?' active':'') + '" onclick="attFiltrerType(\'' + k.replace(/'/g,"\\'") + '\')">' + lbl + '</button>'
       ).join('')
+      + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
+      + '<label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text3); font-weight:400; text-transform:none; letter-spacing:0;">Trier :'
+      + '<select onchange="attTrierPar(this.value)" style="width:auto; padding:5px 26px 5px 10px; font-size:12px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text2);">'
+      + [['priorite','Priorité (urgent, retard, puis affaires)'],['so','Par affaire'],['ancien','Plus ancien'],['recent','Plus récent']].map(([v,l]) => '<option value="' + v + '"' + (attTri===v?' selected':'') + '>' + l + '</option>').join('')
+      + '</select></label>'
       + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
       + '<input type="text" id="att-filtre-so" value="' + attEsc(attFiltreSO||'') + '" placeholder="SO, client, carte, IPN, MPN…" style="width:260px; padding:5px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;" oninput="attFiltrerSO(this.value)">';
 
