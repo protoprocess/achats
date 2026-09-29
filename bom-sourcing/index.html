@@ -454,7 +454,12 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "14.1";
+const APP_VERSION = "14.2";
+/* 14.2 (29/09/2026, chantier « Questions client : modèles précis et déroulé », go Olivier) : bouton « Sans solution »
+   renommé « Non dispo → question client ». Il marque toujours le fournisseur « ? » et ajoute la ligne aux Paniers en attente,
+   mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
+   indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
+   Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
 const APP_DATE = "29/09/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
@@ -3777,7 +3782,7 @@ async function sendChat() {
       const signale = !!(sigSet && sigSet.has(String(l['MPN']||'').trim().toUpperCase()));
       if (signale) nbSignales++;
       /* 13.1 : « Cmde chez … » retires (doublon de « J ai commande » du panier) ; reste Sans solution */
-      const cmdBtn = '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink); white-space:nowrap;" onclick="attSheetSansSolution(' + i + ')" title="Préfixe le fournisseur avec ? et crée la question client FabStory">Sans solution</button>';
+      const cmdBtn = '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink); white-space:nowrap;" onclick="attSheetSansSolution(' + i + ')" title="Marque le fournisseur ? et ouvre FabStory pour poser la question au client">Non dispo → question client</button>';
       const bascBtn = ''; /* v14.0 : le ↔ par ligne est remplacé par la barre d actions (coche + « Changer fournisseur / réf ») */
       const prixHtml = prix
         ? (cher
@@ -3934,28 +3939,34 @@ async function sendChat() {
   const ATT_SANSSOL_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-sans-solution';
 
   window.attSheetSansSolution = async function(i){
+    /* 14.2 (29/09/2026) : la question n'est plus créée ici en texte fixe — FabStory s'ouvre préremplie (déroulé guidé). */
     const d = attSheetData;
     const l = attSheetActives[i];
     if (!l) return;
     const mpn = (l['MPN']||'').trim();
     const ipn = (l['Approved internal part number']||'').trim();
     const qte = (l['Purchase qty']||'').toString().trim();
-    if (!confirm('Sans solution pour ' + (mpn || ipn) + ' ?\n\n- Le fournisseur passera en "?' + (l['Supplier']||'').trim() + '" dans la sheet achat\n- Une question client sera créée dans FabStory (envoi groupé depuis FabStory)')) return;
+    if (!confirm('Non dispo : ' + (mpn || ipn) + '\n\n- Le fournisseur passera en "?' + (l['Supplier']||'').trim() + '" dans la sheet achat, la ligne rejoint les Paniers en attente\n- FabStory s\'ouvre ensuite dans un nouvel onglet pour poser la question au client (MPN et repère déjà remplis)')) return;
+    const onglet = window.open('about:blank', '_blank');   /* ouvert tout de suite : sinon le navigateur bloque l'onglet après l'attente */
     try {
       const r = await fetch(ATT_SANSSOL_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ so: d.so, mpn, ipn, qte })
+        body: JSON.stringify({ so: d.so, mpn, ipn, qte, question_fabstory: true })
       });
       const res = await r.json();
-      if (res.success) {
-        alert('Question FabStory créée (n°' + res.question_id + '), fournisseur marqué ' + res.fournisseur + '.');
+      if (res.success && res.produit_id) {
+        const u = 'https://protoprocess.github.io/commercial/fabstory/?produit=' + encodeURIComponent(res.produit_id) +
+          '&question=indispo&REF=' + encodeURIComponent(res.mpn || mpn) + '&REP=' + encodeURIComponent(res.repere || '') + '&depuis=' + encodeURIComponent('Achats PP');
+        if (onglet) onglet.location = u; else window.open(u, '_blank');
         attSheetCharger();
         attCharger();
       } else {
-        alert('Échec : ' + (res.reason || 'inconnu') + (res.note ? '\n' + res.note : ''));
+        if (onglet) onglet.close();
+        alert((res.doublon ? '' : 'Échec : ') + (res.reason || 'inconnu') + (res.note ? '\n' + res.note : ''));
+        if (res.doublon) { attSheetCharger(); attCharger(); }
       }
-    } catch(e) { alert('Erreur réseau : ' + e.message); }
+    } catch(e) { if (onglet) onglet.close(); alert('Erreur réseau : ' + e.message); }
   };
 
   /* ============================================================
