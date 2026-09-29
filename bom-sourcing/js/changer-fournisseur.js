@@ -5,6 +5,8 @@
    (MPN / spec) bien séparés, plus de case « déjà commandé » (le marquage se fait sur la page principale).
    v1.3 : un bloc par sujet avec titre coloré ; formulaire complet toujours visible (fournisseur, réf, nouveau MPN,
    nouvel IPN) ; les valeurs proposées automatiquement s affichent en gris, une saisie humaine en blanc.
+   v1.4 : ordre Fournisseur / MPN + Réf. fournisseur / IPN ; valeurs actuelles en gris clair (placeholder), réf auto
+   dès la frappe d un MPN pour DigiKey et Mouser.
 
    Une seule fenêtre pour les onglets Achats et En attente :
      - offres Mouser / DigiKey (webhook fabstory-ref-info)
@@ -30,7 +32,7 @@
    ============================================================ */
 (function(){
   'use strict';
-  const VERSION = '1.3';
+  const VERSION = '1.4';
 
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -186,10 +188,11 @@
             '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px;">'
           +   '<div>' + lbl('Fournisseur') + '<select id="pp-cf-fourn" style="width:100%; padding:7px 9px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text);">'
           +     FOURNISSEURS.map(([v, lb]) => '<option value="' + esc(v) + '"' + (fournConnu && fournConnu[0] === v ? ' selected' : '') + '>' + esc(lb) + '</option>').join('') + '</select>'
-          +     '<input id="pp-cf-fourn-autre" placeholder="Nom du fournisseur" value="' + esc(fournConnu || !fournActuel ? '' : fournActuel) + '" style="display:none; margin-top:6px; width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
-          +   '<div>' + lbl('Réf. fournisseur') + '<input id="pp-cf-ref" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"><div id="pp-cf-ref-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
-          +   '<div>' + lbl('Nouveau MPN (si le composant change)') + '<input id="pp-cf-mpn" placeholder="Vide = même composant" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
-          +   '<div>' + lbl('Nouvel IPN (facultatif)') + '<input id="pp-cf-ipn" placeholder="Vide = ' + esc(l.ipn || 'inchangé') + '" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"><div id="pp-cf-ipn-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
+          +     '<input id="pp-cf-fourn-autre" placeholder="Nom du fournisseur" value="' + esc(fournConnu || !fournActuel ? '' : fournActuel) + '" style="display:none; margin-top:6px; width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text);"></div>'
+          +   '<div></div>'
+          +   '<div>' + lbl('MPN') + '<input id="pp-cf-mpn" placeholder="' + esc(l.mpn || '') + '" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text);"></div>'
+          +   '<div>' + lbl('Réf. fournisseur') + '<input id="pp-cf-ref" placeholder="' + esc(l.ref || '') + '" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text);"><div id="pp-cf-ref-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
+          +   '<div>' + lbl('IPN (facultatif)') + '<input id="pp-cf-ipn" placeholder="' + esc(l.ipn || '') + '" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text);"><div id="pp-cf-ipn-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
           + '</div>'
           + (caseSup ? '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:10px;"><input type="checkbox" id="pp-cf-sup"' + (caseSup.coche ? ' checked' : '') + '> ' + esc(caseSup.texte) + '</label>' : ''))
         + '<div id="pp-cf-msg" style="font-size:12px; color:var(--red); min-height:16px;"></div>'
@@ -218,22 +221,22 @@
       const majRef = async () => {
         const cle = cleRefAuto(fournisseur());
         const info = $('pp-cf-ref-info');
-        if (!cle) { if (info) info.textContent = 'Saisie manuelle pour ce fournisseur (réf trouvée automatiquement pour DigiKey et Mouser).'; if (!refManuelle) elRef.placeholder = ''; return; }
+        if (!cle) { if (info) info.textContent = 'saisie manuelle (auto pour DigiKey et Mouser)'; return; }
         if (refManuelle) return;
         const m = (elM.value || '').trim() || l.mpn || '';
-        if (!m) { if (info) info.textContent = 'Pas de MPN : réf à saisir.'; return; }
-        elRef.placeholder = 'Recherche en cours…';
+        if (!m) { if (info) info.textContent = 'pas de MPN : réf à saisir'; return; }
+        if (info) info.textContent = 'recherche…';
         if (info) info.textContent = '';
         const spn = await (async () => { try { const off = await offres(cfg.refInfoUrl, m); const b = meilleures(off).find(x => x.o.distributeur === cle); return b ? b.o.spn : ''; } catch(e) { return ''; } })();
         if (document.getElementById('pp-cf-ref') !== elRef || refManuelle) return;
         elRef.value = spn || '';
         elRef.style.color = 'var(--text3)'; /* proposée automatiquement : en gris tant que non confirmée par une saisie */
-        elRef.placeholder = spn ? '' : 'Non trouvée — saisir la réf';
-        if (info) info.textContent = spn ? 'Réf ' + cle + ' trouvée automatiquement pour ' + m : 'Aucune réf ' + cle + ' trouvée pour ' + m;
+
+        if (info) info.textContent = spn ? 'trouvée automatiquement pour ' + m : 'aucune réf ' + cle + ' pour ' + m;
       };
       elF.addEventListener('change', () => { majAutre(); majRef(); });
       elFA.addEventListener('change', majRef);
-      elM.addEventListener('change', majRef);
+      let tMpn = null; elM.addEventListener('input', () => { clearTimeout(tMpn); tMpn = setTimeout(majRef, 500); });
       majRef();
 
       /* IPN : présence dans le stock PP (info, non bloquant) */
