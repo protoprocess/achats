@@ -5,682 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v13.5 — 28/09/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<style>
-:root {
-  --bg: #0a0c12;
-  --surface: #1a2030;
-  --surface2: #161b27;
-  --border: #262e42;
-  --border2: #333d55;
-  --text: #e2e8f0;
-  --text2: #94a3b8;
-  --text3: #64748b;
-  --blue: #F07B1F;
-  --blue-bg: #2a1f10;
-  --pp-blue: #5BC4D8;
-  --green: #86c564;
-  --green-bg: #EAF3DE;
-  --green-badge: #3B6D11;
-  --amber: #eab676;
-  --amber-bg: #FAEEDA;
-  --amber-badge: #854F0B;
-  --red: #f09595;
-  --red-bg: #FCEBEB;
-  --red-badge: #A32D2D;
-  --pink: #ED93B1;
-  --pink-bg: #FBEAF0;
-  --pink-badge: #993556;
-  --pink-border: #ED93B1;
-  --radius: 6px;
-  --radius-lg: 10px;
-  --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
-}
-
-* { box-sizing:border-box; margin:0; padding:0; }
-
-body {
-  font-family: var(--sans);
-  font-size: 14px;
-  color: var(--text);
-  background: var(--bg);
-  min-height: 100vh;
-}
-
-header {
-  background: #0f1117;
-  border-bottom: 1px solid var(--border);
-  padding: 0 2rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 52px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.logo-text { display:flex; align-items:center; gap:0; font-size:13px; font-weight:500; }
-.logo-text .lt { color:#fff; }
-.logo-text .ls { color:#444; margin:0 3px; }
-.logo-text .lo { color:var(--blue); }
-
-.header-chips {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.hdr-note {
-  font-size: 11px;
-  color: var(--text3);
-  font-family: var(--mono);
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  font-family: var(--sans);
-}
-.chip.ok { border-color: #97C459; color: var(--green-badge); background: var(--green-bg); }
-.chip.err { border-color: #F09595; color: var(--red-badge); background: var(--red-bg); }
-
-.main { max-width: min(96vw, 1800px); margin: 0 auto; padding: 2rem; }
-
-/* SETUP */
-.setup-screen { display: block; }
-.main-screen { display: none; }
-
-.setup-hero {
-  text-align: center;
-  padding: 3rem 0 2rem;
-}
-.setup-hero h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 8px; }
-.setup-hero p { color: var(--text2); font-size: 14px; }
-
-.setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-@media(max-width:700px) { .setup-grid { grid-template-columns: 1fr; } }
-
-.setup-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem;
-}
-.setup-card-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text);
-}
-.setup-card-title i { color: var(--text2); font-size: 17px; }
-.fixed-tag {
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 20px;
-  background: var(--surface2);
-  color: var(--text3);
-  border: 1px solid var(--border);
-  margin-left: auto;
-}
-
-.setup-actions { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
-
-.status-row { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text2); margin-top:10px; min-height:20px; }
-.status-dot { width:7px; height:7px; border-radius:50%; background:var(--border2); flex-shrink:0; }
-.status-dot.ok { background:var(--green-badge); }
-.status-dot.err { background:var(--red-badge); }
-.status-dot.loading { background:var(--amber-badge); animation:pulse 1s infinite; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-/* TABS */
-.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.5rem; }
-.tab {
-  padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  background: none;
-  color: var(--text2);
-  border-bottom: 2px solid transparent;
-  font-family: var(--sans);
-  transition: color 0.15s;
-}
-.tab.active { color: var(--blue); border-bottom-color: var(--blue); }
-.tab:hover:not(.active) { color: var(--text); }
-.panel { display:none; } .panel.active { display:block; }
-
-/* FORMS */
-label { display:block; font-size:11px; font-weight:600; color:var(--text2); margin-bottom:5px; letter-spacing:0.3px; text-transform:uppercase; }
-input[type=text], textarea, select {
-  width: 100%;
-  padding: 8px 11px;
-  font-size: 13px;
-  font-family: var(--sans);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  transition: border-color 0.15s, box-shadow 0.15s;
-  outline: none;
-}
-input[type=text]:focus, textarea:focus, select:focus {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(240,123,31,0.15);
-}
-textarea {
-  resize: vertical;
-  min-height: 90px;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.hint { font-size: 11px; color: var(--text3); margin-top: 5px; }
-.hint code { font-family: var(--mono); background: var(--surface2); padding: 1px 5px; border-radius: 4px; }
-
-/* BUTTONS */
-.btn {
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  font-family: var(--sans);
-  cursor: pointer;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  transition: background 0.15s, border-color 0.15s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.btn:hover { background: var(--surface2); }
-.btn:active { transform: scale(0.98); }
-.btn.primary { background: var(--blue); color: white; border-color: transparent; }
-.btn.primary:hover { opacity: 0.85; }
-.btn.sm { padding: 6px 12px; font-size: 12px; }
-.btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
-
-.actions-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
-
-/* CARDS / SECTIONS */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem;
-  margin-bottom: 12px;
-}
-
-.section-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 10px;
-}
-
-.row2 { display:flex; gap:12px; margin-bottom:12px; }
-.row2 .col { flex:1; }
-
-/* BOM LOAD BAR */
-.conf-high { color: var(--green); font-size:11px; font-weight:600; }
-.conf-med  { color: var(--amber); font-size:11px; font-weight:600; }
-.conf-low  { color: var(--red); font-size:11px; font-weight:600; }
-.rule-suggestion {
-  background: var(--blue-bg);
-  border: 1px solid var(--blue);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--blue);
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.rule-suggestion-text { flex:1; font-family: var(--mono); line-height:1.5; }
-.rule-suggestion-actions { display:flex; gap:6px; flex-shrink:0; }
-.btn-rule-add { font-size:11px; padding:3px 10px; border-radius:5px; border:1px solid var(--blue); background:var(--blue); color:white; cursor:pointer; font-family:inherit; }
-.btn-rule-add:hover { opacity:0.85; }
-.btn-rule-skip { font-size:11px; padding:3px 10px; border-radius:5px; border:1px solid var(--border); background:transparent; color:var(--text2); cursor:pointer; font-family:inherit; }
-.rule-added-badge { font-size:10px; color:var(--green-badge); background:var(--green-bg); padding:2px 7px; border-radius:10px; }
-.bom-src-btn { opacity: 0.6; }
-.bom-src-btn.active { opacity: 1; background: var(--blue); color: white; border-color: transparent; }
-.upload-drop-zone {
-  border: 1.5px dashed var(--border2);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  font-size: 13px;
-  color: var(--text2);
-  line-height: 1.6;
-}
-.upload-drop-zone:hover, .upload-drop-zone.dragover {
-  border-color: var(--blue);
-  background: var(--surface2);
-}
-.upload-drop-zone.loaded {
-  border-color: #97C459;
-  background: var(--green-bg);
-  color: var(--green-badge);
-}
-.bom-load-bar {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 14px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.bom-load-bar .url-group { flex:1; min-width:260px; }
-.bom-status { font-size: 12px; color: var(--text2); display:flex; align-items:center; gap:6px; }
-
-/* CLIENT BAR */
-.client-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.client-bar .lbl { font-size: 13px; font-weight: 600; white-space: nowrap; }
-.client-bar select { width: auto; min-width: 180px; flex:1; max-width: 280px; }
-
-/* BADGES */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 3px 9px;
-  border-radius: 20px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.b-ok { background:var(--green-bg); color:var(--green-badge); }
-.b-warn { background:var(--amber-bg); color:var(--amber-badge); }
-.b-err { background:var(--red-bg); color:var(--red-badge); }
-.b-strict { background:var(--pink-bg); color:var(--pink-badge); border:1px solid var(--pink-border); }
-.b-info { background:var(--blue-bg); color:var(--blue); }
-
-/* TABLE */
-.filter-bar {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.filter-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 5px 12px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text2);
-  cursor: pointer;
-  font-family: var(--sans);
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-.filter-btn:hover { background: var(--surface2); color: var(--text); }
-.filter-btn.active { background: var(--blue); color: white; border-color: transparent; }
-.filter-btn.active.f-warn { background: var(--amber-badge); }
-.filter-btn.active.f-err { background: var(--red-badge); }
-.filter-btn.active.f-mpn { background: var(--pink-badge); }
-.filter-btn.active.f-sensor { background: #5B6FBE; }
-.filter-btn.active.f-battery { background: #5B6FBE; }
-.filter-btn.active.f-sealed { background: #5B6FBE; }
-.filter-btn.active.f-msl { background: #5B6FBE; }
-.filter-btn.active.f-fuzzystock { background: #5B6FBE; }
-.filter-btn.active.f-partialstock { background: var(--pp-blue); color:#0a0c12; }
-.filter-count {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.25);
-  font-weight: 600;
-}
-.filter-btn:not(.active) .filter-count {
-  background: var(--surface2);
-  color: var(--text2);
-}
-.filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
-.no-results-row td { text-align: center; color: var(--text3); padding: 24px; font-size: 13px; }
-
-.bom-table-wrap {
-  overflow-x: auto;
-  margin-top: 1rem;
-  height: 68vh;
-  min-height: 420px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-}
-table { width:100%; border-collapse:collapse; font-size:12px; }
-th {
-  background: var(--surface2);
-  padding: 9px 11px;
-  text-align: left;
-  font-weight: 700;
-  font-size: 10px;
-  color: var(--text2);
-  position: sticky;
-  top: 0;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-  z-index: 1;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-td {
-  padding: 8px 11px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-  word-break: break-word;
-}
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: var(--surface2); }
-.row-warn td:first-child { box-shadow: inset 3px 0 0 var(--amber-badge); }
-.row-err td:first-child { box-shadow: inset 3px 0 0 var(--red-badge); }
-.row-mpnwarn td:first-child { box-shadow: inset 3px 0 0 var(--pink-badge); }
-.row-mpnmissing td:first-child { box-shadow: inset 3px 0 0 var(--red-badge); }
-
-.editable-ipn {
-  font-family: var(--mono);
-  font-size: 11px;
-  width: 100%;
-  padding: 3px 7px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--blue);
-}
-.editable-ipn:focus { outline:none; border-color:var(--blue); background:var(--blue-bg); }
-
-/* COUNTERS */
-.counter-row { display:flex; gap:10px; margin:1rem 0; flex-wrap:wrap; }
-.counter {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 16px;
-  min-width: 80px;
-}
-.counter-val { font-size: 22px; font-weight: 600; font-family: var(--mono); }
-.counter-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
-
-/* WARN SUMMARY */
-.warn-box {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--amber);
-  border-radius: var(--radius-lg);
-  padding: 1rem 1.25rem;
-  margin-bottom: 12px;
-}
-.warn-item { display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
-.warn-item:last-child { border-bottom:none; }
-.warn-item i { font-size:17px; color:var(--amber); flex-shrink:0; margin-top:1px; }
-
-/* STOCK CELL */
-.stock-cell { display:flex; flex-direction:column; gap:2px; }
-.stock-line { display:flex; align-items:center; gap:5px; font-size:11px; white-space:nowrap; }
-.slbl { font-size:10px; color:var(--text3); min-width:28px; font-family:var(--mono); }
-.s-ok { color:var(--green); font-weight:600; font-family:var(--mono); }
-.s-zero { color:var(--red); font-weight:600; font-family:var(--mono); }
-.s-na { color:var(--text3); }
-.s-mpnwarn { color:var(--pink); font-weight:600; font-family:var(--mono); }
-
-.stock-split-btn {
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 20px;
-  border: 1px solid var(--blue);
-  background: var(--blue-bg);
-  color: var(--blue);
-  cursor: pointer;
-  font-family: var(--sans);
-  white-space: nowrap;
-  align-self: flex-start;
-}
-.stock-split-btn:hover { background: var(--blue); color: white; }
-
-.fuzzy-applied-tag {
-  font-size: 10px;
-  color: var(--text3);
-  cursor: pointer;
-  margin-left: 3px;
-}
-.fuzzy-applied-tag:hover { color: var(--red); }
-
-.fuzzy-wrap { position: relative; display: inline-block; }
-.fuzzy-toggle {
-  border: none;
-  background: none;
-  color: var(--text3);
-  cursor: pointer;
-  padding: 1px 3px;
-  font-size: 13px;
-  line-height: 1;
-}
-.fuzzy-toggle:hover { color: var(--blue); }
-.fuzzy-dropdown {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 10;
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-  min-width: 260px;
-  max-width: 360px;
-  padding: 4px;
-  margin-top: 2px;
-}
-.fuzzy-dropdown.open { display: block; }
-.fuzzy-cand {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 6px 8px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 11px;
-}
-.fuzzy-cand:hover { background: var(--blue-bg); }
-.fuzzy-key { font-family: var(--mono); color: var(--text); white-space: normal; word-break: break-word; line-height: 1.4; }
-.fuzzy-qty { font-family: var(--mono); font-weight: 600; color: var(--text2); flex-shrink: 0; margin-top: 1px; }
-
-/* CODIF */
-.ipn-result-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem;
-  margin-top: 1rem;
-}
-.ipn-code {
-  font-family: var(--mono);
-  font-size: 18px;
-  font-weight: 500;
-  color: var(--blue);
-  background: var(--blue-bg);
-  padding: 8px 14px;
-  border-radius: var(--radius);
-  display: inline-block;
-  margin: 8px 0;
-  letter-spacing: 0.5px;
-}
-.copy-btn {
-  cursor: pointer;
-  background: none;
-  border: none;
-  color: var(--text2);
-  font-size: 14px;
-  padding: 0 4px;
-  vertical-align: middle;
-}
-.copy-btn:hover { color: var(--text); }
-
-/* LOADING */
-.loading { display:flex; align-items:center; gap:10px; color:var(--text2); font-size:13px; padding:14px 0; }
-.spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--text2); border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0; }
-@keyframes spin { to{transform:rotate(360deg);} }
-
-/* TOPBAR */
-.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; gap:10px; }
-.topbar-left { display:flex; gap:8px; flex-wrap:wrap; }
-
-/* RULE BOX */
-.rule-box {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1rem 1.25rem;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 2;
-  color: var(--text2);
-}
-.rule-box b { color: var(--text); font-weight: 600; }
-
-/* CLIENTS PREVIEW TABLE */
-.clients-table-wrap { border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; margin-top:10px; }
-
-/* FOOTER NOTE */
-.footer-note { font-size:11px; color:var(--text3); margin-top:8px; }
-</style>
+<link rel="stylesheet" href="css/app.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<style>
-/* signalement : bouton flottant, module commun (chantier 72) */
-#sig-btn{position:fixed;right:18px;bottom:18px;z-index:60;display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:22px;background:var(--surface,#1a2030);color:var(--text2,#94a3b8);border:1px solid var(--border2,#333d55);box-shadow:0 4px 14px rgba(0,0,0,.4);cursor:pointer;font-size:12px;font-family:inherit}
-#sig-btn:hover{color:var(--blue,#F07B1F);border-color:var(--blue,#F07B1F)}
-#sig-fond{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:18px}
-#sig-fond.hidden{display:none}
-#sig-boite{background:var(--surface,#1a2030);border:1px solid var(--border2,#333d55);border-radius:10px;width:min(94vw,560px);max-height:90vh;overflow:auto;padding:18px;color:var(--text,#e2e8f0);font-size:13px}
-#sig-boite h2{font-size:15px}
-.sig-t{display:flex;gap:6px;margin:0 0 11px;flex-wrap:wrap}
-.sig-t button{flex:1;min-width:120px;padding:8px 10px;border-radius:6px;background:transparent;color:var(--text2,#94a3b8);border:1px solid var(--border,#262e42);font-size:12px;cursor:pointer;font-family:inherit}
-.sig-t button.on{background:var(--blue,#F07B1F);color:#fff;border-color:transparent;font-weight:500}
-#sig-boite label.f{display:block;font-size:11.5px;color:var(--text2,#94a3b8);margin:0 0 4px}
-#sig-boite input.f,#sig-boite textarea.f{width:100%;box-sizing:border-box;background:var(--surface2,#161b27);color:var(--text,#e2e8f0);border:1px solid var(--border,#262e42);border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;margin-bottom:10px}
-#sig-boite .btn-ann{padding:6px 13px;background:transparent;color:var(--text2,#94a3b8);border:1px solid var(--border,#262e42);border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit}
-#sig-boite .btn-env{padding:6px 13px;background:var(--blue,#F07B1F);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
-</style>
 </head>
 <body>
 <!-- ===== ACCES PROTO PROCESS ===== -->
-<script>
-(function(){
-  var KEY='pp_access_code', HDR='X-PP-Auth', HOST='protoprocess.app.n8n.cloud';
-  function get(){try{return localStorage.getItem(KEY)||''}catch(e){return ''}}
-  function set(v){try{localStorage.setItem(KEY,v)}catch(e){}}
-  function del(){try{localStorage.removeItem(KEY)}catch(e){}}
-
-  /* 1) Interception installee EN PREMIER : ne depend d'aucun element HTML */
-  var _f = window.fetch;
-  window.fetch = function(input, init){
-    var url = '';
-    try { url = (typeof input === 'string') ? input : ((input && input.url) || ''); } catch(e){}
-    if (url.indexOf(HOST) === -1) { return _f.apply(this, arguments); }
-    init = init || {};
-    try { var h = new Headers(init.headers || {}); h.set(HDR, get()); init.headers = h; } catch(e){}
-    return _f.call(this, input, init).then(function(r){
-      if (r && (r.status === 401 || r.status === 403)) { del(); demander("Code d'acces refuse. Ressaisissez-le."); }
-      return r;
-    });
-  };
-
-  /* 2) Ecran construit en JS : aucune dependance au HTML de l'appli */
-  var box = null;
-  function construire(){
-    if (box) return box;
-    box = document.createElement('div');
-    box.id = 'pp-gate';
-    box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0a0c12;display:none;'
-      + 'align-items:center;justify-content:center;padding:20px;'
-      + 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif';
-    box.innerHTML =
-      '<div style="background:#1a2030;border:1px solid #262e42;border-radius:10px;padding:26px;max-width:380px;width:100%">'
-      + '<div style="font-size:13px;font-weight:500;margin-bottom:14px">'
-      +   '<span style="color:#fff">PROTO PROCESS</span><span style="color:#444;margin:0 3px">/</span>'
-      +   '<span style="color:#F07B1F">Acces</span></div>'
-      + '<div style="font-size:12.5px;color:#94a3b8;line-height:1.55;margin-bottom:16px">'
-      +   "Saisissez le code d'acces interne. Il ne vous sera demande qu'une fois sur cet appareil.</div>"
-      + '<input id="pp-in" type="password" placeholder="Code d acces" autocomplete="off" '
-      +   'style="width:100%;background:#161b27;border:1px solid #262e42;border-radius:6px;color:#e2e8f0;'
-      +   'padding:9px 11px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box">'
-      + '<div id="pp-err" style="font-size:12px;color:#f09595;margin-top:9px;min-height:16px"></div>'
-      + '<button id="pp-btn" style="width:100%;margin-top:12px;padding:9px;background:#F07B1F;color:#fff;'
-      +   'border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Valider</button>'
-      + '</div>';
-    document.body.appendChild(box);
-    var inp = box.querySelector('#pp-in'), btn = box.querySelector('#pp-btn');
-    btn.addEventListener('click', function(){
-      var v = (inp.value || '').trim();
-      if (!v) { box.querySelector('#pp-err').textContent = 'Code requis.'; return; }
-      set(v); inp.value = ''; box.style.display = 'none'; location.reload();
-    });
-    inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') { btn.click(); } });
-    return box;
-  }
-
-  function demander(msg){
-    if (!document.body) { document.addEventListener('DOMContentLoaded', function(){ demander(msg); }); return; }
-    var b = construire();
-    b.querySelector('#pp-err').textContent = msg || '';
-    b.style.display = 'flex';
-    setTimeout(function(){ try { b.querySelector('#pp-in').focus(); } catch(e){} }, 50);
-  }
-
-  window.ppChangerCode = function(){ del(); demander(''); };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function(){ if (!get()) demander(''); });
-  } else if (!get()) { demander(''); }
-})();
-</script>
+<script src="../shared/pp-acces.js"></script>
 <!-- ===== FIN ACCES ===== -->
 
 
@@ -1110,10 +441,16 @@ tr:hover td { background: var(--surface2); }
 
 <script>
 /* ---------- version ---------- */
+/* PROD 14.0 — basculée depuis la recette le 29/09/2026 (retour : étiquette avant-bascule-14-2026-09-29 ; état d avant la découpe : avant-decoupe-2026-09-29).
+   14.0 (29/09/2026, chantier 186 — séance 1 de la découpe) : CSS dans css/app.css ; accès n8n et
+   signalement dans achats/shared/ (pp-acces.js, pp-signalement.js) ; pop-up partagé « Changer fournisseur / réf »
+   (js/changer-fournisseur.js) branché sur ↔ (Achats) et sur « Changer de réf » + « Chercher » (En attente) :
+   liens fournisseur MPN, équivalent par spec (résistances : 1 % et puissance selon boîtier), réf auto DigiKey/Mouser,
+   case « déjà commandé ». Anciens panneaux Basculer / modale Changer de réf retirés. Retour : étiquette avant-decoupe-2026-09-29. */
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "13.6";
+const APP_VERSION = "14.0";
 const APP_DATE = "29/09/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
@@ -3511,231 +2848,6 @@ function clearBOM() {
 </script>
 
 <!-- CHAT WIDGET -->
-<style>
-.chat-fab {
-  position: fixed;
-  bottom: 28px;
-  right: 28px;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--blue);
-  color: white;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
-  z-index: 1000;
-  transition: transform 0.15s, opacity 0.15s;
-}
-.chat-fab:hover { transform: scale(1.08); }
-.chat-fab .badge-notif {
-  position: absolute;
-  top: -2px; right: -2px;
-  width: 14px; height: 14px;
-  background: var(--pink-badge);
-  border-radius: 50%;
-  border: 2px solid white;
-  display: none;
-}
-.chat-fab .badge-notif.visible { display: block; }
-
-.chat-panel {
-  position: fixed;
-  bottom: 90px;
-  right: 28px;
-  width: 380px;
-  max-width: calc(100vw - 40px);
-  height: 520px;
-  max-height: calc(100vh - 120px);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.14);
-  z-index: 999;
-  display: none;
-  flex-direction: column;
-  overflow: hidden;
-}
-.chat-panel.open { display: flex; }
-
-.chat-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface2);
-  flex-shrink: 0;
-}
-.chat-header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 13px;
-}
-.chat-header-title i { color: var(--text2); }
-.chat-context-badge {
-  font-size: 10px;
-  padding: 2px 7px;
-  border-radius: 20px;
-  background: var(--green-bg);
-  color: var(--green-badge);
-  font-weight: 500;
-}
-.chat-context-badge.empty {
-  background: var(--surface2);
-  color: var(--text3);
-}
-.chat-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text2);
-  font-size: 16px;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-}
-.chat-close:hover { color: var(--text); }
-
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.chat-msg {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-width: 88%;
-}
-.chat-msg.user { align-self: flex-end; }
-.chat-msg.assistant { align-self: flex-start; }
-
-.chat-bubble {
-  padding: 9px 12px;
-  border-radius: 12px;
-  font-size: 13px;
-  line-height: 1.6;
-  word-break: break-word;
-}
-.chat-msg.user .chat-bubble {
-  background: var(--blue);
-  color: white;
-  border-bottom-right-radius: 4px;
-}
-.chat-msg.assistant .chat-bubble {
-  background: var(--surface2);
-  color: var(--text);
-  border-bottom-left-radius: 4px;
-  border: 1px solid var(--border);
-}
-.chat-msg-time {
-  font-size: 10px;
-  color: var(--text3);
-  padding: 0 4px;
-}
-.chat-msg.user .chat-msg-time { text-align: right; }
-
-.chat-typing {
-  align-self: flex-start;
-  padding: 9px 14px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  border-bottom-left-radius: 4px;
-  display: none;
-  gap: 4px;
-  align-items: center;
-}
-.chat-typing.visible { display: flex; }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); animation: bounce 1.2s infinite; }
-.dot:nth-child(2) { animation-delay: 0.2s; }
-.dot:nth-child(3) { animation-delay: 0.4s; }
-@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-5px)} }
-
-.chat-source {
-  font-size: 10px;
-  color: var(--blue);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  margin-top: 3px;
-  padding: 0 4px;
-}
-
-.chat-footer {
-  padding: 10px 12px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-  flex-shrink: 0;
-  background: var(--surface);
-}
-.chat-input {
-  flex: 1;
-  padding: 8px 11px;
-  font-size: 13px;
-  font-family: var(--sans);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  resize: none;
-  max-height: 100px;
-  min-height: 36px;
-  line-height: 1.5;
-  outline: none;
-}
-.chat-input:focus { border-color: var(--blue); }
-.chat-send {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius);
-  background: var(--blue);
-  color: white;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  flex-shrink: 0;
-  transition: opacity 0.15s;
-}
-.chat-send:hover { opacity: 0.8; }
-.chat-send:disabled { opacity: 0.3; cursor: default; }
-
-.chat-suggestions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px 0;
-  flex-shrink: 0;
-}
-.chat-suggestion {
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  cursor: pointer;
-  font-family: var(--sans);
-  white-space: nowrap;
-}
-.chat-suggestion:hover { background: var(--border); color: var(--text); }
-</style>
 
 <!-- FAB button -->
 <button class="chat-fab" onclick="toggleChat()" title="Assistant IA">
@@ -4041,56 +3153,10 @@ async function sendChat() {
   </div>
 </div>
 
-<script>
-/* ---------- signalement : module commun (chantier 72) ----------
-   Auto-suffisant : URL de production en dur, l'en-tete X-PP-Auth est pose par
-   l'intercepteur d'acces commun. Le contexte minimal (appli, version) part
-   automatiquement. Destination : Data Table n8n + table Supabase signalements
-   (lue par Claude) + mail immediat. */
-(function(){
-  var URL_SIG = 'https://protoprocess.app.n8n.cloud/webhook/v2-signalement';
-  var CLE_SIGNALEUR = 'pp_signaleur';
-  var SIG_TYPE = 'bug';
-  var APPLI = 'bom-sourcing';
+<script>window.PP_APPLI = 'bom-sourcing';</script>
+<script src="../shared/pp-signalement.js"></script>
 
-  window.sigType = function(t){
-    SIG_TYPE = t;
-    document.querySelectorAll('#sig-types button').forEach(function(b){ b.classList.toggle('on', b.dataset.t === t); });
-  };
-  window.ouvrirSignalement = function(){
-    try{ document.getElementById('sig-auteur').value = localStorage.getItem(CLE_SIGNALEUR) || ''; }catch(e){}
-    document.getElementById('sig-msg').textContent = '';
-    document.getElementById('sig-fond').classList.remove('hidden');
-    document.getElementById('sig-desc').focus();
-  };
-  window.fermerSignalement = function(){ document.getElementById('sig-fond').classList.add('hidden'); };
-  window.envoyerSignalement = function(){
-    var desc = document.getElementById('sig-desc').value.trim();
-    var msg = document.getElementById('sig-msg');
-    if(!desc){ msg.innerHTML = '<span style="color:#f09595">Décrivez ce que vous avez constaté.</span>'; return; }
-    var auteur = document.getElementById('sig-auteur').value.trim();
-    try{ if(auteur) localStorage.setItem(CLE_SIGNALEUR, auteur); }catch(e){}
-    var btn = document.getElementById('sig-env');
-    btn.disabled = true;
-    msg.innerHTML = '<span style="color:var(--text2,#94a3b8)">Envoi…</span>';
-    fetch(URL_SIG, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        type: SIG_TYPE, description: desc, auteur: auteur,
-        appli: APPLI, version: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '')
-      })
-    }).then(function(r){
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      msg.innerHTML = '<span style="color:#86c564">Merci, c\'est envoyé.</span>';
-      document.getElementById('sig-desc').value = '';
-      setTimeout(window.fermerSignalement, 1400);
-    }).catch(function(e){
-      msg.innerHTML = '<span style="color:#f09595">Envoi impossible : ' + String(e.message).replace(/[<>&]/g,'') + '. Réessayez ou prévenez Olivier.</span>';
-    }).then(function(){ btn.disabled = false; });
-  };
-})();
-</script>
-
+<script src="js/changer-fournisseur.js"></script>
 <script>
 /* ============================================================
    MODULE ACHATS EN ATTENTE — independant de l'analyse BOM.
@@ -4275,28 +3341,7 @@ async function sendChat() {
     if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
   };
 
-  function attRecherche(c){
-    const q = encodeURIComponent(c.mpn || c.ipn);
-    if (!q) return '';
-    const spec = attSpecDepuisIpn(c.ipn);
-    const eq = spec ? encodeURIComponent(spec) : '';
-    const escLoc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    return '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
-      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + q + '">DigiKey</a>'
-      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://eu.mouser.com/c/?q=' + q + '">Mouser</a>'
-      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://octopart.com/search?q=' + q + '">Octopart</a>'
-      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://fr.farnell.com/search?st=' + q + '">Farnell</a>'
-      + '</div>'
-      + (eq
-        ? '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; align-items:center;">'
-          + '<span style="font-size:11px; color:var(--text3);">Équivalent par spec <span style="font-family:var(--mono)">(' + escLoc(spec) + ')</span> :</span>'
-          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://octopart.com/search?q=' + eq + '">Octopart ↗</a>'
-          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + eq + '">DigiKey ↗</a>'
-          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.mouser.fr/c/?q=' + eq + '">Mouser ↗</a>'
-          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.farnell.com/search?st=' + eq + '">Farnell ↗</a>'
-          + '</div>'
-        : '');
-  }
+  /* attRecherche retirée en v14.0 : liens et équivalent par spec vivent dans le pop-up partagé (js/changer-fournisseur.js). */
 
   const ATT_FOURNISSEURS = ['DigiKey','Mouser','Farnell'];
   const attEsc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -4417,7 +3462,7 @@ async function sendChat() {
       const substBtn = c.origine === 'reception'
         ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
-      const rechBtn = '<button class="btn" onclick="attToggleRecherche(' + i + ')" title="Liens de recherche DigiKey / Mouser / Octopart / Farnell"><i class="ti ti-search" aria-hidden="true"></i> Chercher</button>';
+      const rechBtn = '<button class="btn" onclick="attChangerRef(' + i + ')" title="Offres, liens fournisseur MPN, équivalent par spec — même fenêtre que Changer de réf"><i class="ti ti-search" aria-hidden="true"></i> Chercher</button>';
       /* v11.0 : Changer de ref sur toutes les cartes. Sans SO, la sheet appro
          de l affaire est introuvable -> bouton grise. */
       const chgBtn = c.so && c.mpn
@@ -4440,15 +3485,10 @@ async function sendChat() {
         + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span></div>'
         + '</div>'
         + barre
-        + '<div id="att-rech-' + i + '" style="display:none;">' + attRecherche(c) + '</div>'
         + '</div>';
     }).join('');
   }
 
-  window.attToggleRecherche = function(i){
-    const el = document.getElementById('att-rech-' + i);
-    if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
-  };
 
   /* Menu "Commande chez..." : confirmation dans la modale (plus de confirm()
      navigateur), champ fournisseur si "Autre". L action reste attCommander. */
@@ -4711,7 +3751,7 @@ async function sendChat() {
       if (signale) nbSignales++;
       /* 13.1 : « Cmde chez … » retires (doublon de « J ai commande » du panier) ; reste Sans solution */
       const cmdBtn = '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink); white-space:nowrap;" onclick="attSheetSansSolution(' + i + ')" title="Préfixe le fournisseur avec ? et crée la question client FabStory">Sans solution</button>';
-      const bascBtn = '<button class="btn" style="padding:1px 6px; font-size:11px; color:var(--pp-blue); border-color:var(--pp-blue); margin-left:4px;" onclick="attBasculer(' + i + ')" title="Changer de fournisseur (stock et prix chez les autres)" aria-label="Changer de fournisseur"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></button>';
+      const bascBtn = ''; /* v14.0 : le ↔ par ligne est remplacé par la barre d actions (coche + « Changer fournisseur / réf ») */
       const prixHtml = prix
         ? (cher
           ? '<span style="color:var(--amber); font-weight:500;" title="Demande de prix conseillée — un broker peut faire mieux que les distributeurs sur ce montant">' + prix.toFixed(2) + ' € <i class="ti ti-alert-triangle" aria-hidden="true"></i></span>'
@@ -4723,6 +3763,7 @@ async function sendChat() {
         : '';
       return '<tr' + teinte + '>'
         + '<td style="padding:5px 6px;"><input type="checkbox" class="att-dp-check" data-i="' + i + '" onchange="attDpMaj()"' + (cher ? ' title="Prix élevé"' : '') + '></td>'
+        + '<td style="padding:5px 2px 5px 0;"><button class="btn" style="padding:2px 7px; font-size:12px; color:#7FDDF0; background:rgba(91,196,216,0.16); border-color:var(--pp-blue); font-weight:600;" onclick="attBasculer(' + i + ')" title="Changer fournisseur / réf pour cette ligne"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></button></td>'
         + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + (fourn || '—') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Supplier part number']||'') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['MPN']||'') + sigBadge + '</td>'
@@ -4759,14 +3800,16 @@ async function sendChat() {
       + bandeau
       + panierBtns
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">'
-      + '<button class="btn" id="att-dp-dispo" disabled onclick="attDemandePrix(\'neutre\')" title="Brouillon Gmail commercial@ — texte neutre, sans dire pourquoi on consulte"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>'
+      + '<button class="btn att-action" id="att-dp-dispo" disabled onclick="attDemandePrix(\'neutre\')" title="Brouillon Gmail commercial@ — texte neutre, sans dire pourquoi on consulte"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>'
+      + '<button class="btn att-action" id="att-cf-btn" disabled onclick="attChangerFournCoches()" title="Offres, liens fournisseur MPN, équivalent par spec, puis nouveau fournisseur / réf — une ligne après l autre"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf</button>'
       + '<span id="att-dp-compte" style="font-size:12px; color:var(--text3); align-self:center;">0 sélectionnée</span>'
+      + '<span style="font-size:11px; color:var(--text3); align-self:center; margin-left:auto;">Coche une ou plusieurs lignes, puis choisis l\'action. Fournisseur déjà bon ? « J\'ai commandé » sur son panier suffit.</span>'
       + '</div>'
       + attFiltreHtml()
       /* 13.1 : le tableau defile seul (la page ne bouge pas), en-tete fixe */
       + '<div style="overflow:auto; max-height:calc(100vh - 260px); min-height:200px; border:1px solid var(--border); border-radius:var(--radius);"><table style="width:100%; border-collapse:collapse; font-size:12px;">'
       + '<thead style="position:sticky; top:0; z-index:1; background:var(--surface2);"><tr style="color:var(--text3); text-align:left;">'
-      + ['', 'Fournisseur', 'Réf. fourn.', 'MPN', 'IPN', 'Qté', 'Prix', 'Repères', ''].map(h => '<th style="padding:6px 8px; background:var(--surface2);">' + h + '</th>').join('')
+      + ['', '', 'Fournisseur', 'Réf. fourn.', 'MPN', 'IPN', 'Qté', 'Prix', 'Repères', ''].map(h => '<th style="padding:6px 8px; background:var(--surface2);">' + h + '</th>').join('')
       + '</tr></thead>'
       + '<tbody>' + rows + '</tbody></table></div>';
   }
@@ -4775,7 +3818,7 @@ async function sendChat() {
     const n = document.querySelectorAll('.att-dp-check:checked').length;
     const c = document.getElementById('att-dp-compte');
     if (c) c.textContent = n + ' sélectionnée' + (n>1?'s':'');
-    ['att-dp-dispo','att-dp-prix'].forEach(id => {
+    ['att-dp-dispo','att-dp-prix','att-cf-btn'].forEach(id => {
       const b = document.getElementById(id);
       if (b) b.disabled = !n;
     });
@@ -5148,167 +4191,55 @@ async function sendChat() {
   /* IPN -> requete de recherche en clair pour les moteurs distributeurs.
      C22U-0805-6V3-20P-X5R -> "22uF 0805 6.3V 20% X5R"
      R10K-0402-25PPM       -> "10k 0402 25ppm resistor 0.1%" (ppm PP) */
-  function attSpecDepuisIpn(ipn){
-    const p = (ipn||'').toUpperCase().split('-');
-    if (!p.length) return '';
-    // v12.4 (18/09/2026, constat Olivier sur C4U2-0402-16V-10P-X5R) : la DECIMALE
-    // des condensateurs manquait. C4U2 = 4,2 uF, C2U2 = 2,2 uF, C5P6 = 5,6 pF —
-    // le motif n'acceptait que C<entier><U|N|P>, donc la spec sortait vide et toute
-    // la ligne « Équivalent par spec » disparaissait en silence. Les resistances,
-    // elles, geraient deja la decimale (R4K7 -> 4.7k) : meme regle ici.
-    let m = p[0].match(/^C(\d+)([UNP])(\d*)$/);
-    if (m) {
-      const unite = { U: 'uF', N: 'nF', P: 'pF' }[m[2]];
-      const val = m[3] ? m[1] + '.' + m[3] : m[1];
-      const morceaux = [val + unite, p[1] || ''];
-      if (p[2]) morceaux.push(p[2].replace(/^(\d+)V(\d+)$/, '$1.$2V').replace(/^(\d+)V$/, '$1V'));
-      // tolerance : 10P -> 10%, 0P25 -> 0.25%
-      if (p[3]) morceaux.push(p[3].replace(/^(\d+)P(\d+)$/, '$1.$2%').replace(/^(\d+)P$/, '$1%'));
-      if (p[4]) morceaux.push(p[4]);
-      return morceaux.filter(Boolean).join(' ');
-    }
-    m = p[0].match(/^R(\d+)([RKM])(\d*)$/);
-    if (m) {
-      const val = m[3] ? m[1] + '.' + m[3] : m[1];
-      const unite = { R: 'ohm', K: 'k', M: 'M' }[m[2]];
-      const morceaux = [val + unite, p[1] || '', 'resistor'];
-      if (p[2] && /PPM$/.test(p[2])) morceaux.push(p[2].toLowerCase());
-      return morceaux.filter(Boolean).join(' ');
-    }
-    return '';
+  /* v14.0 : une seule règle de spec, celle du module partagé (résistances 1 % + puissance boîtier). */
+  function attSpecDepuisIpn(ipn){ return (window.PPChangerFourn ? PPChangerFourn.specDepuisIpn(ipn) : ''); }
+
+  /* v14.0 (29/09/2026, chantier 186 s1) : le panneau « Basculer » est remplacé par le
+     pop-up partagé PPChangerFourn (js/changer-fournisseur.js), commun avec l onglet
+     En attente. L écriture reste ici (achats-resolution), le pop-up ne sait qu afficher. */
+  window.attBasculer = function(i){
+    const l = attSheetActives[i];
+    if (!l || !attSheetData) return;
+    attPanierFermer();
+    PPChangerFourn.ouvrir({
+      lignes: [{ so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
+                 fournisseur: (l['Supplier']||'').trim(), ref: (l['Supplier part number']||'').trim() }],
+      refInfoUrl: ATT_REFINFO_URL,
+      stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
+      appliquer: attBasculerAppliquer,
+      onFin: nb => { if (nb > 0) attSheetCharger(); }
+    });
+  };
+
+  /* Barre d actions : « Changer fournisseur / réf » sur toutes les lignes cochées, l une après l autre */
+  window.attChangerFournCoches = function(){
+    if (!attSheetData) return;
+    const idx = Array.from(document.querySelectorAll('.att-dp-check:checked')).map(cb => parseInt(cb.dataset.i, 10)).filter(i => attSheetActives[i]);
+    if (!idx.length) return;
+    attPanierFermer();
+    PPChangerFourn.ouvrir({
+      lignes: idx.map(i => { const l = attSheetActives[i]; return { so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
+        fournisseur: (l['Supplier']||'').trim(), ref: (l['Supplier part number']||'').trim() }; }),
+      refInfoUrl: ATT_REFINFO_URL,
+      stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
+      appliquer: attBasculerAppliquer,
+      onFin: nb => { if (nb > 0) attSheetCharger(); }
+    });
+  };
+
+  async function attBasculerAppliquer(ligne, v, msg){
+    msg(v.dejaCommande ? 'Écriture feuille achat + marquage commandé…' : 'Écriture feuille achat…');
+    const corps = { so: ligne.so, mpn: ligne.mpn, ipn: ligne.ipn, fournisseur: v.fournisseur, ref_fournisseur: v.ref || '',
+                    nouveau_mpn: v.nouveauMpn || '', nouveau_ipn: v.nouvelIpn || '' };
+    /* déjà commandé = même chemin que « Cmdé X » (Paniers marqué Commandé) ; sinon la ligne rejoint le panier du fournisseur */
+    if (!v.dejaCommande) { corps.panier = 'skip'; corps.vert = false; }
+    const r = await fetch(ATT_RESOL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
+    const d = await r.json();
+    if (!d.success) { msg('Rien n\'a été modifié : ' + (d.reason || 'inconnu') + (d.detail ? ' (' + d.detail + ')' : '')); return false; }
+    return true;
   }
 
-  window.attBasculer = async function(i){
-    const l = attSheetActives[i];
-    if (!l) return;
-    const mpn = (l['MPN']||'').trim();
-    const ipn = (l['Approved internal part number']||'').trim();
-    const zone = document.getElementById('att-panier-panel');
-    if (!zone) return;
-    const cible = mpn || ipn;
-    zone.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius); padding:12px; margin-bottom:10px;"><p style="font-size:12px; color:var(--text3); margin:0;">Recherche des offres pour <span style="font-family:var(--mono)">' + cible + '</span>…</p></div>';
-    let offres = [];
-    if (mpn) {
-      try {
-        const r = await fetch(ATT_REFINFO_URL + '?mpn=' + encodeURIComponent(mpn));
-        const d = await r.json();
-        offres = d.offres || [];
-      } catch(e) {}
-    }
-    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    /* Rendu generique : on affiche TOUT ce que l'offre contient (stock,
-       prix… selon ce que ref-info renvoie), sans presumer des champs. */
-    const offreHtml = offres.map((o, oi) => {
-      /* Olivier 02/09 : stock + prix uniquement, pas de blabla */
-      const extras = Object.keys(o)
-        .filter(k => /stock|dispo|qt|prix|price/i.test(k) && o[k] !== '' && o[k] !== null && o[k] !== undefined)
-        .map(k => k + ': ' + esc(o[k])).join(' · ');
-      return '<div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:0.5px solid var(--border); font-size:12px;">'
-        + '<b style="min-width:70px;">' + esc(o.distributeur||'?') + '</b>'
-        + '<span style="font-family:var(--mono); font-size:11px;">' + esc(o.spn||'') + '</span>'
-        + (function(){
-            const dn = String(o.distributeur||'').toLowerCase();
-            const q = encodeURIComponent(o.spn || mpn || '');
-            const url = o.url || o.lien || (dn.indexOf('digikey') >= 0 ? 'https://www.digikey.fr/fr/products/result?keywords=' + q : (dn.indexOf('mouser') >= 0 ? 'https://www.mouser.fr/c/?q=' + q : ''));
-            return url ? '<a class="btn" style="padding:2px 8px; font-size:11px; text-decoration:none;" target="_blank" href="' + esc(url) + '" title="Ouvrir la fiche sur le site">Site ↗</a>' : '';
-          })()
-        + '<span style="color:var(--text3); flex:1;">' + extras + '</span>'
-        + (o.spn ? '<button class="btn" style="padding:3px 10px; font-size:11px;" onclick="attBasculerVers(' + i + ',\'' + esc(o.distributeur) + '\',\'' + esc(o.spn) + '\')">Basculer</button>' : '')
-        + '</div>';
-    }).join('');
-    zone.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius); padding:12px; margin-bottom:10px;">'
-      + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">'
-      + '<div style="font-size:13px; font-weight:500;"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Basculer — <span style="font-family:var(--mono); font-size:12px;">' + esc(cible) + '</span> <span style="color:var(--text3); font-size:11px;">(actuellement ' + esc((l['Supplier']||'').trim()) + ')</span></div>'
-      + '<button class="btn" style="padding:2px 8px;" onclick="attPanierFermer()"><i class="ti ti-x" aria-hidden="true"></i></button></div>'
-      + (offreHtml || '<p style="font-size:12px; color:var(--text3); margin:0 0 8px;">Aucune offre Mouser/DigiKey trouvée' + (mpn ? '' : ' (pas de MPN sur la ligne)') + '.</p>')
-      + '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center;">'
-      + '<span style="font-size:12px; color:var(--text3);">Vérifier ailleurs :</span>'
-      + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.farnell.com/search?st=' + encodeURIComponent(cible) + '">Farnell ↗</a>'
-      + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.rs-online.com/web/c/?searchTerm=' + encodeURIComponent(cible) + '">RS ↗</a>'
-      + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://octopart.com/search?q=' + encodeURIComponent(cible) + '">Octopart ↗</a>'
-      + '</div>'
-      + (function(){
-          const spec = attSpecDepuisIpn(ipn);
-          if (!spec) return '';
-          const eq = encodeURIComponent(spec);
-          return '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; padding-top:8px; border-top:1px dashed var(--border);">'
-            + '<span style="font-size:12px; color:var(--text3);">Équivalent par spec <span style="font-family:var(--mono); font-size:11px;">(' + esc(spec) + ')</span> :</span>'
-            + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://octopart.com/search?q=' + eq + '">Octopart ↗</a>'
-            + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + eq + '">DigiKey ↗</a>'
-            + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.mouser.fr/c/?q=' + eq + '">Mouser ↗</a>'
-            + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.farnell.com/search?st=' + eq + '">Farnell ↗</a>'
-            + '</div>';
-        })()
-      + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center; padding-top:8px; border-top:1px dashed var(--border);">'
-      + '<span style="font-size:12px;">Bascule manuelle :</span>'
-      /* Libelles = ceux que Luminovo ecrit (verifie 03/09 : PPLib normalise par
-         prefixe et attFournCle par inclusion — Mouser / Mouser USA, meme groupe) */
-      + '<select id="att-basc-fourn-sel" onchange="attBascFournChange()" style="width:auto; max-width:120px; padding:4px 6px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-      + [['Farnell','Farnell'],['DigiKey USA','DigiKey'],['Mouser USA','Mouser'],['RS Components GBR','RS']].map(f => '<option value="' + f[0] + '">' + f[1] + '</option>').join('')
-      + '<option value="__autre">Autre…</option></select>'
-      + '<input id="att-basc-fourn" placeholder="Fournisseur" style="display:none; width:130px; padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-      + '<input id="att-basc-ref" placeholder="Réf fournisseur" style="width:170px; padding:4px 8px; font-size:12px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-      + '<input id="att-basc-mpn" placeholder="Nouveau MPN (si équivalent)" style="width:200px; padding:4px 8px; font-size:12px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-      + '<button class="btn" style="padding:4px 10px; font-size:11px;" onclick="attBascRefAuto(' + i + ')" title="Réf Mouser/DigiKey depuis le MPN (nouveau MPN, sinon celui de la ligne)">réf auto</button>'
-      + '<button class="btn primary" style="padding:4px 12px; font-size:12px;" onclick="attBasculerVers(' + i + ', null, null)">Basculer</button>'
-      + '</div></div>';
-  };
-
-  window.attBascFournChange = function(){
-    const sel = document.getElementById('att-basc-fourn-sel');
-    const inp = document.getElementById('att-basc-fourn');
-    if (sel && inp) inp.style.display = (sel.value === '__autre') ? '' : 'none';
-  };
-
-  window.attBascRefAuto = async function(i){
-    const sel = document.getElementById('att-basc-fourn-sel');
-    const refInp = document.getElementById('att-basc-ref');
-    const mpnInp = document.getElementById('att-basc-mpn');
-    if (!sel || !refInp) return;
-    const cible = { 'DigiKey USA': 'DigiKey', 'Mouser USA': 'Mouser' }[sel.value];
-    if (!cible) { alert('Réf auto disponible pour DigiKey et Mouser uniquement (clés serveur).'); return; }
-    const l = attSheetActives[i];
-    const mpn = ((mpnInp && mpnInp.value.trim()) || (l && (l['MPN']||'').trim()) || '');
-    if (!mpn) { alert('Aucun MPN (ni nouveau, ni sur la ligne).'); return; }
-    refInp.value = '…';
-    const spn = await attRefAuto(mpn, cible);
-    refInp.value = spn || '';
-    if (!spn) alert('Pas de réf ' + cible + ' trouvée pour ' + mpn + '.');
-  };
-
-  window.attBasculerVers = async function(i, fournisseur, ref){
-    const l = attSheetActives[i];
-    if (!l) return;
-    let nouveauMpn = '';
-    if (fournisseur === null) {
-      const sel = document.getElementById('att-basc-fourn-sel');
-      fournisseur = (sel && sel.value !== '__autre') ? sel.value : ((document.getElementById('att-basc-fourn')||{}).value || '');
-      ref = (document.getElementById('att-basc-ref')||{}).value || '';
-      nouveauMpn = ((document.getElementById('att-basc-mpn')||{}).value || '').trim();
-      fournisseur = fournisseur.trim();
-      ref = ref.trim();
-      if (!fournisseur) { alert('Fournisseur manquant.'); return; }
-      if (nouveauMpn && !ref) { alert('Un équivalent (nouveau MPN) exige sa réf fournisseur.'); return; }
-    }
-    if (!confirm('Basculer cette ligne vers ' + fournisseur + (ref ? ' (réf ' + ref + ')' : '') + (nouveauMpn ? '\nÉQUIVALENT : le MPN devient ' + nouveauMpn + ' (note de traçabilité posée)' : '') + ' ?\nLa ligne rejoindra le panier ' + fournisseur + ' — elle n\'est pas marquée commandée.')) return;
-    try {
-      const r = await fetch(ATT_RESOL_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          so: attSheetData.so,
-          mpn: (l['MPN']||'').trim(),
-          ipn: (l['Approved internal part number']||'').trim(),
-          fournisseur, ref_fournisseur: ref || '',
-          nouveau_mpn: nouveauMpn || '',
-          panier: 'skip', vert: false
-        })
-      });
-      const d = await r.json();
-      if (d.success) { attPanierFermer(); attSheetCharger(); }
-      else alert('Échec : ' + (d.reason || 'inconnu') + (d.detail ? '\n' + d.detail : ''));
-    } catch(e) { alert('Erreur réseau : ' + e.message); }
-  };
+  /* attBasculerVers (ancien panneau) retiré en v14.0 : remplacé par attBasculer + attBasculerAppliquer. */
 
   /* Resolution 1 clic : "Cmdé X" ecrit le fournisseur dans la sheet achat
      de l'affaire (matching SO+MPN, ou SO+IPN si pas de MPN — convention actee)
@@ -5397,148 +4328,96 @@ async function sendChat() {
     return '';
   }
 
+  /* v14.0 (29/09/2026, chantier 186 s1) : « Changer de réf » et « Chercher » ouvrent le
+     pop-up partagé PPChangerFourn. Deux écritures possibles selon ce qui est saisi :
+       - nouveau MPN  -> achats-resolution (sheet appro + note traçabilité) puis Paniers :
+                         ancienne ligne close, nouvelle ligne En attente (comportement v11.x)
+       - fournisseur seul -> achats-panier action modifier (ex « À commander chez… »)
+     Case « déjà commandé » -> resolution sans panier:skip (= marquage Commandé, comme attCommander). */
   window.attChangerRef = function(i){
     const c = attVisibles[i];
-    if (!c || !c.so || !c.mpn) return;
+    if (!c || !c.so) return;
     const client = c.origine === 'client';
-    const propose = client ? attMpnPropose(c) : '';
-    const fournInit = client ? '' : (c.fournisseur || '').replace(/^\?/, '');
-    const champs = [
-      { id:'nmpn', label:'Nouveau MPN' + (propose ? ' (repris de la réponse client — à vérifier)' : ''), valeur: propose, placeholder:'MPN de remplacement' },
-      { id:'fourn', type:'liste', label:'Fournisseur', valeur: fournInit, options: ATT_FOURNISSEURS, placeholder:'DigiKey, Mouser, Farnell, ou saisie libre' },
-      { id:'ref', label:'Réf. fournisseur', valeur:'', placeholder:'Cherchée automatiquement pour Mouser / DigiKey' },
-      { id:'nipn', label:'Nouvel IPN (facultatif — inchangé si non modifié)', valeur: c.ipn || '', placeholder:'Lecture de la sheet appro…' }
-    ];
-    if (client) champs.push({ id:'clore', type:'case', valeur:true, texte:'Fermer la question FabStory ensuite' });
-    attModal({
-      titre: 'Changer de réf',  /* v11.0 : + Nouvel IPN (Resolution v1.6) */
-      aide: c.so + ' — ancien MPN ' + c.mpn + '\nÉcrit sur la sheet appro : nouveau MPN, fournisseur, réf + note de traçabilité (colonne O). Rien n\'est marqué commandé : la ligne repasse Panier incomplet / En attente chez le nouveau fournisseur.',
-      champs,
-      valider: 'Valider le changement',
-      onValider: async (v, msg) => {
-        const nmpn = (v.nmpn||'').trim();
-        const fourn = (v.fourn||'').trim();
-        const ref = (v.ref||'').trim();
-        if (!nmpn) { msg('Nouveau MPN requis.'); return false; }
-        if (nmpn.toUpperCase() === c.mpn.toUpperCase()) { msg('Le nouveau MPN est identique à l\'ancien.'); return false; }
-        if (!fourn) { msg('Fournisseur requis.'); return false; }
-        if (!ref) { msg('Réf. fournisseur requise (sinon l\'ancienne réf resterait sur la sheet).'); return false; }
-        const nipn = (v.nipn||'').trim();
-        const ipnModifie = nipn && nipn.toUpperCase() !== (ipnActuel || c.ipn || '').toUpperCase();
-        msg('Écriture sheet appro…');
-        const date = new Date().toLocaleDateString('fr-FR');
-        const r1 = await fetch(ATT_RESOL_URL, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ so: c.so, mpn: c.mpn, ipn: c.ipn || '', fournisseur: fourn, ref_fournisseur: ref,
-            nouveau_mpn: nmpn, nouveau_ipn: ipnModifie ? nipn : '', panier: 'skip', vert: false,
-            note: client ? ('Accord client FabStory #' + c.id + ' (' + date + ')') : '' })
-        });
-        const d1 = await r1.json();
-        if (!d1.success) {
-          const raisons = { not_found: 'sheet appro de ' + c.so + ' introuvable', ambiguous: 'plusieurs sheets appro pour ' + c.so, ligne_introuvable: c.mpn + ' introuvable dans la sheet appro de ' + c.so, ligne_ambigue: c.mpn + ' présent plusieurs fois dans la sheet appro' };
-          msg('Rien n\'a été modifié : ' + (raisons[d1.reason] || d1.reason || 'erreur inconnue') + (d1.detail ? ' (' + d1.detail + ')' : ''));
-          return false;
-        }
-        msg('Sheet appro à jour — mise en Panier incomplet…');
-        try {
-          await fetch(ATT_PANIER_URL, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'clore', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn || '' }] })
-          });
-        } catch(e) {}
-        /* v11.1 : nouvelle ligne Panier incomplet / En attente */
-        let qte = c.qte || '';
-        let montant = c.montant || '';
-        if (!qte || !montant) {
-          if (!ligneSheet) {
-            try {
-              const rs = await fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(c.so));
-              const ds = await rs.json();
-              if (ds && ds.ok) ligneSheet = (ds.lignes || []).find(x => { const m = (x['MPN']||'').trim().toUpperCase(); return m === nmpn.toUpperCase() || m === c.mpn.toUpperCase(); }) || null;
-            } catch(e) {}
-          }
-          if (ligneSheet) {
-            if (!qte) qte = (ligneSheet['Purchase qty'] || '').toString().trim();
-            if (!montant) montant = attPrixNum(ligneSheet['Purchase price']) || '';
-          }
-        }
-        let attenteOk = false;
-        try {
-          const r3 = await fetch(ATT_PANIER_URL, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'attente', so: c.so, carte: c.carte || '', fournisseur: fourn,
-              lignes: [{ fournisseur: fourn, refFour: ref, ipn: nipn || ipnActuel || c.ipn || '', qte: qte, mpn: nmpn, montant: montant }] })
-          });
-          const d3 = await r3.json();
-          attenteOk = !!d3.success;
-        } catch(e) {}
-        if (!attenteOk) alert('Sheet appro mise à jour, mais la ligne Panier incomplet n\'a pas pu être ajoutée dans Paniers en attente — à ajouter à la main (' + c.so + ' / ' + nmpn + ').');
-        if (client && v.clore) {
-          try {
-            await fetch('https://protoprocess.app.n8n.cloud/webhook/fabstory-question-clore', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id })
-            });
-          } catch(e) {}
-        }
-        attCharger();
-        return true;
-      }
+    PPChangerFourn.ouvrir({
+      lignes: [{ so: c.so, mpn: c.mpn || '', ipn: c.ipn || '', fournisseur: client ? '' : (c.fournisseur || ''), carte: c.carte || '',
+                 extra: { c, client, propose: client ? attMpnPropose(c) : '' } }],
+      refInfoUrl: ATT_REFINFO_URL,
+      stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
+      caseSupplementaire: client ? { id: 'clore', texte: 'Fermer la question FabStory ensuite', coche: true } : null,
+      appliquer: attChangerRefAppliquer,
+      onFin: nb => { if (nb > 0) attCharger(); }
     });
-    /* IPN actuel : lu dans la sheet appro (les cartes client n en portent pas).
-       Pre-remplit le champ si l utilisateur n y a pas deja touche. Sous le
-       champ : presence de l IPN saisi dans le stock PP (info, non bloquant). */
-    let ipnActuel = c.ipn || '';
-    let ipnTouche = false;
-    let ligneSheet = null;
-    const elI = document.getElementById('attm-nipn');
-    let infoI = null;
-    if (elI) {
-      infoI = document.createElement('div');
-      infoI.style.cssText = 'font-size:11px; color:var(--text3); margin-top:4px;';
-      elI.parentNode.appendChild(infoI);
-      const majInfoI = () => {
-        const val = elI.value.trim();
-        if (!val) { infoI.textContent = ''; return; }
-        const modif = ipnActuel && val.toUpperCase() !== ipnActuel.toUpperCase();
-        const q = (typeof stockByIPN === 'object' && Object.keys(stockByIPN).length) ? stockByIPN[val] : undefined;
-        const stock = (typeof stockByIPN !== 'object' || !Object.keys(stockByIPN).length) ? 'stock PP non chargé'
-          : (q !== undefined ? 'en stock PP : ' + q + ' pcs' : 'IPN inconnu du stock PP');
-        infoI.textContent = (modif ? 'Remplace ' + ipnActuel + ' · ' : (ipnActuel ? 'IPN actuel · ' : '')) + stock;
-        infoI.style.color = modif ? 'var(--amber)' : 'var(--text3)';
-      };
-      elI.addEventListener('input', () => { ipnTouche = true; majInfoI(); });
-      majInfoI();
-      fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(c.so)).then(r => r.json()).then(d => {
-        if (!d || !d.ok) return;
-        const l = (d.lignes || []).find(x => (x['MPN']||'').trim().toUpperCase() === c.mpn.toUpperCase());
-        ligneSheet = l || null;
-        if (document.getElementById('attm-nipn') !== elI || ipnActuel) return;
-        ipnActuel = l ? (l['Approved internal part number'] || '').trim() : '';
-        elI.placeholder = ipnActuel ? '' : 'IPN non trouvé dans la sheet';
-        if (!ipnTouche && ipnActuel) elI.value = ipnActuel;
-        majInfoI();
-      }).catch(() => { if (document.getElementById('attm-nipn') === elI && !ipnActuel) elI.placeholder = 'Lecture sheet impossible — saisie libre'; });
-    }
-    /* Ref auto Mouser/DigiKey : a l ouverture puis a chaque changement de
-       fournisseur ou de MPN. N ecrase jamais une saisie manuelle. */
-    let refManuelle = false;
-    const elRef = document.getElementById('attm-ref');
-    const elF = document.getElementById('attm-fourn');
-    const elM = document.getElementById('attm-nmpn');
-    if (elRef) elRef.addEventListener('input', () => { refManuelle = !!elRef.value.trim(); });
-    const majRef = async () => {
-      if (!elRef || refManuelle) return;
-      const f = (elF && elF.value || '').trim();
-      const m = (elM && elM.value || '').trim();
-      if (!m || (f !== 'Mouser' && f !== 'DigiKey')) return;
-      elRef.placeholder = 'Recherche en cours…';
-      const spn = await attRefAuto(m, f);
-      if (!refManuelle && document.getElementById('attm-ref') === elRef) { elRef.value = spn || ''; elRef.placeholder = spn ? '' : 'Non trouvée — saisir la réf'; }
-    };
-    if (elF) elF.addEventListener('change', majRef);
-    if (elM) elM.addEventListener('change', majRef);
-    majRef();
+    /* réponse client : MPN proposé pré-rempli, à vérifier */
+    if (client) { const el = document.getElementById('pp-cf-mpn'); const prop = attMpnPropose(c); if (el && prop && !el.value) { el.value = prop; el.dispatchEvent(new Event('change')); } }
   };
+
+  async function attChangerRefAppliquer(ligne, v, msg){
+    const c = ligne.extra.c, client = ligne.extra.client;
+    const nmpn = v.nouveauMpn, fourn = v.fournisseur, ref = v.ref, nipn = v.nouvelIpn;
+    if (!nmpn) {
+      /* fournisseur seul */
+      msg('Mise à jour du fournisseur…');
+      const r = await fetch(ATT_PANIER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'modifier', lignes: [{ so: c.so, mpn: c.mpn, ipn: nipn || c.ipn, fournisseur: fourn, refFour: ref }] }) });
+      const d = await r.json();
+      if (!(d.success && d.nb > 0)) { msg('Échec : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet' : (d.reason || 'inconnu'))); return false; }
+      if (v.dejaCommande) {
+        msg('Marquage commandé…');
+        const r2 = await fetch(ATT_RESOL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ so: c.so, mpn: c.mpn, ipn: nipn || c.ipn || '', fournisseur: fourn, ref_fournisseur: ref }) });
+        const d2 = await r2.json();
+        if (!d2.success) { msg('Fournisseur changé, mais marquage commandé impossible : ' + (d2.reason || 'inconnu')); return false; }
+      }
+      return true;
+    }
+    if (!ref) { msg('Réf. fournisseur requise (sinon l\'ancienne réf resterait sur la sheet).'); return false; }
+    msg('Écriture sheet appro…');
+    const date = new Date().toLocaleDateString('fr-FR');
+    const r1 = await fetch(ATT_RESOL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ so: c.so, mpn: c.mpn, ipn: c.ipn || '', fournisseur: fourn, ref_fournisseur: ref,
+        nouveau_mpn: nmpn, nouveau_ipn: nipn || '', panier: 'skip', vert: false,
+        note: client ? ('Accord client FabStory #' + c.id + ' (' + date + ')') : '' }) });
+    const d1 = await r1.json();
+    if (!d1.success) {
+      const raisons = { not_found: 'sheet appro de ' + c.so + ' introuvable', ambiguous: 'plusieurs sheets appro pour ' + c.so, ligne_introuvable: c.mpn + ' introuvable dans la sheet appro de ' + c.so };
+      msg('Rien n\'a été modifié : ' + (raisons[d1.reason] || d1.reason || 'erreur inconnue') + (d1.detail ? ' (' + d1.detail + ')' : ''));
+      return false;
+    }
+    msg('Sheet appro à jour — mise en Panier incomplet…');
+    try { await fetch(ATT_PANIER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clore', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn || '' }] }) }); } catch(e) {}
+    let qte = c.qte || '', montant = c.montant || '';
+    if (!qte || !montant) {
+      try {
+        const rs = await fetch(ATT_SHEET_URL + '?so=' + encodeURIComponent(c.so));
+        const ds = await rs.json();
+        const ls = (ds && ds.ok) ? (ds.lignes || []).find(x => { const m = (x['MPN']||'').trim().toUpperCase(); return m === nmpn.toUpperCase() || m === (c.mpn||'').toUpperCase(); }) : null;
+        if (ls) { if (!qte) qte = (ls['Purchase qty'] || '').toString().trim(); if (!montant) montant = attPrixNum(ls['Purchase price']) || ''; }
+      } catch(e) {}
+    }
+    let attenteOk = false;
+    try {
+      const r3 = await fetch(ATT_PANIER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: v.dejaCommande ? 'attente' : 'attente', so: c.so, carte: c.carte || '', fournisseur: fourn,
+          lignes: [{ fournisseur: fourn, refFour: ref, ipn: nipn || c.ipn || '', qte: qte, mpn: nmpn, montant: montant }] }) });
+      const d3 = await r3.json();
+      attenteOk = !!d3.success;
+    } catch(e) {}
+    if (!attenteOk) alert('Sheet appro mise à jour, mais la ligne Panier incomplet n\'a pas pu être ajoutée dans Paniers en attente — à ajouter à la main.');
+    if (v.dejaCommande) {
+      msg('Marquage commandé…');
+      try {
+        const r4 = await fetch(ATT_RESOL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ so: c.so, mpn: nmpn, ipn: nipn || c.ipn || '', fournisseur: fourn, ref_fournisseur: ref }) });
+        const d4 = await r4.json();
+        if (!d4.success) alert('Changement fait, mais marquage commandé impossible : ' + (d4.reason || 'inconnu'));
+      } catch(e) {}
+    }
+    if (client && v.clore) {
+      try { await fetch('https://protoprocess.app.n8n.cloud/webhook/fabstory-question-clore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id }) }); } catch(e) {}
+    }
+    return true;
+  }
 
   window.attCarteClore = function(i){
     const c = attVisibles[i];
