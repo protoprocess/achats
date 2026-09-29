@@ -1,6 +1,7 @@
 /* ============================================================
    PP — Achats : pop-up partagé « Changer fournisseur / réf »
-   v1.0 — 29/09/2026 (chantier 186, séance 1)
+   v1.1 — 29/09/2026 (chantier 186, séance 1) — v1.1 : simplifié (retour Olivier) : une offre par distributeur,
+   une seule ligne de liens, équivalent replié, fenêtre plus étroite.
 
    Une seule fenêtre pour les onglets Achats et En attente :
      - offres Mouser / DigiKey (webhook fabstory-ref-info)
@@ -27,7 +28,7 @@
    ============================================================ */
 (function(){
   'use strict';
-  const VERSION = '1.0';
+  const VERSION = '1.1';
 
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -102,19 +103,34 @@
     } catch(e) { return []; }
   }
 
-  function offreHtml(o, mpn){
-    const extras = Object.keys(o)
-      .filter(k => /stock|dispo|qt|prix|price/i.test(k) && o[k] !== '' && o[k] !== null && o[k] !== undefined)
-      .map(k => k + ' : ' + esc(o[k])).join(' · ');
+  /* Une seule offre par distributeur : celle en stock au prix le plus bas (sinon la première). Le webhook
+     renvoie toutes les variantes (bobine, coupe, N/A…) : ça noyait l écran (retour Olivier 29/09). */
+  function meilleures(off){
+    const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[^\d.,]/g, '').replace(',', '.')); return isNaN(n) ? null : n; };
+    const stock = o => { const k = Object.keys(o).find(k => /stock|dispo|qt/i.test(k)); return k ? (num(o[k]) || 0) : 0; };
+    const prix = o => { const k = Object.keys(o).find(k => /prix|price/i.test(k)); return k ? num(o[k]) : null; };
+    const par = {};
+    off.forEach(o => {
+      const d = String(o.distributeur || '').trim(); if (!d || !o.spn || o.spn === 'N/A') return;
+      const c = par[d];
+      const mieux = !c || (stock(o) > 0 && stock(c) === 0) || (stock(o) > 0 && stock(c) > 0 && (prix(o) != null) && (prix(c) == null || prix(o) < prix(c)));
+      if (mieux) par[d] = o;
+    });
+    return Object.values(par).map(o => ({ o, stock: stock(o), prix: prix(o) }));
+  }
+
+  function offreHtml(x, mpn){
+    const o = x.o;
     const dn = String(o.distributeur||'').toLowerCase();
+    const valeur = dn.indexOf('digikey') >= 0 ? 'DigiKey USA' : (dn.indexOf('mouser') >= 0 ? 'Mouser USA' : '');
     const q = encodeURIComponent(o.spn || mpn || '');
     const url = o.url || o.lien || (dn.indexOf('digikey') >= 0 ? 'https://www.digikey.fr/fr/products/result?keywords=' + q : (dn.indexOf('mouser') >= 0 ? 'https://www.mouser.fr/c/?q=' + q : ''));
-    const valeur = dn.indexOf('digikey') >= 0 ? 'DigiKey USA' : (dn.indexOf('mouser') >= 0 ? 'Mouser USA' : '');
-    return '<div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:0.5px solid var(--border); font-size:12px;">'
-      + '<b style="min-width:70px;">' + esc(o.distributeur||'?') + '</b>'
-      + '<span style="font-family:var(--mono); font-size:11px;">' + esc(o.spn||'') + '</span>'
-      + (url ? '<a class="btn" style="padding:2px 8px; font-size:11px; text-decoration:none;" target="_blank" rel="noopener" href="' + esc(url) + '">Site ↗</a>' : '')
-      + '<span style="color:var(--text3); flex:1;">' + extras + '</span>'
+    return '<div style="display:flex; align-items:center; gap:10px; padding:5px 0; font-size:12px;">'
+      + '<b style="min-width:64px;">' + esc(o.distributeur||'?') + '</b>'
+      + '<a style="font-family:var(--mono); font-size:11px; color:var(--text);" target="_blank" rel="noopener" href="' + esc(url) + '" title="Ouvrir la fiche">' + esc(o.spn||'') + ' ↗</a>'
+      + '<span style="color:' + (x.stock > 0 ? 'var(--green)' : 'var(--red)') + ';">stock ' + (x.stock > 0 ? x.stock.toLocaleString('fr-FR') : '0') + '</span>'
+      + (x.prix != null ? '<span style="color:var(--text3);">' + x.prix.toFixed(3).replace('.', ',') + ' €</span>' : '')
+      + '<span style="flex:1;"></span>'
       + (valeur ? '<button class="btn" style="padding:3px 10px; font-size:11px;" data-choisir="' + esc(valeur) + '" data-spn="' + esc(o.spn||'') + '">Choisir</button>' : '')
       + '</div>';
   }
@@ -143,48 +159,41 @@
       const stockInfo = (cfg.stock && Object.keys(cfg.stock).length) ? cfg.stock : null;
       const caseSup = cfg.caseSupplementaire;
 
-      fond.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-lg); padding:18px 20px; width:min(96vw, 820px); max-height:92vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5);">'
-        + '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px;">'
+      fond.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-lg); padding:18px 20px; width:min(96vw, 640px); max-height:92vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5);">'
+        + '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:2px;">'
         +   '<div style="font-size:14px; font-weight:500;"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf'
-        +   (lignes.length > 1 ? ' <span style="color:var(--text3); font-weight:400; font-size:12px;">— ligne ' + (idx+1) + ' / ' + lignes.length + '</span>' : '') + '</div>'
+        +   (lignes.length > 1 ? ' <span style="color:var(--text3); font-weight:400; font-size:12px;">— ' + (idx+1) + ' / ' + lignes.length + '</span>' : '') + '</div>'
         +   '<button class="btn" style="padding:2px 8px;" id="pp-cf-x" title="Fermer"><i class="ti ti-x" aria-hidden="true"></i></button></div>'
-        + '<div style="font-size:12px; color:var(--text2); margin-bottom:12px;">' + esc(l.so) + (l.carte ? ' — ' + esc(l.carte) : '')
-        +   ' · <span style="font-family:var(--mono);">' + esc(cible) + '</span>' + (l.ipn && l.mpn ? ' · IPN <span style="font-family:var(--mono);">' + esc(l.ipn) + '</span>' : '')
+        + '<div style="font-size:12px; color:var(--text2); margin-bottom:10px;">' + esc(l.so) + ' · <span style="font-family:var(--mono);">' + esc(cible) + '</span>'
         +   (fournActuel ? ' · actuellement <b>' + esc(fournActuel) + '</b>' : '') + '</div>'
-        + '<div id="pp-cf-offres" style="font-size:12px; color:var(--text3); margin-bottom:10px;">Recherche des offres Mouser / DigiKey…</div>'
-        + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">'
-        +   '<span style="font-size:13px; font-weight:500; margin-right:4px;">Liens fournisseur MPN :</span>' + (cible ? liens(cible) : '<span style="color:var(--text3);">pas de MPN sur la ligne</span>') + '</div>'
-        + (spec
-            ? '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px; padding-top:8px; border-top:1px dashed var(--border);">'
-              + '<span style="font-size:13px; font-weight:500; margin-right:4px;">Chercher un équivalent par spec :</span>'
-              + '<span style="background:var(--surface2); border:1px solid var(--border2); border-radius:20px; padding:3px 10px; font-family:var(--mono); font-size:12px; color:var(--text);">' + esc(spec) + '</span>'
-              + liens(spec) + '</div>'
-            : '')
-        + '<div style="border-top:1px dashed var(--border); padding-top:12px;">'
-        +   '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px;">'
-        +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Fournisseur</div>'
-        +       '<select id="pp-cf-fourn" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-        +         FOURNISSEURS.map(([v, lb]) => '<option value="' + esc(v) + '"' + (fournConnu && fournConnu[0] === v ? ' selected' : '') + '>' + esc(lb) + '</option>').join('')
-        +       '</select>'
-        +       '<input id="pp-cf-fourn-autre" placeholder="Nom du fournisseur" value="' + esc(fournConnu || !fournActuel ? '' : fournActuel) + '" style="display:none; margin-top:6px; width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
-        +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Réf. fournisseur</div>'
-        +       '<input id="pp-cf-ref" placeholder="" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-        +       '<div id="pp-cf-ref-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
-        +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Nouveau MPN (seulement si équivalent)</div>'
-        +       '<input id="pp-cf-mpn" placeholder="Laisser vide si le MPN ne change pas" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
-        +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Nouvel IPN (facultatif — inchangé si vide)</div>'
+        + '<div id="pp-cf-offres" style="font-size:12px; color:var(--text3); margin-bottom:6px; padding-bottom:6px; border-bottom:1px dashed var(--border);">Recherche des offres…</div>'
+        + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px; font-size:12px;">'
+        +   '<span style="color:var(--text3);">Chercher ailleurs' + (spec ? ' (MPN ou <span style="font-family:var(--mono); color:var(--text);">' + esc(spec) + '</span>)' : '') + ' :</span>' + (cible ? liens(cible) : '') + '</div>'
+        + '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px;">'
+        +   '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Fournisseur</div>'
+        +     '<select id="pp-cf-fourn" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+        +       FOURNISSEURS.map(([v, lb]) => '<option value="' + esc(v) + '"' + (fournConnu && fournConnu[0] === v ? ' selected' : '') + '>' + esc(lb) + '</option>').join('')
+        +     '</select>'
+        +     '<input id="pp-cf-fourn-autre" placeholder="Nom du fournisseur" value="' + esc(fournConnu || !fournActuel ? '' : fournActuel) + '" style="display:none; margin-top:6px; width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
+        +   '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Réf. fournisseur</div>'
+        +     '<input id="pp-cf-ref" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
+        +     '<div id="pp-cf-ref-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
+        + '</div>'
+        + '<div style="margin-top:10px;"><a href="#" id="pp-cf-eq-lien" style="font-size:12px; color:var(--pp-blue); text-decoration:none;">▸ C\'est un équivalent (autre MPN)</a>'
+        +   '<div id="pp-cf-eq" style="display:none; grid-template-columns: 1fr 1fr; gap:10px 14px; margin-top:8px;">'
+        +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Nouveau MPN</div>'
+        +       '<input id="pp-cf-mpn" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
+        +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Nouvel IPN (facultatif)</div>'
         +       '<input id="pp-cf-ipn" placeholder="' + esc(l.ipn || '') + '" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
         +       '<div id="pp-cf-ipn-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
-        +   '</div>'
-        +   '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:12px;"><input type="checkbox" id="pp-cf-deja"> J\'ai déjà passé la commande chez ce fournisseur (la ligne est marquée commandée)</label>'
-        +   (caseSup ? '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:8px;"><input type="checkbox" id="pp-cf-sup"' + (caseSup.coche ? ' checked' : '') + '> ' + esc(caseSup.texte) + '</label>' : '')
-        + '</div>'
+        +   '</div></div>'
+        + '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:12px;"><input type="checkbox" id="pp-cf-deja"> J\'ai déjà passé la commande chez ce fournisseur</label>'
+        + (caseSup ? '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:8px;"><input type="checkbox" id="pp-cf-sup"' + (caseSup.coche ? ' checked' : '') + '> ' + esc(caseSup.texte) + '</label>' : '')
         + '<div id="pp-cf-msg" style="font-size:12px; color:var(--red); min-height:16px; margin-top:10px;"></div>'
-        + '<div style="display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-top:8px;">'
-        +   '<span style="flex:1; font-size:11px; color:var(--text3);">Fournisseur déjà bon sur la ligne ? Inutile de passer ici : « J\'ai commandé » suffit.</span>'
+        + '<div style="display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-top:6px;">'
         +   '<button class="btn" id="pp-cf-annuler">' + (lignes.length > 1 ? 'Tout annuler' : 'Annuler') + '</button>'
         +   (lignes.length > 1 ? '<button class="btn" id="pp-cf-passer">Passer</button>' : '')
-        +   '<button class="btn primary" id="pp-cf-ok">' + (idx < lignes.length - 1 ? 'Valider → suivant' : 'Valider le changement') + '</button>'
+        +   '<button class="btn primary" id="pp-cf-ok">' + (idx < lignes.length - 1 ? 'Valider → suivant' : 'Valider') + '</button>'
         + '</div></div>';
 
       const $ = id => document.getElementById(id);
@@ -212,7 +221,7 @@
         if (!m) { if (info) info.textContent = 'Pas de MPN : réf à saisir.'; return; }
         elRef.placeholder = 'Recherche en cours…';
         if (info) info.textContent = '';
-        const spn = await (async () => { try { const off = await offres(cfg.refInfoUrl, m); const o = off.find(x => x.distributeur === cle); return o && o.spn ? o.spn : ''; } catch(e) { return ''; } })();
+        const spn = await (async () => { try { const off = await offres(cfg.refInfoUrl, m); const b = meilleures(off).find(x => x.o.distributeur === cle); return b ? b.o.spn : ''; } catch(e) { return ''; } })();
         if (document.getElementById('pp-cf-ref') !== elRef || refManuelle) return;
         elRef.value = spn || '';
         elRef.placeholder = spn ? '' : 'Non trouvée — saisir la réf';
@@ -238,7 +247,8 @@
       /* Offres : chargées après rendu, bouton « Choisir » pré-remplit fournisseur + réf */
       offres(cfg.refInfoUrl, l.mpn).then(off => {
         const zone = $('pp-cf-offres'); if (!zone) return;
-        zone.innerHTML = off.length ? off.map(o => offreHtml(o, l.mpn)).join('') : '<span>Aucune offre Mouser / DigiKey' + (l.mpn ? '' : ' (pas de MPN sur la ligne)') + '.</span>';
+        const best = meilleures(off);
+        zone.innerHTML = best.length ? best.map(x => offreHtml(x, l.mpn)).join('') : '<span>Aucune offre Mouser / DigiKey' + (l.mpn ? '' : ' (pas de MPN sur la ligne)') + '.</span>';
         zone.querySelectorAll('button[data-choisir]').forEach(b => b.onclick = () => { elF.value = b.dataset.choisir; majAutre(); elRef.value = b.dataset.spn || ''; refManuelle = !!elRef.value; $('pp-cf-ref-info').textContent = 'Réf reprise de l\'offre.'; });
       });
 
@@ -264,6 +274,7 @@
           suivant();
         } catch(e) { msg('Erreur : ' + e.message); btn.disabled = false; }
       };
+      $('pp-cf-eq-lien').onclick = e => { e.preventDefault(); const z = $('pp-cf-eq'); const ouvert = z.style.display !== 'none'; z.style.display = ouvert ? 'none' : 'grid'; $('pp-cf-eq-lien').textContent = (ouvert ? '▸' : '▾') + ' C\'est un équivalent (autre MPN)'; if (!ouvert) elM.focus(); };
       const premier = $('pp-cf-fourn'); if (premier) premier.focus();
     }
     rendre();

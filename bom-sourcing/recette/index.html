@@ -3762,6 +3762,7 @@ async function sendChat() {
         : '';
       return '<tr' + teinte + '>'
         + '<td style="padding:5px 6px;"><input type="checkbox" class="att-dp-check" data-i="' + i + '" onchange="attDpMaj()"' + (cher ? ' title="Prix élevé"' : '') + '></td>'
+        + '<td style="padding:5px 2px 5px 0;"><button class="btn" style="padding:1px 6px; font-size:11px; color:var(--pp-blue); border-color:rgba(91,196,216,0.5);" onclick="attBasculer(' + i + ')" title="Changer fournisseur / réf pour cette ligne"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></button></td>'
         + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + (fourn || '—') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Supplier part number']||'') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['MPN']||'') + sigBadge + '</td>'
@@ -3807,7 +3808,7 @@ async function sendChat() {
       /* 13.1 : le tableau defile seul (la page ne bouge pas), en-tete fixe */
       + '<div style="overflow:auto; max-height:calc(100vh - 260px); min-height:200px; border:1px solid var(--border); border-radius:var(--radius);"><table style="width:100%; border-collapse:collapse; font-size:12px;">'
       + '<thead style="position:sticky; top:0; z-index:1; background:var(--surface2);"><tr style="color:var(--text3); text-align:left;">'
-      + ['', 'Fournisseur', 'Réf. fourn.', 'MPN', 'IPN', 'Qté', 'Prix', 'Repères', ''].map(h => '<th style="padding:6px 8px; background:var(--surface2);">' + h + '</th>').join('')
+      + ['', '', 'Fournisseur', 'Réf. fourn.', 'MPN', 'IPN', 'Qté', 'Prix', 'Repères', ''].map(h => '<th style="padding:6px 8px; background:var(--surface2);">' + h + '</th>').join('')
       + '</tr></thead>'
       + '<tbody>' + rows + '</tbody></table></div>';
   }
