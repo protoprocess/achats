@@ -126,7 +126,7 @@
       <button class="tab active" data-tab="cmd" onclick="switchTab('cmd')">Commandes</button>
       <button class="tab" data-tab="bom" onclick="switchTab('bom')">Analyse BOM</button>
       <button class="tab" data-tab="achats" onclick="switchTab('achats')">Achats</button>
-      <button class="tab" data-tab="attente" onclick="switchTab('attente')">En attente <span id="att-tab-badge" style="display:none; background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 7px; font-size:11px; margin-left:4px;"></span></button>
+      <button class="tab" data-tab="attente" onclick="switchTab('attente')">En attente <span id="att-tab-badge" style="display:none;"></span></button>
       <button class="tab" data-tab="codif" onclick="switchTab('codif')">Codification IPN</button>
       <button class="tab" data-tab="config" onclick="switchTab('config')">Règles &amp; Config</button>
     </div>
@@ -441,7 +441,11 @@
 
 <script>
 /* ---------- version ---------- */
-/* PROD 14.0 — basculée depuis la recette le 29/09/2026 (retour : étiquette avant-bascule-14-2026-09-29 ; état d avant la découpe : avant-decoupe-2026-09-29).
+/* PROD 14.1 — basculée le 29/09/2026 (retour : avant-bascule-14-1-2026-09-29).
+   14.1 (29/09/2026, chantier 186 — séance 3, onglet En attente) : carte = « Déjà commandé chez… » · Changer fournisseur / réf · Demande de prix
+   (bleu pastel) · Commentaire · Clore ; « À commander chez… » et « Chercher » retirés ; urgence (« urgent » sous toutes ses formes dans le commentaire, ou fournisseur ???) =
+   liseré rouge + pastille + étiquette « Action urgente » sur l onglet ; ≥ 3 jours ouvrés En attente / Sans solution = « Risque retard ». Retour : étiquette avant-seance-3.
+   PROD 14.0 — basculée depuis la recette le 29/09/2026 (retour : étiquette avant-bascule-14-2026-09-29 ; état d avant la découpe : avant-decoupe-2026-09-29).
    14.0 (29/09/2026, chantier 186 — séance 1 de la découpe) : CSS dans css/app.css ; accès n8n et
    signalement dans achats/shared/ (pp-acces.js, pp-signalement.js) ; pop-up partagé « Changer fournisseur / réf »
    (js/changer-fournisseur.js) branché sur ↔ (Achats) et sur « Changer de réf » + « Chercher » (En attente) :
@@ -450,7 +454,7 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "14.0";
+const APP_VERSION = "14.1";
 const APP_DATE = "29/09/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
@@ -3184,6 +3188,7 @@ async function sendChat() {
   let attFiltre = 'tout';
   let attFiltreType = 'tout';
   let attFiltreSO = '';
+  let attTri = 'priorite';   /* v14.1 : priorite | ancien | recent | so */
 
   window.attCharger = async function(){
     const liste = document.getElementById('att-liste');
@@ -3223,6 +3228,20 @@ async function sendChat() {
      Ordre : Commande chez | A commander chez | Demande de prix |
      Commentaire | Chercher | Clore. */
 
+  /* Jours ouvrés (lun-ven) ecoules depuis une date JJ/MM/AAAA ou AAAA-MM-JJ, jour de depart exclu. Feries non geres. */
+  function attJoursOuvres(depuis){
+    const sd = attNorm(depuis);
+    let d = null;
+    let m = sd.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) d = new Date(+m[3], +m[2]-1, +m[1]);
+    else { m = sd.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) d = new Date(+m[1], +m[2]-1, +m[3]); }
+    if (!d || isNaN(d)) return null;
+    const auj = new Date(); auj.setHours(0,0,0,0); d.setHours(0,0,0,0);
+    let n = 0; const cur = new Date(d);
+    while (cur < auj) { cur.setDate(cur.getDate() + 1); const j = cur.getDay(); if (j !== 0 && j !== 6) n++; }
+    return n;
+  }
+
   function attJours(depuis){
     const s = attNorm(depuis);
     let d = null;
@@ -3251,6 +3270,7 @@ async function sendChat() {
         qte: l['Qté'] || '',
         depuis: depuis,
         jours: attJours(depuis),
+        joursOuvres: attJoursOuvres(depuis),
         commentaire: attNorm(l['Commentaire']),
         fournisseur: attNorm(l['Fournisseur']),
         refFourn: attNorm(l['Ref. fournisseur']),
@@ -3272,6 +3292,7 @@ async function sendChat() {
         qte: '',
         depuis: depuis,
         jours: attJours(depuis),
+        joursOuvres: attJoursOuvres(depuis),
         commentaire: q.reponse_texte ? ('Client : ' + q.reponse_texte) : attNorm(q.texte).split('\n')[0],
         texteQuestion: attNorm(q.texte),
         reponseTexte: attNorm(q.reponse_texte),
@@ -3283,11 +3304,34 @@ async function sendChat() {
     }
     /* Plus recent en haut ; sans date en fin */
     cartes.sort((a, b) => (a.jours == null ? 1e9 : a.jours) - (b.jours == null ? 1e9 : b.jours));
+    /* v14.1 (29/09/2026, decisions Olivier) :
+       - urgent : « urgent » sous toutes ses formes dans le commentaire (URGENT, Urgence, urgent!…) ou fournisseur « ??? »
+       - risque retard : ligne encore En attente / Sans solution depuis >= 3 jours OUVRES */
+    cartes.forEach(c => {
+      c.urgent = /urgen/i.test(c.commentaire || '') || /^\s*\?+\s*$/.test(c.fournisseur || '');   /* fournisseur = uniquement des « ? » (?, ??, ???) sans nom derriere = inconnu = urgence ; « ?DigiKey » (prefixe a ne pas commander) n en est pas une */
+      c.retard = (c.statut === 'En attente' || c.statut === 'Sans solution') && c.joursOuvres != null && c.joursOuvres >= 3;
+    });
+    attTrier(cartes);
     return cartes;
   }
 
   /* v11.5 (15/09, decision Olivier) : la pastille = le STATUT de la sheet, plus le type.
      Les 5 statuts suffisent (Commande / Clos ne remontent pas). Type -> plus a l ecran. */
+  /* v14.1 (decision Olivier 29/09/2026) : tri « Priorite » par defaut = urgentes, puis risques de retard,
+     puis SO regroupees (la SO dont la ligne la plus ancienne est la plus vieille en premier), plus ancien d abord
+     a l interieur d une SO. Autres tris : plus ancien, plus recent, par affaire. */
+  function attTrier(cartes){
+    const age = c => (c.jours == null ? -1 : c.jours);
+    const plusVieuxParSO = {};
+    cartes.forEach(c => { const k = c.so || ''; plusVieuxParSO[k] = Math.max(plusVieuxParSO[k] || -1, age(c)); });
+    const parSO = (a, b) => (plusVieuxParSO[b.so||''] - plusVieuxParSO[a.so||'']) || String(a.so||'').localeCompare(String(b.so||'')) || (age(b) - age(a));
+    if (attTri === 'ancien') cartes.sort((a, b) => age(b) - age(a));
+    else if (attTri === 'recent') cartes.sort((a, b) => age(a) - age(b));
+    else if (attTri === 'so') cartes.sort(parSO);
+    else cartes.sort((a, b) => (b.urgent - a.urgent) || (b.retard - a.retard) || parSO(a, b));
+  }
+  window.attTrierPar = function(v){ attTri = v; attRender(); };
+
   function attBadge(c){
     if (c.statut === 'Consultation') return ['Consultation','rgba(91,196,216,0.15)','#8FD8E6'];
     if (c.statut === 'Sans solution') return ['Sans solution','var(--red-bg)','var(--red-badge)'];
@@ -3317,6 +3361,7 @@ async function sendChat() {
   }
 
   function attLisere(c){
+    if (c.urgent) return 'var(--red)';   /* v14.1 : urgence = liseré rouge vif, quel que soit le statut */
     if (c.statut === 'Consultation') return 'var(--pp-blue)';
     if (c.statut === 'En attente') return 'var(--blue)';
     if (c.statut === 'Sans solution') return 'var(--red-badge)';
@@ -3409,9 +3454,18 @@ async function sendChat() {
       sansSolution: cartes.filter(c => c.statut==='Sans solution').length
     };
 
+    /* v14.1 : l onglet dit s il y a le feu, pas juste combien de lignes */
     const badge = document.getElementById('att-tab-badge');
     const total = cartes.length;
-    if (badge) { badge.textContent = total; badge.style.display = total ? 'inline-block' : 'none'; }
+    const nbUrg = cartes.filter(c => c.urgent).length;
+    const nbRet = cartes.filter(c => c.retard && !c.urgent).length;
+    if (badge) {
+      let h = '';
+      if (nbUrg) h += '<span style="background:var(--red-bg); color:var(--red-badge); border-radius:10px; padding:1px 8px; font-size:11px; font-weight:600; margin-left:4px;">Action urgente' + (nbUrg > 1 ? ' (' + nbUrg + ')' : '') + '</span>';
+      if (nbRet) h += '<span style="background:var(--amber-bg); color:var(--amber-badge); border-radius:10px; padding:1px 8px; font-size:11px; font-weight:600; margin-left:4px;">Risque retard' + (nbRet > 1 ? ' (' + nbRet + ')' : '') + '</span>';
+      if (total) h += '<span style="color:var(--text3); font-size:11px; margin-left:5px;">' + total + '</span>';
+      badge.innerHTML = h; badge.style.display = total ? 'inline' : 'none';
+    }
 
     const tuile = (lbl, n, couleur) => '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px;"><div style="font-size:11px; color:var(--text3)">' + lbl + '</div><div style="font-size:20px; font-weight:500;' + (couleur ? ' color:' + couleur + ';' : '') + '">' + n + '</div></div>';
     document.getElementById('att-compteurs').innerHTML =
@@ -3425,6 +3479,11 @@ async function sendChat() {
       types.map(([k,lbl]) =>
         '<button class="filter-btn' + (attFiltreType===k?' active':'') + '" onclick="attFiltrerType(\'' + k.replace(/'/g,"\\'") + '\')">' + lbl + '</button>'
       ).join('')
+      + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
+      + '<label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text3); font-weight:400; text-transform:none; letter-spacing:0;">Trier :'
+      + '<select onchange="attTrierPar(this.value)" style="width:auto; padding:5px 26px 5px 10px; font-size:12px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text2);">'
+      + [['priorite','Priorité (urgent, retard, puis affaires)'],['so','Par affaire'],['ancien','Plus ancien'],['recent','Plus récent']].map(([v,l]) => '<option value="' + v + '"' + (attTri===v?' selected':'') + '>' + l + '</option>').join('')
+      + '</select></label>'
       + '<span style="width:1px; background:var(--border); margin:0 4px;"></span>'
       + '<input type="text" id="att-filtre-so" value="' + attEsc(attFiltreSO||'') + '" placeholder="SO, client, carte, IPN, MPN…" style="width:260px; padding:5px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px;" oninput="attFiltrerSO(this.value)">';
 
@@ -3451,27 +3510,27 @@ async function sendChat() {
       const sousTitre = [c.ipn && ('IPN ' + c.ipn), c.mpn && ('MPN ' + c.mpn), c.qte && (c.qte + ' pcs'), c.fournisseur && ('chez ' + c.fournisseur.replace(/^\?/,'') + (c.refFourn ? ' · ' + c.refFourn : ''))].filter(Boolean).join(' · ');
       const cmdables = c.origine !== 'client';
 
+      /* v14.1 (29/09/2026) : une seule liste « Déjà commandé chez… » ; « À commander chez… » et « Chercher »
+         sont absorbés par le pop-up « Changer fournisseur / réf » (js/changer-fournisseur.js). */
       const menus = cmdables
-        ? '<select style="' + styleSel + ' ' + stylePP + '" onchange="attMenuCommande(' + i + ', this)" title="Marque la ligne COMMANDÉE chez ce fournisseur, sur la sheet appro et dans Paniers en attente">' + opts('Commandé chez…') + '</select>'
-          + '<select style="' + styleSel + '" onchange="attMenuACommander(' + i + ', this)" title="Change le fournisseur et repasse la ligne En attente — rien n est marqué commandé">' + opts('À commander chez…') + '</select>'
+        ? '<select style="' + styleSel + ' ' + stylePP + '" onchange="attMenuCommande(' + i + ', this)" title="La commande est passée chez ce fournisseur : la ligne est marquée COMMANDÉE sur la sheet appro et dans Paniers en attente">' + opts('Déjà commandé chez…') + '</select>'
         : '';
-      const dpBtn = '<button class="btn" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
+      const dpBtn = '<button class="btn att-action" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
       const comBtn = cmdables
         ? '<button class="btn" onclick="attCommenter(' + i + ')" title="Commentaire libre — colonne N de Paniers en attente"><i class="ti ti-message" aria-hidden="true"></i> Commentaire</button>'
         : '';
       const substBtn = c.origine === 'reception'
         ? '<button class="btn" onclick="attSubstituer(' + i + ')" title="Après vérification physique : remplacer par un autre IPN pris en stock"><i class="ti ti-replace" aria-hidden="true"></i> Substituer (stock)</button>'
         : '';
-      const rechBtn = '<button class="btn" onclick="attChangerRef(' + i + ')" title="Offres, liens fournisseur MPN, équivalent par spec — même fenêtre que Changer de réf"><i class="ti ti-search" aria-hidden="true"></i> Chercher</button>';
       /* v11.0 : Changer de ref sur toutes les cartes. Sans SO, la sheet appro
          de l affaire est introuvable -> bouton grise. */
       const chgBtn = c.so && c.mpn
-        ? '<button class="btn" style="' + stylePP + '" onclick="attChangerRef(' + i + ')" title="Nouveau MPN + fournisseur + réf écrits sur la sheet appro de l affaire (note de traçabilité en colonne O)"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Changer de réf</button>'
-        : '<button class="btn" disabled style="opacity:0.45; cursor:not-allowed;" title="' + (c.so ? 'MPN inconnu sur cette entrée' : 'SO inconnue sur cette question FabStory — sheet appro introuvable') + '"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Changer de réf</button>';
+        ? '<button class="btn" style="' + stylePP + '" onclick="attChangerRef(' + i + ')" title="Offres DigiKey / Mouser, liens, équivalent par spec, puis nouveau fournisseur et/ou MPN écrits sur la sheet appro de l affaire"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf</button>'
+        : '<button class="btn" disabled style="opacity:0.45; cursor:not-allowed;" title="' + (c.so ? 'MPN inconnu sur cette entrée' : 'SO inconnue sur cette question FabStory — sheet appro introuvable') + '"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf</button>';
       const cloreBtn = '<button class="btn" style="' + styleClore + '" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
 
       const barre = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center;">'
-        + menus + dpBtn + chgBtn + comBtn + substBtn + rechBtn + cloreBtn + '</div>';
+        + menus + chgBtn + dpBtn + comBtn + substBtn + cloreBtn + '</div>';
 
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
@@ -3481,7 +3540,10 @@ async function sendChat() {
         /* v11.5 : commentaire en bleu PP ; orange (accent) quand la ligne vient d une reponse client FabStory */
         + (c.commentaire ? '<div style="font-size:12px; color:' + (c.type === 'Reponse client' ? 'var(--blue)' : 'var(--pp-blue)') + '; margin-top:4px; white-space:pre-wrap;">' + attEsc(c.commentaire) + '</div>' : '')
         + '</div>'
-        + '<div style="display:flex; gap:6px; align-items:center;">' + attBadgeQuestion(c) + attBadgeAge(c)
+        + '<div style="display:flex; gap:6px; align-items:center;">'
+        + (c.urgent ? '<span style="background:var(--red-bg); color:var(--red-badge); font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; white-space:nowrap;">Urgent</span>' : '')
+        + (c.retard && !c.urgent ? '<span style="background:var(--amber-bg); color:var(--amber-badge); font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; white-space:nowrap;" title="' + c.joursOuvres + ' jours ouvrés">Risque retard</span>' : '')
+        + attBadgeQuestion(c) + attBadgeAge(c)
         + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span></div>'
         + '</div>'
         + barre
@@ -3515,43 +3577,8 @@ async function sendChat() {
   /* Menu "A commander chez..." : modale fournisseur + ref, ref cherchee
      automatiquement pour Mouser/DigiKey (ref-info). Backend action modifier :
      repasse En attente, n ecrit jamais Commande. */
-  window.attMenuACommander = async function(i, sel){
-    const f = sel.value;
-    sel.value = '';
-    if (!f) return;
-    const c = attVisibles[i];
-    if (!c) return;
-    const autre = (f === '__autre');
-    const m = attModal({
-      titre: 'À commander chez ' + (autre ? 'un autre fournisseur' : f),
-      aide: c.so + ' — ' + (c.mpn || c.ipn) + '\nLa ligne repasse En attente chez ce fournisseur. Rien n\'est marqué commandé.',
-      champs: [
-        { id:'fourn', label:'Fournisseur', valeur: autre ? '' : f, placeholder:'Fournisseur' },
-        { id:'ref', label:'Réf. fournisseur', valeur:'', placeholder: autre ? 'Réf. fournisseur' : 'Recherche en cours…' }
-      ],
-      valider: 'Valider → En attente',
-      onValider: async (v, msg) => {
-        if (!v.fourn) { msg('Fournisseur requis.'); return false; }
-        const r = await fetch(ATT_PANIER_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'modifier', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, fournisseur: v.fourn, refFour: v.ref }] })
-        });
-        const d = await r.json();
-        if (d.success && d.nb > 0) { attCharger(); return true; }
-        msg('Échec : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet' : (d.reason || 'inconnu')));
-        return false;
-      }
-    });
-    if (!autre) {
-      const ref = await attRefAuto(c.mpn, f);
-      const el = document.getElementById('attm-ref');
-      if (el) { el.placeholder = 'Réf. fournisseur'; if (ref) m.setChamp('ref', ref); }
-    }
-  };
+  /* attMenuACommander (« À commander chez… ») retirée en v14.1 : le changement de fournisseur passe par le pop-up. */
 
-  /* Commentaire (colonne N) : modale, backend achats-panier v1.6 action
-     commenter (remplacement total de la cellule). */
   window.attCommenter = function(i){
     const c = attVisibles[i];
     if (!c) return;
