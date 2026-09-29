@@ -3,6 +3,8 @@
    v1.1 — 29/09/2026 (chantier 186, séance 1) — v1.1 : simplifié (retour Olivier) : une offre par distributeur,
    équivalent replié, fenêtre plus étroite. v1.2 : DigiKey conditionnement unitaire d abord, deux blocs de liens
    (MPN / spec) bien séparés, plus de case « déjà commandé » (le marquage se fait sur la page principale).
+   v1.3 : un bloc par sujet avec titre coloré ; formulaire complet toujours visible (fournisseur, réf, nouveau MPN,
+   nouvel IPN) ; les valeurs proposées automatiquement s affichent en gris, une saisie humaine en blanc.
 
    Une seule fenêtre pour les onglets Achats et En attente :
      - offres Mouser / DigiKey (webhook fabstory-ref-info)
@@ -28,7 +30,7 @@
    ============================================================ */
 (function(){
   'use strict';
-  const VERSION = '1.2';
+  const VERSION = '1.3';
 
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -166,43 +168,32 @@
       const stockInfo = (cfg.stock && Object.keys(cfg.stock).length) ? cfg.stock : null;
       const caseSup = cfg.caseSupplementaire;
 
-      fond.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-lg); padding:18px 20px; width:min(96vw, 640px); max-height:92vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5);">'
+      const bloc = (titre, corps) => '<div style="margin:0 0 12px; padding:10px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius);">'
+        + '<div style="font-size:12px; font-weight:600; color:var(--blue); letter-spacing:0.02em; margin-bottom:8px;">' + titre + '</div>' + corps + '</div>';
+      const lbl = t => '<div style="font-size:11px; color:var(--text3); margin-bottom:4px;">' + t + '</div>';
+      fond.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-lg); padding:18px 20px; width:min(96vw, 680px); max-height:92vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5);">'
         + '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:2px;">'
-        +   '<div style="font-size:14px; font-weight:500;"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf'
+        +   '<div style="font-size:15px; font-weight:500;"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf'
         +   (lignes.length > 1 ? ' <span style="color:var(--text3); font-weight:400; font-size:12px;">— ' + (idx+1) + ' / ' + lignes.length + '</span>' : '') + '</div>'
         +   '<button class="btn" style="padding:2px 8px;" id="pp-cf-x" title="Fermer"><i class="ti ti-x" aria-hidden="true"></i></button></div>'
-        + '<div style="font-size:12px; color:var(--text2); margin-bottom:10px;">' + esc(l.so) + ' · <span style="font-family:var(--mono);">' + esc(cible) + '</span>'
+        + '<div style="font-size:12px; color:var(--text2); margin-bottom:14px;">' + esc(l.so) + ' · <span style="font-family:var(--mono);">' + esc(cible) + '</span>'
         +   (fournActuel ? ' · actuellement <b>' + esc(fournActuel) + '</b>' : '') + '</div>'
-        + '<div id="pp-cf-offres" style="font-size:12px; color:var(--text3); margin-bottom:6px; padding-bottom:6px; border-bottom:1px dashed var(--border);">Recherche des offres…</div>'
-        + '<div style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px dashed var(--border);">'
-        +   '<div style="font-size:13px; font-weight:500; margin-bottom:6px;">Chercher ce MPN ailleurs</div>'
-        +   '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + (cible ? liens(cible) : '<span style="font-size:12px; color:var(--text3);">pas de MPN sur la ligne</span>') + '</div></div>'
-        + (spec
-            ? '<div style="margin-bottom:14px; padding-bottom:10px; border-bottom:1px dashed var(--border);">'
-              + '<div style="font-size:13px; font-weight:500; margin-bottom:6px;">Chercher un équivalent par spec <span style="margin-left:6px; background:var(--surface2); border:1px solid var(--border2); border-radius:20px; padding:2px 10px; font-family:var(--mono); font-size:12px; font-weight:400; color:var(--text);">' + esc(spec) + '</span></div>'
-              + '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + liens(spec) + '</div></div>'
-            : '')
-        + '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px;">'
-        +   '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Fournisseur</div>'
-        +     '<select id="pp-cf-fourn" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-        +       FOURNISSEURS.map(([v, lb]) => '<option value="' + esc(v) + '"' + (fournConnu && fournConnu[0] === v ? ' selected' : '') + '>' + esc(lb) + '</option>').join('')
-        +     '</select>'
-        +     '<input id="pp-cf-fourn-autre" placeholder="Nom du fournisseur" value="' + esc(fournConnu || !fournActuel ? '' : fournActuel) + '" style="display:none; margin-top:6px; width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
-        +   '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Réf. fournisseur</div>'
-        +     '<input id="pp-cf-ref" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-        +     '<div id="pp-cf-ref-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
-        + '</div>'
-        + '<div style="margin-top:10px;"><a href="#" id="pp-cf-eq-lien" style="font-size:12px; color:var(--pp-blue); text-decoration:none;">▸ Remplacer par un autre composant (nouveau MPN)</a>'
-        +   '<div id="pp-cf-eq" style="display:none; grid-template-columns: 1fr 1fr; gap:10px 14px; margin-top:8px;">'
-        +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Nouveau MPN</div>'
-        +       '<input id="pp-cf-mpn" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
-        +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Nouvel IPN (facultatif)</div>'
-        +       '<input id="pp-cf-ipn" placeholder="' + esc(l.ipn || '') + '" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
-        +       '<div id="pp-cf-ipn-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
-        +   '</div></div>'
-        + (caseSup ? '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:8px;"><input type="checkbox" id="pp-cf-sup"' + (caseSup.coche ? ' checked' : '') + '> ' + esc(caseSup.texte) + '</label>' : '')
-        + '<div id="pp-cf-msg" style="font-size:12px; color:var(--red); min-height:16px; margin-top:10px;"></div>'
-        + '<div style="display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-top:6px;">'
+        + bloc('Offres DigiKey / Mouser', '<div id="pp-cf-offres" style="font-size:12px; color:var(--text3);">Recherche des offres…</div>')
+        + bloc('Chercher ce MPN ailleurs', '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + (cible ? liens(cible) : '<span style="font-size:12px; color:var(--text3);">pas de MPN sur la ligne</span>') + '</div>')
+        + (spec ? bloc('Chercher un équivalent par spec <span style="margin-left:6px; background:var(--surface); border:1px solid var(--border2); border-radius:20px; padding:2px 10px; font-family:var(--mono); font-size:12px; font-weight:400; color:var(--text);">' + esc(spec) + '</span>',
+                       '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + liens(spec) + '</div>') : '')
+        + bloc('Nouvelle solution d\'achat',
+            '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px;">'
+          +   '<div>' + lbl('Fournisseur') + '<select id="pp-cf-fourn" style="width:100%; padding:7px 9px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text);">'
+          +     FOURNISSEURS.map(([v, lb]) => '<option value="' + esc(v) + '"' + (fournConnu && fournConnu[0] === v ? ' selected' : '') + '>' + esc(lb) + '</option>').join('') + '</select>'
+          +     '<input id="pp-cf-fourn-autre" placeholder="Nom du fournisseur" value="' + esc(fournConnu || !fournActuel ? '' : fournActuel) + '" style="display:none; margin-top:6px; width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
+          +   '<div>' + lbl('Réf. fournisseur') + '<input id="pp-cf-ref" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"><div id="pp-cf-ref-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
+          +   '<div>' + lbl('Nouveau MPN (si le composant change)') + '<input id="pp-cf-mpn" placeholder="Vide = même composant" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
+          +   '<div>' + lbl('Nouvel IPN (facultatif)') + '<input id="pp-cf-ipn" placeholder="Vide = ' + esc(l.ipn || 'inchangé') + '" style="width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"><div id="pp-cf-ipn-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
+          + '</div>'
+          + (caseSup ? '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:10px;"><input type="checkbox" id="pp-cf-sup"' + (caseSup.coche ? ' checked' : '') + '> ' + esc(caseSup.texte) + '</label>' : ''))
+        + '<div id="pp-cf-msg" style="font-size:12px; color:var(--red); min-height:16px;"></div>'
+        + '<div style="display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-top:4px;">'
         +   '<button class="btn" id="pp-cf-annuler">' + (lignes.length > 1 ? 'Tout annuler' : 'Annuler') + '</button>'
         +   (lignes.length > 1 ? '<button class="btn" id="pp-cf-passer">Passer</button>' : '')
         +   '<button class="btn primary" id="pp-cf-ok">' + (idx < lignes.length - 1 ? 'Valider → suivant' : 'Valider') + '</button>'
@@ -223,7 +214,7 @@
 
       /* Réf auto DigiKey / Mouser : à l'ouverture, au changement de fournisseur ou de MPN. N'écrase jamais une saisie manuelle. */
       let refManuelle = false;
-      elRef.addEventListener('input', () => { refManuelle = !!elRef.value.trim(); });
+      elRef.addEventListener('input', () => { refManuelle = !!elRef.value.trim(); elRef.style.color = 'var(--text)'; });
       const majRef = async () => {
         const cle = cleRefAuto(fournisseur());
         const info = $('pp-cf-ref-info');
@@ -236,6 +227,7 @@
         const spn = await (async () => { try { const off = await offres(cfg.refInfoUrl, m); const b = meilleures(off).find(x => x.o.distributeur === cle); return b ? b.o.spn : ''; } catch(e) { return ''; } })();
         if (document.getElementById('pp-cf-ref') !== elRef || refManuelle) return;
         elRef.value = spn || '';
+        elRef.style.color = 'var(--text3)'; /* proposée automatiquement : en gris tant que non confirmée par une saisie */
         elRef.placeholder = spn ? '' : 'Non trouvée — saisir la réf';
         if (info) info.textContent = spn ? 'Réf ' + cle + ' trouvée automatiquement pour ' + m : 'Aucune réf ' + cle + ' trouvée pour ' + m;
       };
@@ -261,7 +253,7 @@
         const zone = $('pp-cf-offres'); if (!zone) return;
         const best = meilleures(off);
         zone.innerHTML = best.length ? best.map(x => offreHtml(x, l.mpn)).join('') : '<span>Aucune offre Mouser / DigiKey' + (l.mpn ? '' : ' (pas de MPN sur la ligne)') + '.</span>';
-        zone.querySelectorAll('button[data-choisir]').forEach(b => b.onclick = () => { elF.value = b.dataset.choisir; majAutre(); elRef.value = b.dataset.spn || ''; refManuelle = !!elRef.value; $('pp-cf-ref-info').textContent = 'Réf reprise de l\'offre.'; });
+        zone.querySelectorAll('button[data-choisir]').forEach(b => b.onclick = () => { elF.value = b.dataset.choisir; majAutre(); elRef.value = b.dataset.spn || ''; elRef.style.color = 'var(--text)'; refManuelle = !!elRef.value; $('pp-cf-ref-info').textContent = 'Réf reprise de l\'offre.'; });
       });
 
       $('pp-cf-ok').onclick = async () => {
@@ -286,7 +278,6 @@
           suivant();
         } catch(e) { msg('Erreur : ' + e.message); btn.disabled = false; }
       };
-      $('pp-cf-eq-lien').onclick = e => { e.preventDefault(); const z = $('pp-cf-eq'); const ouvert = z.style.display !== 'none'; z.style.display = ouvert ? 'none' : 'grid'; $('pp-cf-eq-lien').textContent = (ouvert ? '▸' : '▾') + ' Remplacer par un autre composant (nouveau MPN)'; if (!ouvert) elM.focus(); };
       const premier = $('pp-cf-fourn'); if (premier) premier.focus();
     }
     rendre();
