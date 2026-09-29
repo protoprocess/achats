@@ -828,3 +828,8 @@ tr:hover td { background: var(--surface2); }
   white-space: nowrap;
 }
 .chat-suggestion:hover { background: var(--border); color: var(--text); }
+
+/* ===== v14.0 (29/09/2026) : barre d actions de l onglet Achats — bleu pastel PP (accent secondaire, charte §2) ===== */
+.btn.att-action { background: rgba(91,196,216,0.14); color: #8FD8E6; border-color: rgba(91,196,216,0.55); font-weight: 500; }
+.btn.att-action:hover:not(:disabled) { background: rgba(91,196,216,0.26); color: #fff; }
+.btn.att-action:disabled { opacity: 0.45; cursor: not-allowed; }

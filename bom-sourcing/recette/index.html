@@ -3776,7 +3776,7 @@ async function sendChat() {
       if (signale) nbSignales++;
       /* 13.1 : « Cmde chez … » retires (doublon de « J ai commande » du panier) ; reste Sans solution */
       const cmdBtn = '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink); white-space:nowrap;" onclick="attSheetSansSolution(' + i + ')" title="Préfixe le fournisseur avec ? et crée la question client FabStory">Sans solution</button>';
-      const bascBtn = '<button class="btn" style="padding:1px 6px; font-size:11px; color:var(--pp-blue); border-color:var(--pp-blue); margin-left:4px;" onclick="attBasculer(' + i + ')" title="Changer de fournisseur (stock et prix chez les autres)" aria-label="Changer de fournisseur"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></button>';
+      const bascBtn = ''; /* v14.0 : le ↔ par ligne est remplacé par la barre d actions (coche + « Changer fournisseur / réf ») */
       const prixHtml = prix
         ? (cher
           ? '<span style="color:var(--amber); font-weight:500;" title="Demande de prix conseillée — un broker peut faire mieux que les distributeurs sur ce montant">' + prix.toFixed(2) + ' € <i class="ti ti-alert-triangle" aria-hidden="true"></i></span>'
@@ -3824,8 +3824,10 @@ async function sendChat() {
       + bandeau
       + panierBtns
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">'
-      + '<button class="btn" id="att-dp-dispo" disabled onclick="attDemandePrix(\'neutre\')" title="Brouillon Gmail commercial@ — texte neutre, sans dire pourquoi on consulte"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>'
+      + '<button class="btn att-action" id="att-dp-dispo" disabled onclick="attDemandePrix(\'neutre\')" title="Brouillon Gmail commercial@ — texte neutre, sans dire pourquoi on consulte"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>'
+      + '<button class="btn att-action" id="att-cf-btn" disabled onclick="attChangerFournCoches()" title="Offres, liens fournisseur MPN, équivalent par spec, puis nouveau fournisseur / réf — une ligne après l autre"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf</button>'
       + '<span id="att-dp-compte" style="font-size:12px; color:var(--text3); align-self:center;">0 sélectionnée</span>'
+      + '<span style="font-size:11px; color:var(--text3); align-self:center; margin-left:auto;">Coche une ou plusieurs lignes, puis choisis l\'action. Fournisseur déjà bon ? « J\'ai commandé » sur son panier suffit.</span>'
       + '</div>'
       + attFiltreHtml()
       /* 13.1 : le tableau defile seul (la page ne bouge pas), en-tete fixe */
@@ -3840,7 +3842,7 @@ async function sendChat() {
     const n = document.querySelectorAll('.att-dp-check:checked').length;
     const c = document.getElementById('att-dp-compte');
     if (c) c.textContent = n + ' sélectionnée' + (n>1?'s':'');
-    ['att-dp-dispo','att-dp-prix'].forEach(id => {
+    ['att-dp-dispo','att-dp-prix','att-cf-btn'].forEach(id => {
       const b = document.getElementById(id);
       if (b) b.disabled = !n;
     });
@@ -4253,6 +4255,22 @@ async function sendChat() {
     PPChangerFourn.ouvrir({
       lignes: [{ so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
                  fournisseur: (l['Supplier']||'').trim(), ref: (l['Supplier part number']||'').trim() }],
+      refInfoUrl: ATT_REFINFO_URL,
+      stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
+      appliquer: attBasculerAppliquer,
+      onFin: nb => { if (nb > 0) attSheetCharger(); }
+    });
+  };
+
+  /* Barre d actions : « Changer fournisseur / réf » sur toutes les lignes cochées, l une après l autre */
+  window.attChangerFournCoches = function(){
+    if (!attSheetData) return;
+    const idx = Array.from(document.querySelectorAll('.att-dp-check:checked')).map(cb => parseInt(cb.dataset.i, 10)).filter(i => attSheetActives[i]);
+    if (!idx.length) return;
+    attPanierFermer();
+    PPChangerFourn.ouvrir({
+      lignes: idx.map(i => { const l = attSheetActives[i]; return { so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
+        fournisseur: (l['Supplier']||'').trim(), ref: (l['Supplier part number']||'').trim() }; }),
       refInfoUrl: ATT_REFINFO_URL,
       stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
       appliquer: attBasculerAppliquer,
