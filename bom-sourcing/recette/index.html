@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v13.2 — 24/09/2026</title>
+<title>Achats PP — v13.5 — 28/09/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <style>
 :root {
@@ -685,7 +685,7 @@ tr:hover td { background: var(--surface2); }
 
 
 
-<div style="background:#2a1f10;color:#eab676;font-size:12px;padding:6px 18px;border-bottom:.5px solid #4a3418"><b>RECETTE</b> — copie de test d'Achats PP, ex-BOM Sourcing (onglet Commandes = ex-page Analyse Achats ; panier : « J'ai commandé » branché, copie des SO, panier gardé ; sheet mise en forme à l'écriture). Les écritures sont réelles. La prod est <a href="../" style="color:#F07B1F">ici</a>.</div>
+<div style="background:#2a1f10;color:#eab676;font-size:12px;padding:6px 18px;border-bottom:.5px solid #4a3418"><b>RECETTE</b> — copie de test d'Achats PP 13.6 (correctif substitution stock : choix vidés à chaque nouvelle BOM + refus si valeur/boîtier différents). Les écritures sont réelles. La prod est <a href="../" style="color:#F07B1F">ici</a>.</div>
 <header>
   <div class="logo">
     <img src="../../shared/picto-pp.png" alt="Proto Process" width="24" height="24" style="object-fit:contain" onerror="this.style.display='none'">
@@ -1114,9 +1114,9 @@ tr:hover td { background: var(--surface2); }
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "13.3-recette";
-const APP_DATE = "24/09/2026";
-/* COPIE DE RECETTE (24/09/2026) — base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
+const APP_VERSION = "13.6-recette";
+const APP_DATE = "29/09/2026";
+/* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
    C) bouton « Copier les SO » (SO-xxx+yyy, DigiKey 20 caracteres) ; D) panier en cours garde jusqu a validation.
@@ -1125,7 +1125,16 @@ const APP_DATE = "24/09/2026";
    (doublon de « J ai commande ») ; une seule demande de prix, texte neutre ; filtre au-dessus du tableau ;
    tableau defilant avec en-tete fixe ; liens fiche produit DigiKey/Mouser ; menu bascule manuelle raccourci.
    Chemins partages en ../../shared/. 
-   13.3 (25/09/2026) : signalements Ariel 52 (bouton « Copier » seul, message « N ligne(s) copiée(s) », « Seuil franco atteint » sans « commande possible ») et 53 (filtre ~1,5 x un MPN). */
+   13.3 (25/09/2026) : signalements Ariel 52 (bouton « Copier » seul, message « N ligne(s) copiée(s) », « Seuil franco atteint » sans « commande possible ») et 53 (filtre ~1,5 x un MPN).
+   13.4 (28/09/2026) : lecture des prix >= 1 000 € corrigee (attPrixNum : "€1,816.80" etait lu 1,82 € -- onglet Achats, panier, franco, en attente).
+   13.5 (28/09/2026) : apres « J ai commande », les lignes commandees sont masquees sur place (0 appel n8n) ;
+   relecture de la feuille seulement si n8n signale un probleme ; En attente recharge seulement s il y a eu une reprise.
+   13.6 (29/09/2026, signalement JM 58) : les choix d equivalent stock (stockOverrides, indexes par n de ligne)
+   n etaient jamais vides au chargement d une autre BOM -> la ligne n de la BOM suivante heritait du remplacant
+   (21/09 : 22 uF SO2609-462 C6 et 2,2 uF 1210 SO2609-485 C2 remplaces par 18 pF). Correctif : vidage a chaque
+   nouvelle analyse / recuperation / reinitialisation + garde-fou substitutionCompatible() : pour un IPN passif
+   (R/C), type + valeur + boitier doivent etre identiques (candidats incompatibles masques, adoption bloquee,
+   substitution refusee a l ecriture, controle aussi sur « Substituer (stock) » de l onglet En attente). */
 document.title = `RECETTE — Achats PP — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -1278,6 +1287,24 @@ let stockMpnByIPN = {};
 //  - { suppressed: true } → stock déjà affecté à une autre ligne (scission stock partiel),
 //    on ignore volontairement le vrai chiffre du fichier stock pour cette ligne
 let stockOverrides = {};
+// 13.6 : vide les choix d'equivalent stock — a appeler a CHAQUE nouvelle BOM (ils sont indexes par n de ligne)
+function viderChoixStock() { stockOverrides = {}; }
+// 13.6 : garde-fou substitution. IPN passif PP = <R|C><valeur>-<boitier>-... (ex. C2U2-1210-50V-10P-X7R).
+// Si les deux IPN sont des passifs, type + valeur + boitier doivent etre identiques ; sinon refus.
+// Hors passifs (IPN non reconnu), pas de controle : comportement anterieur.
+function ipnPassif(s) {
+  const m = /^([RC])([0-9A-Z]+)-(\d{4})(?:-|$)/.exec(String(s || '').trim().toUpperCase());
+  return m ? { type: m[1], valeur: m[2], boitier: m[3] } : null;
+}
+function substitutionCompatible(origine, remplacant) {
+  const a = ipnPassif(origine), b = ipnPassif(remplacant);
+  if (!a || !b) return { ok: true };
+  const ecarts = [];
+  if (a.type !== b.type) ecarts.push('type ' + a.type + ' ≠ ' + b.type);
+  if (a.valeur !== b.valeur) ecarts.push('valeur ' + a.valeur + ' ≠ ' + b.valeur);
+  if (a.boitier !== b.boitier) ecarts.push('boîtier ' + a.boitier + ' ≠ ' + b.boitier);
+  return ecarts.length ? { ok: false, motif: ecarts.join(', ') } : { ok: true };
+}
 let clientsList = [];
 // Alias de libellés : clé = libellé normalisé lu dans le nom de fichier,
 // valeur = identifiant du partenaire Odoo. Appris un par un, par un humain.
@@ -2199,6 +2226,7 @@ function findFuzzyStockCandidates(searchKey, limit) {
   for (const e of idx) {
     if (e.key === searchKey) continue;
     if (!(e.qty > 0)) continue;   // regle 0 (Olivier 02/09) : sans stock, inutile de proposer
+    if (!substitutionCompatible(searchKey, e.key).ok) continue;   // 13.6 : valeur/boitier differents = jamais propose
     const sc = fuzzyScoreNorm(searchKey, aNorm, e.key, e.norm);
     if (sc >= FUZZY_MIN_SCORE) retenus.push({ key:e.key, qty:e.qty, source:e.source, score:sc });
   }
@@ -2232,6 +2260,10 @@ function resolveStockQty(row, idx, ipnOverride) {
 }
 
 function applyFuzzyStock(idx, key, qty, source) {
+  const row = bomData[idx] || {};
+  const ipnLigne = (row['Approved internal part number'] || row['IPN'] || row['ipn'] || row['MPN'] || '').trim();
+  const cc = substitutionCompatible(ipnLigne, key);
+  if (!cc.ok) { alert('Substitution refusée : ' + ipnLigne + ' → ' + key + '\n' + cc.motif + '.\nCe n\'est pas un équivalent.'); return; }
   stockOverrides[idx] = { qty, source, matchedKey: key };
   if (rowMeta[idx]) {
     rowMeta[idx].stockNote = `Stock substitué : correspondance approchante avec ${key} (${source}) — à vérifier avant utilisation.`;
@@ -2330,6 +2362,7 @@ async function analyzeBOM() {
   if (!rows.length) { alert("Format non reconnu ou aucun composant valide trouvé."); return; }
   if (!webhookUrl) { alert("URL du webhook N8N non configurée (voir Reconfigurer)."); return; }
   bomData = rows;
+  viderChoixStock(); // 13.6
   document.getElementById('bom-loading').style.display='flex';
   document.getElementById('bom-result').style.display='none';
   document.getElementById('bom-loading-msg').textContent = 'Codification et vérification qualité en cours…';
@@ -2529,6 +2562,7 @@ async function recupererAnalyse(ticket) {
   if (!res.length) { alert("L'analyse trouvée est vide."); return; }
 
   bomData = rows;
+  viderChoixStock(); // 13.6
   appliquerEtAfficher(rows, res);
   const zone = document.getElementById('consigne-liste');
   if (zone) zone.innerHTML = '<div style="font-size:12px;color:var(--green);padding:8px 4px;">Analyse ' + ticket + ' récupérée — ' + res.length + ' ligne(s).</div>';
@@ -3162,6 +3196,7 @@ async function writeToGSheet() {
   // du jour la motive, la commande suivante repose la question à zéro. D'où la
   // trace en fiche de vie plutôt qu'une table d'équivalences.
   const substitutions = [];
+  const substitutionsRefusees = []; // 13.6
   bomData.forEach((row, i) => {
     const si = resolveStockQty(row, i);
     row['Reçus'] = si.qty !== null ? String(si.qty) : '';
@@ -3170,7 +3205,13 @@ async function writeToGSheet() {
       const cle = Object.keys(row).find(k => k.toLowerCase().includes('ipn') || k.toLowerCase().includes('internal')) || 'IPN';
       const origine = String(row[cle] || '').trim();
       const remplacant = String(si.matchedKey).trim();
-      if (remplacant && remplacant !== origine) {
+      const cc = substitutionCompatible(origine, remplacant);
+      if (remplacant && remplacant !== origine && !cc.ok) {
+        // 13.6 : on n'ecrit ni l'IPN remplacant ni son stock — la ligne part a la commande avec son IPN d'origine
+        row['Reçus'] = '';
+        delete stockOverrides[i];
+        substitutionsRefusees.push(origine + ' → ' + remplacant + ' (' + cc.motif + ')');
+      } else if (remplacant && remplacant !== origine) {
         row[cle] = remplacant;
         const repere = findCol(row, ['designator','reference','ref']) || '';
         substitutions.push({ repere, origine, remplacant, mpn: String(row['MPN'] || '').trim() });
@@ -3182,6 +3223,9 @@ async function writeToGSheet() {
     }
   });
 
+  if (substitutionsRefusees.length) {
+    alert('⚠ ' + substitutionsRefusees.length + ' substitution(s) refusée(s) — valeur ou boîtier différent, ce ne sont pas des équivalents :\n\n' + substitutionsRefusees.join('\n') + '\n\nCes lignes sont écrites avec leur IPN d\'origine, sans stock : elles passent à la commande.');
+  }
   // Colonne dédiée "Vigilance" : points de vigilance qualité (Gemini + catégories Claude), warnings
   // capteur/batterie/non-étanche/MSL (jusqu'ici présents dans l'export XLS via un rapport séparé,
   // mais absents de l'écriture GSheet — retour terrain du 23/07), et annotations stock (scission
@@ -3462,6 +3506,7 @@ function clearBOM() {
   document.getElementById('bom-sheet-selector').style.display = 'none';
   bomWorkbook = null;
   bomData=[];
+  viderChoixStock(); // 13.6
   expandImportZone();
 }
 </script>
@@ -4526,8 +4571,23 @@ async function sendChat() {
   /* Les prix de la sheet arrivent formatés ("€0.22", "1,26 €", "8.29") :
      parseFloat direct rend NaN sur le symbole — cause du "0.00 €" partout
      au contre-test du 02/09. On ne garde que chiffres, virgule, point, signe. */
+  /* 13.4 (28/09/2026) : la feuille achat (format anglais) envoie "€1,816.80" -- la 1re virgule
+     etait prise pour la virgule decimale -> 1.816 (PA84, SO2609-474 : 1 816,80 € lu 1,82 €).
+     Regle : si virgule ET point sont presents, le DERNIER des deux marque les decimales, l autre
+     est un separateur de milliers ; plusieurs points seuls -> milliers sauf le dernier ;
+     une virgule seule reste la virgule decimale francaise ("1,26 €"). */
   function attPrixNum(s){
-    return parseFloat((s||'').toString().replace(/[^0-9,.\-]/g,'').replace(',','.')) || 0;
+    let t = (s||'').toString().replace(/[^0-9,.\-]/g,'');
+    const v = t.lastIndexOf(','), pt = t.lastIndexOf('.');
+    if (v >= 0 && pt >= 0) {
+      if (v > pt) t = t.replace(/\./g,'').replace(',','.');
+      else t = t.replace(/,/g,'');
+    } else if (v >= 0) {
+      t = (t.split(',').length > 2) ? t.replace(/,/g,'') : t.replace(',','.');
+    } else if (t.split('.').length > 2) {
+      const i = t.lastIndexOf('.'); t = t.slice(0,i).replace(/\./g,'') + t.slice(i);
+    }
+    return parseFloat(t) || 0;
   }
 
   window.attSheetCharger = async function(){
@@ -5055,7 +5115,27 @@ async function sendChat() {
       });
       const res = await rq.json();
       alert((res.success ? '✅ ' : '⚠ ') + (res.message || res.reason || 'Réponse inattendue'));
-      if (res.action === 'valider') { attPanierOublier(P.cle); attPanierFermer(); attCharger(); }
+      if (res.action === 'valider') {
+        attPanierOublier(P.cle); attPanierFermer();
+        /* 13.5 (28/09/2026, decision Olivier) : les lignes restaient affichees apres « J ai commande »
+           (l appli rechargeait l onglet En attente, pas l onglet Achats) -> risque de commander 2 fois.
+           Cas normal (n8n confirme, aucun probleme) : on masque sur place les lignes commandees,
+           0 appel n8n. Au moindre probleme signale : on relit la feuille (1 appel) pour montrer la
+           verite, rien n est masque a tort. En attente n est recharge que s il y a eu une reprise. */
+        const okSansPb = res.success && !((res.problemes || []).length);
+        if (okSansPb && attSheetData && Array.isArray(attSheetData.lignes)) {
+          const U = x => String(x || '').trim().toUpperCase();
+          aff.forEach(l => {
+            const I = U(l.ipn), M = U(l.mpn);
+            const cible = attSheetData.lignes.find(o => (I && U(o['Approved internal part number']) === I) || (M && U(o['MPN']) === M));
+            if (cible) cible._commande = true;
+          });
+          attSheetRender();
+        } else {
+          attSheetCharger();
+        }
+        if (att.length) attCharger();
+      }
     } catch(e) { alert('Erreur réseau : ' + e.message); if (m) m.textContent = ''; }
   };
 
@@ -5539,6 +5619,8 @@ async function sendChat() {
     const saisie = prompt('Substitution stock pour ' + (c.ipn || c.mpn) + ' (' + c.so + ')\n\nNouvel IPN pris en stock :');
     if (!saisie) return;
     const nouvelIpn = saisie.trim().toUpperCase();
+    const cc = substitutionCompatible(c.ipn || '', nouvelIpn);
+    if (!cc.ok) { alert('Substitution refusée : ' + c.ipn + ' → ' + nouvelIpn + '\n' + cc.motif + '.\nCe n\'est pas un équivalent.'); return; }
     let nouveauMpn = '';
     let infoStock = 'IPN introuvable dans le référentiel stock chargé — vérifie la saisie.';
     try {
