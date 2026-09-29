@@ -1,7 +1,8 @@
 /* ============================================================
    PP — Achats : pop-up partagé « Changer fournisseur / réf »
    v1.1 — 29/09/2026 (chantier 186, séance 1) — v1.1 : simplifié (retour Olivier) : une offre par distributeur,
-   une seule ligne de liens, équivalent replié, fenêtre plus étroite.
+   équivalent replié, fenêtre plus étroite. v1.2 : DigiKey conditionnement unitaire d abord, deux blocs de liens
+   (MPN / spec) bien séparés, plus de case « déjà commandé » (le marquage se fait sur la page principale).
 
    Une seule fenêtre pour les onglets Achats et En attente :
      - offres Mouser / DigiKey (webhook fabstory-ref-info)
@@ -9,7 +10,6 @@
      - « Chercher un équivalent par spec » (spec déduite de l'IPN)
      - formulaire : fournisseur (liste), réf fournisseur (remplie seule pour
        DigiKey / Mouser), nouveau MPN si équivalent, nouvel IPN facultatif,
-       case « J'ai déjà passé la commande chez ce fournisseur »
      - enchaînement des lignes : « Passer » / « Valider → suivant », compteur i/n
 
    Le pop-up ne sait PAS écrire : chaque onglet fournit `appliquer(ligne,
@@ -24,11 +24,11 @@
        appliquer: async (ligne, valeurs, msg) => true|false,
        onFin: (nbValides) => {}
      });
-   valeurs = { fournisseur, ref, nouveauMpn, nouvelIpn, dejaCommande, [caseSupplementaire.id] }
+   valeurs = { fournisseur, ref, nouveauMpn, nouvelIpn, [caseSupplementaire.id] }  (dejaCommande toujours false)
    ============================================================ */
 (function(){
   'use strict';
-  const VERSION = '1.1';
+  const VERSION = '1.2';
 
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -109,11 +109,18 @@
     const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[^\d.,]/g, '').replace(',', '.')); return isNaN(n) ? null : n; };
     const stock = o => { const k = Object.keys(o).find(k => /stock|dispo|qt/i.test(k)); return k ? (num(o[k]) || 0) : 0; };
     const prix = o => { const k = Object.keys(o).find(k => /prix|price/i.test(k)); return k ? num(o[k]) : null; };
+    /* DigiKey : conditionnement UNITAIRE d abord (coupe de bande : …CT-ND, …-1-ND), jamais la bobine
+       (…TR-ND, …-2-ND) ni le Digi-Reel (…DKR-ND, …-6-ND) — on achète des petites quantités. */
+    const rang = o => { const s = String(o.spn || '').toUpperCase(); if (/CT-ND$|-1-ND$/.test(s)) return 0; if (/TR-ND$|-2-ND$|DKR-ND$|-6-ND$/.test(s)) return 2; return 1; };
     const par = {};
     off.forEach(o => {
       const d = String(o.distributeur || '').trim(); if (!d || !o.spn || o.spn === 'N/A') return;
       const c = par[d];
-      const mieux = !c || (stock(o) > 0 && stock(c) === 0) || (stock(o) > 0 && stock(c) > 0 && (prix(o) != null) && (prix(c) == null || prix(o) < prix(c)));
+      let mieux;
+      if (!c) mieux = true;
+      else if ((stock(o) > 0) !== (stock(c) > 0)) mieux = stock(o) > 0;           /* en stock avant tout */
+      else if (rang(o) !== rang(c)) mieux = rang(o) < rang(c);                     /* puis conditionnement unitaire */
+      else mieux = (prix(o) != null) && (prix(c) == null || prix(o) < prix(c));  /* puis prix */
       if (mieux) par[d] = o;
     });
     return Object.values(par).map(o => ({ o, stock: stock(o), prix: prix(o) }));
@@ -167,8 +174,14 @@
         + '<div style="font-size:12px; color:var(--text2); margin-bottom:10px;">' + esc(l.so) + ' · <span style="font-family:var(--mono);">' + esc(cible) + '</span>'
         +   (fournActuel ? ' · actuellement <b>' + esc(fournActuel) + '</b>' : '') + '</div>'
         + '<div id="pp-cf-offres" style="font-size:12px; color:var(--text3); margin-bottom:6px; padding-bottom:6px; border-bottom:1px dashed var(--border);">Recherche des offres…</div>'
-        + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px; font-size:12px;">'
-        +   '<span style="color:var(--text3);">Chercher ailleurs' + (spec ? ' (MPN ou <span style="font-family:var(--mono); color:var(--text);">' + esc(spec) + '</span>)' : '') + ' :</span>' + (cible ? liens(cible) : '') + '</div>'
+        + '<div style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px dashed var(--border);">'
+        +   '<div style="font-size:13px; font-weight:500; margin-bottom:6px;">Chercher ce MPN ailleurs</div>'
+        +   '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + (cible ? liens(cible) : '<span style="font-size:12px; color:var(--text3);">pas de MPN sur la ligne</span>') + '</div></div>'
+        + (spec
+            ? '<div style="margin-bottom:14px; padding-bottom:10px; border-bottom:1px dashed var(--border);">'
+              + '<div style="font-size:13px; font-weight:500; margin-bottom:6px;">Chercher un équivalent par spec <span style="margin-left:6px; background:var(--surface2); border:1px solid var(--border2); border-radius:20px; padding:2px 10px; font-family:var(--mono); font-size:12px; font-weight:400; color:var(--text);">' + esc(spec) + '</span></div>'
+              + '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + liens(spec) + '</div></div>'
+            : '')
         + '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px;">'
         +   '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Fournisseur</div>'
         +     '<select id="pp-cf-fourn" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
@@ -179,7 +192,7 @@
         +     '<input id="pp-cf-ref" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
         +     '<div id="pp-cf-ref-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
         + '</div>'
-        + '<div style="margin-top:10px;"><a href="#" id="pp-cf-eq-lien" style="font-size:12px; color:var(--pp-blue); text-decoration:none;">▸ C\'est un équivalent (autre MPN)</a>'
+        + '<div style="margin-top:10px;"><a href="#" id="pp-cf-eq-lien" style="font-size:12px; color:var(--pp-blue); text-decoration:none;">▸ Remplacer par un autre composant (nouveau MPN)</a>'
         +   '<div id="pp-cf-eq" style="display:none; grid-template-columns: 1fr 1fr; gap:10px 14px; margin-top:8px;">'
         +     '<div><div style="font-size:11px; color:var(--text3); margin-bottom:4px;">Nouveau MPN</div>'
         +       '<input id="pp-cf-mpn" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);"></div>'
@@ -187,7 +200,6 @@
         +       '<input id="pp-cf-ipn" placeholder="' + esc(l.ipn || '') + '" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px; font-family:var(--mono); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface2); color:var(--text);">'
         +       '<div id="pp-cf-ipn-info" style="font-size:11px; color:var(--text3); margin-top:4px;"></div></div>'
         +   '</div></div>'
-        + '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:12px;"><input type="checkbox" id="pp-cf-deja"> J\'ai déjà passé la commande chez ce fournisseur</label>'
         + (caseSup ? '<label style="display:flex; gap:8px; align-items:center; font-size:13px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text); cursor:pointer; margin-top:8px;"><input type="checkbox" id="pp-cf-sup"' + (caseSup.coche ? ' checked' : '') + '> ' + esc(caseSup.texte) + '</label>' : '')
         + '<div id="pp-cf-msg" style="font-size:12px; color:var(--red); min-height:16px; margin-top:10px;"></div>'
         + '<div style="display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-top:6px;">'
@@ -259,7 +271,7 @@
           ref: elRef.value.trim(),
           nouveauMpn: elM.value.trim(),
           nouvelIpn: elI.value.trim(),
-          dejaCommande: !!$('pp-cf-deja').checked
+          dejaCommande: false /* retiré v1.2 : « commandé » se fait sur la page principale */
         };
         if (caseSup) v[caseSup.id] = !!($('pp-cf-sup') && $('pp-cf-sup').checked);
         if (!v.fournisseur) { msg('Fournisseur requis.'); return; }
@@ -274,7 +286,7 @@
           suivant();
         } catch(e) { msg('Erreur : ' + e.message); btn.disabled = false; }
       };
-      $('pp-cf-eq-lien').onclick = e => { e.preventDefault(); const z = $('pp-cf-eq'); const ouvert = z.style.display !== 'none'; z.style.display = ouvert ? 'none' : 'grid'; $('pp-cf-eq-lien').textContent = (ouvert ? '▸' : '▾') + ' C\'est un équivalent (autre MPN)'; if (!ouvert) elM.focus(); };
+      $('pp-cf-eq-lien').onclick = e => { e.preventDefault(); const z = $('pp-cf-eq'); const ouvert = z.style.display !== 'none'; z.style.display = ouvert ? 'none' : 'grid'; $('pp-cf-eq-lien').textContent = (ouvert ? '▸' : '▾') + ' Remplacer par un autre composant (nouveau MPN)'; if (!ouvert) elM.focus(); };
       const premier = $('pp-cf-fourn'); if (premier) premier.focus();
     }
     rendre();
