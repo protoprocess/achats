@@ -3306,7 +3306,7 @@ async function sendChat() {
        - urgent : « urgent » sous toutes ses formes dans le commentaire (URGENT, Urgence, urgent!…) ou fournisseur « ??? »
        - risque retard : ligne encore En attente / Sans solution depuis >= 3 jours OUVRES */
     cartes.forEach(c => {
-      c.urgent = /urgen/i.test(c.commentaire || '') || /^\s*\?{2,}\s*$/.test(c.fournisseur || '');   /* fournisseur inconnu = « ?? » ou « ??? » (un seul « ? » = prefixe « a ne pas commander », pas une urgence) */
+      c.urgent = /urgen/i.test(c.commentaire || '') || /^\s*\?+\s*$/.test(c.fournisseur || '');   /* fournisseur = uniquement des « ? » (?, ??, ???) sans nom derriere = inconnu = urgence ; « ?DigiKey » (prefixe a ne pas commander) n en est pas une */
       c.retard = (c.statut === 'En attente' || c.statut === 'Sans solution') && c.joursOuvres != null && c.joursOuvres >= 3;
     });
     /* les urgentes en tete, puis les retards, puis par anciennete */
