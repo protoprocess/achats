@@ -3340,28 +3340,7 @@ async function sendChat() {
     if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
   };
 
-  function attRecherche(c){
-    const q = encodeURIComponent(c.mpn || c.ipn);
-    if (!q) return '';
-    const spec = attSpecDepuisIpn(c.ipn);
-    const eq = spec ? encodeURIComponent(spec) : '';
-    const escLoc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    return '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">'
-      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + q + '">DigiKey</a>'
-      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://eu.mouser.com/c/?q=' + q + '">Mouser</a>'
-      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://octopart.com/search?q=' + q + '">Octopart</a>'
-      + '<a class="btn" style="text-decoration:none" target="_blank" href="https://fr.farnell.com/search?st=' + q + '">Farnell</a>'
-      + '</div>'
-      + (eq
-        ? '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; align-items:center;">'
-          + '<span style="font-size:11px; color:var(--text3);">Équivalent par spec <span style="font-family:var(--mono)">(' + escLoc(spec) + ')</span> :</span>'
-          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://octopart.com/search?q=' + eq + '">Octopart ↗</a>'
-          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.digikey.fr/fr/products/result?keywords=' + eq + '">DigiKey ↗</a>'
-          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://www.mouser.fr/c/?q=' + eq + '">Mouser ↗</a>'
-          + '<a class="btn" style="padding:3px 10px; font-size:11px; text-decoration:none;" target="_blank" href="https://fr.farnell.com/search?st=' + eq + '">Farnell ↗</a>'
-          + '</div>'
-        : '');
-  }
+  /* attRecherche retirée en v14.0 : liens et équivalent par spec vivent dans le pop-up partagé (js/changer-fournisseur.js). */
 
   const ATT_FOURNISSEURS = ['DigiKey','Mouser','Farnell'];
   const attEsc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -3505,15 +3484,10 @@ async function sendChat() {
         + '<span style="background:' + bbg + '; color:' + bfg + '; font-size:11px; padding:3px 9px; border-radius:20px; white-space:nowrap;">' + blbl + '</span></div>'
         + '</div>'
         + barre
-        + '<div id="att-rech-' + i + '" style="display:none;">' + attRecherche(c) + '</div>'
         + '</div>';
     }).join('');
   }
 
-  window.attToggleRecherche = function(i){
-    const el = document.getElementById('att-rech-' + i);
-    if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
-  };
 
   /* Menu "Commande chez..." : confirmation dans la modale (plus de confirm()
      navigateur), champ fournisseur si "Autre". L action reste attCommander. */
@@ -4215,35 +4189,8 @@ async function sendChat() {
   /* IPN -> requete de recherche en clair pour les moteurs distributeurs.
      C22U-0805-6V3-20P-X5R -> "22uF 0805 6.3V 20% X5R"
      R10K-0402-25PPM       -> "10k 0402 25ppm resistor 0.1%" (ppm PP) */
-  function attSpecDepuisIpn(ipn){
-    const p = (ipn||'').toUpperCase().split('-');
-    if (!p.length) return '';
-    // v12.4 (18/09/2026, constat Olivier sur C4U2-0402-16V-10P-X5R) : la DECIMALE
-    // des condensateurs manquait. C4U2 = 4,2 uF, C2U2 = 2,2 uF, C5P6 = 5,6 pF —
-    // le motif n'acceptait que C<entier><U|N|P>, donc la spec sortait vide et toute
-    // la ligne « Équivalent par spec » disparaissait en silence. Les resistances,
-    // elles, geraient deja la decimale (R4K7 -> 4.7k) : meme regle ici.
-    let m = p[0].match(/^C(\d+)([UNP])(\d*)$/);
-    if (m) {
-      const unite = { U: 'uF', N: 'nF', P: 'pF' }[m[2]];
-      const val = m[3] ? m[1] + '.' + m[3] : m[1];
-      const morceaux = [val + unite, p[1] || ''];
-      if (p[2]) morceaux.push(p[2].replace(/^(\d+)V(\d+)$/, '$1.$2V').replace(/^(\d+)V$/, '$1V'));
-      // tolerance : 10P -> 10%, 0P25 -> 0.25%
-      if (p[3]) morceaux.push(p[3].replace(/^(\d+)P(\d+)$/, '$1.$2%').replace(/^(\d+)P$/, '$1%'));
-      if (p[4]) morceaux.push(p[4]);
-      return morceaux.filter(Boolean).join(' ');
-    }
-    m = p[0].match(/^R(\d+)([RKM])(\d*)$/);
-    if (m) {
-      const val = m[3] ? m[1] + '.' + m[3] : m[1];
-      const unite = { R: 'ohm', K: 'k', M: 'M' }[m[2]];
-      const morceaux = [val + unite, p[1] || '', 'resistor'];
-      if (p[2] && /PPM$/.test(p[2])) morceaux.push(p[2].toLowerCase());
-      return morceaux.filter(Boolean).join(' ');
-    }
-    return '';
-  }
+  /* v14.0 : une seule règle de spec, celle du module partagé (résistances 1 % + puissance boîtier). */
+  function attSpecDepuisIpn(ipn){ return (window.PPChangerFourn ? PPChangerFourn.specDepuisIpn(ipn) : ''); }
 
   /* v14.0 (29/09/2026, chantier 186 s1) : le panneau « Basculer » est remplacé par le
      pop-up partagé PPChangerFourn (js/changer-fournisseur.js), commun avec l onglet
