@@ -454,13 +454,16 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "14.2";
+const APP_VERSION = "14.3";
+/* 14.3 (30/09/2026, chantier 186 — séance 2, fin du chantier) : pop-up « Changer fournisseur / réf » v1.5 — recherche
+   INVERSE réf fournisseur -> MPN (DigiKey / Mouser) via le nouveau workflow « Achats — Réf inverse » (pAz87p2q05zOxHWU,
+   webhook achats-ref-inverse), séparé de fabstory-ref-info. Autres onglets laissés tels quels (décision Olivier). */
 /* 14.2 (29/09/2026, chantier « Questions client : modèles précis et déroulé », go Olivier) : bouton « Sans solution »
    renommé « Non dispo → question client ». Il marque toujours le fournisseur « ? » et ajoute la ligne aux Paniers en attente,
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "29/09/2026";
+const APP_DATE = "30/09/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -3165,7 +3168,7 @@ async function sendChat() {
 <script>window.PP_APPLI = 'bom-sourcing';</script>
 <script src="../shared/pp-signalement.js"></script>
 
-<script src="js/changer-fournisseur.js"></script>
+<script src="js/changer-fournisseur.js?v=1.5"></script>
 <script>
 /* ============================================================
    MODULE ACHATS EN ATTENTE — independant de l'analyse BOM.
