@@ -7,6 +7,9 @@
    nouvel IPN) ; les valeurs proposées automatiquement s affichent en gris, une saisie humaine en blanc.
    v1.4 : ordre Fournisseur / MPN + Réf. fournisseur / IPN ; valeurs actuelles en gris clair (placeholder), réf auto
    dès la frappe d un MPN pour DigiKey et Mouser.
+   v1.5 (30/09/2026, chantier 186 — séance 2) : recherche INVERSE. Une réf DigiKey ou Mouser tapée dans « Réf. fournisseur »
+   retrouve le MPN (webhook séparé achats-ref-inverse, FabStory non touché) : MPN rempli en gris s il est vide,
+   fournisseur aligné sur le distributeur trouvé. Comparaison stricte de la réf (311-1.00K ≠ 311-10.0K).
 
    Une seule fenêtre pour les onglets Achats et En attente :
      - offres Mouser / DigiKey (webhook fabstory-ref-info)
@@ -32,7 +35,8 @@
    ============================================================ */
 (function(){
   'use strict';
-  const VERSION = '1.4';
+  const VERSION = '1.5';
+  const REF_INVERSE_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-ref-inverse';
 
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -216,8 +220,33 @@
       majAutre();
 
       /* Réf auto DigiKey / Mouser : à l'ouverture, au changement de fournisseur ou de MPN. N'écrase jamais une saisie manuelle. */
-      let refManuelle = false;
-      elRef.addEventListener('input', () => { refManuelle = !!elRef.value.trim(); elRef.style.color = 'var(--text)'; });
+      let refManuelle = false, mpnManuel = false;
+      elRef.addEventListener('input', () => { refManuelle = !!elRef.value.trim(); elRef.style.color = 'var(--text)'; clearTimeout(tInv); tInv = setTimeout(majInverse, 700); });
+      elM.addEventListener('input', () => { mpnManuel = !!elM.value.trim(); elM.style.color = 'var(--text)'; });
+
+      /* v1.5 — recherche INVERSE : réf fournisseur tapée -> MPN (DigiKey / Mouser). Ne remplace jamais un MPN saisi à la main. */
+      let tInv = null;
+      const majInverse = async () => {
+        const info = $('pp-cf-ref-info');
+        const r = elRef.value.trim();
+        if (!refManuelle || r.length < 5) return;
+        if (info) { info.textContent = 'recherche du MPN…'; info.style.color = 'var(--text3)'; }
+        let d = null;
+        try { const rep = await fetch(REF_INVERSE_URL + '?ref=' + encodeURIComponent(r)); d = await rep.json(); } catch(e) { d = null; }
+        if (document.getElementById('pp-cf-ref') !== elRef || elRef.value.trim() !== r) return; /* fenêtre changée ou frappe reprise */
+        const o = d && d.trouve && d.offres && d.offres[0];
+        if (!o || !o.mpn) { if (info) { info.textContent = 'réf inconnue chez DigiKey / Mouser (saisie libre)'; info.style.color = 'var(--text3)'; } return; }
+        const memeMpn = String(o.mpn).toUpperCase() === String(l.mpn || '').toUpperCase();
+        if (info) {
+          info.innerHTML = esc(o.distributeur) + ' · MPN : <b style="font-family:var(--mono);">' + esc(o.mpn) + '</b>' + (o.fabricant ? ' (' + esc(o.fabricant) + ')' : '')
+            + (memeMpn ? ' — même MPN que la ligne' : '');
+          info.style.color = memeMpn ? 'var(--green)' : 'var(--amber)';
+        }
+        if (!mpnManuel && !memeMpn) { elM.value = o.mpn; elM.style.color = 'var(--text3)'; } /* proposé automatiquement : gris */
+        if (memeMpn && !mpnManuel) { elM.value = ''; }
+        const cible = o.distributeur === 'DigiKey' ? 'DigiKey USA' : (o.distributeur === 'Mouser' ? 'Mouser USA' : '');
+        if (cible && cleRefAuto(fournisseur()) !== o.distributeur) { elF.value = cible; majAutre(); }
+      };
       const majRef = async () => {
         const cle = cleRefAuto(fournisseur());
         const info = $('pp-cf-ref-info');
