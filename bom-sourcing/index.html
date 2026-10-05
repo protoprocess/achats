@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v13.5 — 28/09/2026</title>
+<title>Achats PP — v14.4 — 05/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <link rel="stylesheet" href="css/app.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -454,7 +454,11 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "14.3";
+const APP_VERSION = "14.4";
+/* 14.4 (05/10/2026, demande Olivier) : bouton « Mettre en attente » dans la barre d actions de l onglet Achats,
+   sur une ou plusieurs lignes cochées (avant : seulement dans le panneau Commander, fournisseur par fournisseur).
+   Même circuit n8n (achats-panier, action attente), un appel par fournisseur ; lignes sans fournisseur
+   (« ? », Inventory, Client, Consultation) ignorées avec un message. Retour : étiquette avant-14-4-2026-10-05. */
 /* 14.3 (30/09/2026, chantier 186 — séance 2, fin du chantier) : pop-up « Changer fournisseur / réf » v1.5 — recherche
    INVERSE réf fournisseur -> MPN (DigiKey / Mouser) via le nouveau workflow « Achats — Réf inverse » (pAz87p2q05zOxHWU,
    webhook achats-ref-inverse), séparé de fabstory-ref-info. Autres onglets laissés tels quels (décision Olivier). */
@@ -463,7 +467,7 @@ const APP_VERSION = "14.3";
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "30/09/2026";
+const APP_DATE = "05/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -3837,6 +3841,7 @@ async function sendChat() {
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">'
       + '<button class="btn att-action" id="att-dp-dispo" disabled onclick="attDemandePrix(\'neutre\')" title="Brouillon Gmail commercial@ — texte neutre, sans dire pourquoi on consulte"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>'
       + '<button class="btn att-action" id="att-cf-btn" disabled onclick="attChangerFournCoches()" title="Offres, liens fournisseur MPN, équivalent par spec, puis nouveau fournisseur / réf — une ligne après l autre"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf</button>'
+      + '<button class="btn att-action" id="att-ea-btn" disabled onclick="attMettreEnAttenteCoches()" style="color:var(--amber); border-color:var(--amber);" title="Panier incomplet ou seuil franco non atteint : les lignes cochées partent dans Paniers en attente et seront proposées en reprise au prochain panier du même fournisseur"><i class="ti ti-hourglass" aria-hidden="true"></i> Mettre en attente</button>'
       + '<span id="att-dp-compte" style="font-size:12px; color:var(--text3); align-self:center;">0 sélectionnée</span>'
       + '<span style="font-size:11px; color:var(--text3); align-self:center; margin-left:auto;">Coche une ou plusieurs lignes, puis choisis l\'action. Fournisseur déjà bon ? « J\'ai commandé » sur son panier suffit.</span>'
       + '</div>'
@@ -3853,7 +3858,7 @@ async function sendChat() {
     const n = document.querySelectorAll('.att-dp-check:checked').length;
     const c = document.getElementById('att-dp-compte');
     if (c) c.textContent = n + ' sélectionnée' + (n>1?'s':'');
-    ['att-dp-dispo','att-dp-prix','att-cf-btn'].forEach(id => {
+    ['att-dp-dispo','att-dp-prix','att-cf-btn','att-ea-btn'].forEach(id => {
       const b = document.getElementById(id);
       if (b) b.disabled = !n;
     });
@@ -4266,6 +4271,56 @@ async function sendChat() {
       appliquer: attBasculerAppliquer,
       onFin: nb => { if (nb > 0) attSheetCharger(); }
     });
+  };
+
+  /* 14.4 (05/10/2026) : « Mettre en attente » sur les lignes cochées — même action que le panneau Commander
+     (achats-panier, action attente), un appel par fournisseur. */
+  window.attMettreEnAttenteCoches = async function(){
+    const d = attSheetData;
+    if (!d) return;
+    const idx = Array.from(document.querySelectorAll('.att-dp-check:checked')).map(cb => parseInt(cb.dataset.i, 10)).filter(i => attSheetActives[i]);
+    if (!idx.length) return;
+    const groupes = {}, exclues = [];
+    idx.forEach(i => {
+      const l = attSheetActives[i];
+      const cle = attFournCle(l['Supplier']);
+      const nom = (l['MPN']||'').trim() || (l['Approved internal part number']||'').trim();
+      if (!cle) { exclues.push(nom + ' (' + ((l['Supplier']||'').trim() || 'sans fournisseur') + ')'); return; }
+      (groupes[cle] = groupes[cle] || []).push({
+        i, fournisseur: (l['Supplier']||'').trim(),
+        refFour: (l['Supplier part number']||'').trim(),
+        ipn: (l['Approved internal part number']||'').trim(),
+        mpn: (l['MPN']||'').trim(),
+        qte: (l['Purchase qty']||'').toString().trim(),
+        montant: attPrixNum(l['Purchase price'])
+      });
+    });
+    const cles = Object.keys(groupes);
+    if (!cles.length) { alert('Aucune ligne cochée ne peut être mise en attente : il faut un fournisseur (pas « ? », Inventory, Client ni Consultation).\n\n' + exclues.join('\n')); return; }
+    const nb = cles.reduce((s, c) => s + groupes[c].length, 0);
+    let txt = 'Mettre ' + nb + ' ligne' + (nb > 1 ? 's' : '') + ' en attente ?\n\n'
+      + cles.map(c => '• ' + attPanierFormats[c].titre + ' : ' + groupes[c].length + ' ligne' + (groupes[c].length > 1 ? 's' : '')).join('\n')
+      + '\n\nElles seront proposées en reprise au prochain panier du même fournisseur.';
+    if (exclues.length) txt += '\n\nIgnorées (pas de fournisseur) :\n' + exclues.join('\n');
+    if (!confirm(txt)) return;
+    const btn = document.getElementById('att-ea-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Mise en attente…'; }
+    let ok = 0; const ko = [];
+    for (const c of cles) {
+      try {
+        const r = await fetch(ATT_PANIER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'attente', so: d.so, carte: d.fileName, fournisseur: attPanierFormats[c].titre, lignes: groupes[c] })
+        });
+        const res = await r.json();
+        if (res.success) ok += groupes[c].length;
+        else ko.push(attPanierFormats[c].titre + ' : ' + (res.reason || 'inconnu'));
+      } catch(e) { ko.push(attPanierFormats[c].titre + ' : erreur réseau (' + e.message + ')'); }
+    }
+    alert(ok + ' ligne' + (ok > 1 ? 's' : '') + ' mise' + (ok > 1 ? 's' : '') + ' en attente.' + (ko.length ? '\n\nÉchec :\n' + ko.join('\n') : ''));
+    if (ok) { attPanierFermer(); attCharger(); }
+    else attDpMaj();
   };
 
   async function attBasculerAppliquer(ligne, v, msg){
