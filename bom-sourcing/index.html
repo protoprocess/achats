@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v15.1 — 05/10/2026</title>
+<title>Achats PP — v15.3 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <link rel="stylesheet" href="css/app.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -458,7 +458,16 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.1";
+const APP_VERSION = "15.3";
+/* 15.3 (06/10/2026, demande Olivier) : bouton « Alerte Luminovo » — sur chaque carte de l onglet En attente (MPN connu)
+   et dans la barre d actions de l onglet Achats (lignes cochées). Workflow n8n « Achats — alerte Luminovo » v1.0
+   (1JBxHhmBalLAll31, MCP Luminovo, compte d Olivier) : fiche trouvée par MPN (fabricant de la ligne, sinon fiche Active),
+   pas de doublon si une alerte active existe déjà sur la fiche, seuil = dès 1 pièce en stock, note = SO · carte · besoin.
+   En attente : « Alerte Luminovo créée le JJ/MM » ajouté au commentaire de la ligne. Retour : avant-15-3-2026-10-06. */
+/* 15.2 (06/10/2026, demande Olivier : « le copier/coller vire parfois une ligne (pas de stock…) et si la commande comporte
+   plusieurs lignes ça passe inaperçu ») : panneau Commander — encadré « N LIGNES À COMMANDER » (lignes de l affaire cochées
+   + reprises en attente retenues), bouton « Copier (N) », et après la copie un rappel persistant « vérifie que ton panier
+   X affiche bien N lignes avant de payer ». Retour : avant-15-2-2026-10-06. */
 /* 15.1 (05/10/2026, retour Olivier sur la 15.0 : « Autres ça me sert pas à grand chose, on sait pas qui, la somme est
    trompeuse ») : le panier « Autres » est éclaté PAR NOM DE FOURNISSEUR RÉEL (colonne Fournisseur, casse ignorée), dans
    l onglet En attente ET dans le panneau Commander de l onglet Achats ; pour ces fournisseurs, pas de seuil franco connu
@@ -482,7 +491,7 @@ const APP_VERSION = "15.1";
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "05/10/2026";
+const APP_DATE = "06/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -3544,6 +3553,10 @@ async function sendChat() {
         ? '<select style="' + styleSel + ' ' + stylePP + '" onchange="attMenuCommande(' + i + ', this)" title="La commande est passée chez ce fournisseur : la ligne est marquée COMMANDÉE sur la sheet appro et dans Paniers en attente">' + opts('Déjà commandé chez…') + '</select>'
         : '';
       const dpBtn = '<button class="btn att-action" onclick="attCarteDemandePrix(' + i + ')" title="Brouillon Gmail commercial + statut Consultation au Planning"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>';
+      /* 15.3 : alerte de stock Luminovo (dès 1 pièce) */
+      const alerteBtn = c.mpn
+        ? '<button class="btn" onclick="attAlerteCarte(' + i + ')" title="Créer une alerte de stock Luminovo (dès 1 pièce en stock) — note : SO · carte · besoin"><i class="ti ti-bell" aria-hidden="true"></i> Alerte Luminovo</button>'
+        : '';
       const comBtn = cmdables
         ? '<button class="btn" onclick="attCommenter(' + i + ')" title="Commentaire libre — colonne N de Paniers en attente"><i class="ti ti-message" aria-hidden="true"></i> Commentaire</button>'
         : '';
@@ -3558,7 +3571,7 @@ async function sendChat() {
       const cloreBtn = '<button class="btn" style="' + styleClore + '" onclick="attCarteClore(' + i + ')" title="Sortir cette entrée de la file (réglée par ailleurs) — historique conservé"><i class="ti ti-circle-check" aria-hidden="true"></i> Clore</button>';
 
       const barre = '<div id="att-cmd-' + i + '" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center;">'
-        + menus + chgBtn + dpBtn + comBtn + substBtn + cloreBtn + '</div>';
+        + menus + chgBtn + dpBtn + comBtn + alerteBtn + substBtn + cloreBtn + '</div>';
 
       return '<div style="background:var(--surface); border-radius:var(--radius); padding:10px 12px; box-shadow:inset 3px 0 0 ' + attLisere(c) + ';">'
         + '<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">'
@@ -3606,6 +3619,59 @@ async function sendChat() {
      automatiquement pour Mouser/DigiKey (ref-info). Backend action modifier :
      repasse En attente, n ecrit jamais Commande. */
   /* attMenuACommander (« À commander chez… ») retirée en v14.1 : le changement de fournisseur passe par le pop-up. */
+
+  /* 15.3 (06/10/2026) : alertes de stock Luminovo via n8n « Achats — alerte Luminovo » v1.0 */
+  const ATT_ALERTE_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-alerte-luminovo';
+  async function attAlerteAppel(ligne){
+    const r = await fetch(ATT_ALERTE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ligne) });
+    return await r.json();
+  }
+  function attAlerteTexte(res, mpn){
+    const f = res.fiche ? ' (' + (res.fiche.fabricant || '?') + (res.fiche.statut ? ', ' + res.fiche.statut : '') + ')' : '';
+    if (!res.success) return '✗ ' + mpn + ' : ' + (res.reason || 'échec');
+    if (res.deja) return '= ' + mpn + f + ' : une alerte existe déjà' + (res.notes_existantes ? ' (« ' + res.notes_existantes + ' »)' : '');
+    return '✓ ' + mpn + f + ' : alerte créée';
+  }
+  window.attAlerteCarte = async function(i){
+    const c = attVisibles[i];
+    if (!c || !c.mpn) return;
+    const note = [c.so, c.carte, c.qte ? 'besoin ' + c.qte + ' pcs' : ''].filter(Boolean).join(' · ');
+    if (!confirm('Créer une alerte Luminovo pour ' + c.mpn + ' ?\n\nPrévenir dès 1 pièce en stock.\nNote : ' + note)) return;
+    try {
+      const res = await attAlerteAppel({ so: c.so, carte: c.carte, mpn: c.mpn, qte: c.qte, source: 'en_attente' });
+      if (res.success && !res.deja) {
+        const d = new Date(), jj = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+        const com = (c.commentaire ? c.commentaire + ' | ' : '') + 'Alerte Luminovo créée le ' + jj;
+        try {
+          await fetch(ATT_PANIER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'commenter', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, commentaire: com }] }) });
+        } catch (e) { /* le commentaire est un plus : l alerte est créée quoi qu il arrive */ }
+      }
+      alert(attAlerteTexte(res, c.mpn));
+      if (res.success && !res.deja) attCharger();
+    } catch (e) { alert('Erreur réseau : ' + e.message); }
+  };
+  window.attAlerteCoches = async function(){
+    const d = attSheetData;
+    if (!d) return;
+    const idx = Array.from(document.querySelectorAll('.att-dp-check:checked')).map(cb => parseInt(cb.dataset.i, 10)).filter(i => attSheetActives[i]);
+    const lignes = idx.map(i => attSheetActives[i]).filter(l => (l['MPN'] || '').trim());
+    if (!lignes.length) { alert('Aucune ligne cochée avec un MPN.'); return; }
+    if (!confirm('Créer ' + lignes.length + ' alerte' + (lignes.length > 1 ? 's' : '') + ' Luminovo (dès 1 pièce en stock) ?\n\n' + lignes.map(l => '• ' + l['MPN'].trim()).join('\n') + '\n\nNote : ' + d.so + ' · ' + d.fileName + ' · besoin')) return;
+    const btn = document.getElementById('att-al-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Alertes en cours…'; }
+    const bilan = [];
+    for (const l of lignes) {
+      const mpn = l['MPN'].trim();
+      try {
+        const res = await attAlerteAppel({ so: d.so, carte: d.fileName, mpn, fabricant: (l['Manufacturer free'] || '').trim(), qte: (l['Purchase qty'] || '').toString().trim(), source: 'achats' });
+        bilan.push(attAlerteTexte(res, mpn));
+      } catch (e) { bilan.push('✗ ' + mpn + ' : erreur réseau'); }
+    }
+    alert('Alertes Luminovo :\n\n' + bilan.join('\n'));
+    if (btn) btn.innerHTML = '<i class="ti ti-bell" aria-hidden="true"></i> Alerte Luminovo';
+    attDpMaj();
+  };
 
   window.attCommenter = function(i){
     const c = attVisibles[i];
@@ -3858,6 +3924,7 @@ async function sendChat() {
       + '<button class="btn att-action" id="att-dp-dispo" disabled onclick="attDemandePrix(\'neutre\')" title="Brouillon Gmail commercial@ — texte neutre, sans dire pourquoi on consulte"><i class="ti ti-mail" aria-hidden="true"></i> Demande de prix</button>'
       + '<button class="btn att-action" id="att-cf-btn" disabled onclick="attChangerFournCoches()" title="Offres, liens fournisseur MPN, équivalent par spec, puis nouveau fournisseur / réf — une ligne après l autre"><i class="ti ti-arrows-left-right" aria-hidden="true"></i> Changer fournisseur / réf</button>'
       + '<button class="btn att-action" id="att-ea-btn" disabled onclick="attMettreEnAttenteCoches()" style="color:var(--amber); border-color:var(--amber);" title="Panier incomplet ou seuil franco non atteint : les lignes cochées partent dans Paniers en attente et seront proposées en reprise au prochain panier du même fournisseur"><i class="ti ti-hourglass" aria-hidden="true"></i> Mettre en attente</button>'
+      + '<button class="btn att-action" id="att-al-btn" disabled onclick="attAlerteCoches()" title="Créer une alerte de stock Luminovo (dès 1 pièce en stock) pour chaque ligne cochée — note : SO · carte · besoin"><i class="ti ti-bell" aria-hidden="true"></i> Alerte Luminovo</button>'
       + '<span id="att-dp-compte" style="font-size:12px; color:var(--text3); align-self:center;">0 sélectionnée</span>'
       + '<span style="font-size:11px; color:var(--text3); align-self:center; margin-left:auto;">Coche une ou plusieurs lignes, puis choisis l\'action. Fournisseur déjà bon ? « J\'ai commandé » sur son panier suffit.</span>'
       + '</div>'
@@ -3874,7 +3941,7 @@ async function sendChat() {
     const n = document.querySelectorAll('.att-dp-check:checked').length;
     const c = document.getElementById('att-dp-compte');
     if (c) c.textContent = n + ' sélectionnée' + (n>1?'s':'');
-    ['att-dp-dispo','att-dp-prix','att-cf-btn','att-ea-btn'].forEach(id => {
+    ['att-dp-dispo','att-dp-prix','att-cf-btn','att-ea-btn','att-al-btn'].forEach(id => {
       const b = document.getElementById(id);
       if (b) b.disabled = !n;
     });
@@ -4215,6 +4282,14 @@ async function sendChat() {
         + (P.reprendre ? '<div style="margin-top:4px; padding-left:22px;">' + P.att.map(l => '<div style="font-size:11px; color:var(--text2);">' + l.so + ' · <span style="font-family:var(--mono)">' + (l.refFour||l.mpn) + '</span> · ' + l.qte + ' pcs · ' + eur(l.montant) + '</div>').join('') + '</div>' : '')
         + '</div>'
       : '';
+    /* 15.2 : nombre de lignes à commander (affaire cochée + reprises retenues) */
+    const nbAff = P.aff.filter(l => l.coche).length;
+    const nbAtt = P.reprendre ? attAttRetenues(P).length : 0;
+    const nbTot = nbAff + nbAtt;
+    const blocNb = '<div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">'
+      + '<span style="font-size:16px; font-weight:600; color:var(--blue); border:2px solid var(--blue); border-radius:var(--radius); padding:4px 14px;">' + nbTot + ' LIGNE' + (nbTot > 1 ? 'S' : '') + ' À COMMANDER</span>'
+      + (EA ? '' : '<span style="font-size:12px; color:var(--text3);">' + nbAff + ' de l\'affaire' + (nbAtt ? ' + ' + nbAtt + ' reprise' + (nbAtt > 1 ? 's' : '') + ' en attente' : '') + '</span>')
+      + '</div>';
     zone.innerHTML = '<div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius); padding:12px; margin-bottom:10px;">'
       + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">'
       + '<div style="font-size:13px; font-weight:500;"><i class="ti ti-basket" aria-hidden="true"></i> Commander — ' + fmt.titre + ' · ' + (EA ? 'paniers en attente' : attSheetData.so) + '</div>'
@@ -4232,16 +4307,17 @@ async function sendChat() {
                 : '<button class="btn" style="padding:3px 9px;" onclick="attPanierCopierSO()"><i class="ti ti-copy" aria-hidden="true"></i> Copier les SO</button>')
             + '</div>';
         })()
+      + blocNb
       + (P.restaure ? '<div style="margin-top:6px; font-size:11px; color:var(--text3);"><i class="ti ti-history" aria-hidden="true"></i> Panier repris tel que tu l\'avais laissé.</div>' : '')
       + '<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border); font-size:12px;">' + (EA ? 'Total coché : <b>' + eur(totAtt) + '</b>' : 'Affaire : <b>' + eur(totAff) + '</b>' + (P.reprendre ? ' + attente : <b>' + eur(totAtt) + '</b>' : '')) + ' — ' + verdict + '</div>'
       + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">'
-      + '<button class="btn primary" onclick="attPanierCopier()"><i class="ti ti-copy" aria-hidden="true"></i> Copier</button>' /* 13.3 : libelle court (signalement Ariel 52) */
+      + '<button class="btn primary" onclick="attPanierCopier()"><i class="ti ti-copy" aria-hidden="true"></i> Copier (' + nbTot + ')</button>' /* 13.3 : libelle court (signalement Ariel 52) */
       /* 15.0 (decision Olivier) : plus de blocage sous le franco -- bouton orange + confirmation des frais de port */
       + (atteint
           ? '<button class="btn" onclick="attPanierValider()"><i class="ti ti-check" aria-hidden="true"></i> J\'ai commandé</button>'
           : '<button class="btn" style="color:var(--amber); border-color:var(--amber);" onclick="attPanierValider()" title="Sous le seuil franco : frais de port à prévoir"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Commander sous le franco</button>')
       + (EA ? '' : '<button class="btn" style="color:var(--amber); border-color:var(--amber);" onclick="attPanierAttente()"><i class="ti ti-hourglass" aria-hidden="true"></i> Mettre en attente</button>')
-      + '<span id="att-panier-msg" style="font-size:12px; color:var(--green); align-self:center;"></span>'
+      + '<span id="att-panier-msg" style="font-size:12px; color:var(--amber); font-weight:500; align-self:center;"></span>'
       + '</div></div>';
   }
 
@@ -4262,7 +4338,7 @@ async function sendChat() {
     const tsv = lignes.map(l => fmt.colonnes.map(c => l[c] || '').join('\t')).join('\n');
     navigator.clipboard.writeText(tsv).then(() => {
       const m = document.getElementById('att-panier-msg');
-      if (m) m.textContent = lignes.length + ' ligne(s) copiée(s)';
+      if (m) m.textContent = lignes.length + ' ligne' + (lignes.length > 1 ? 's' : '') + ' copiée' + (lignes.length > 1 ? 's' : '') + ' — vérifie que ton panier ' + fmt.titre + ' affiche bien ' + lignes.length + ' ligne' + (lignes.length > 1 ? 's' : '') + ' avant de payer.';
     }).catch(() => alert('Copie impossible — sélectionne et copie manuellement :\n\n' + tsv));
   };
 
