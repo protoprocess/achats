@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v15.5 — 06/10/2026</title>
+<title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <link rel="stylesheet" href="css/app.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -240,10 +240,10 @@
           </button>
           <div id="gsheet-write-status" style="font-size:12px; width:100%;"></div>
           <div id="fourn-avis" style="display:none; width:100%;"></div>
-          <div id="lots-avis" style="display:none; width:100%;"></div>
         </div>
       </div>
 
+      <div id="lots-avis" style="display:none; margin-bottom:10px;"></div>
       <div class="actions-bar">
         <button class="btn primary" onclick="analyzeBOM()"><i class="ti ti-cpu" aria-hidden="true"></i> Analyser BOM (IA)</button>
         <button class="btn" onclick="exportCSV()"><i class="ti ti-file-download" aria-hidden="true"></i> Exporter XLS</button>
@@ -459,7 +459,10 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.5";
+const APP_VERSION = "15.6";
+/* 15.6 (06/10/2026, retour Olivier sur la 15.5) : le bandeau multi-lots s affiche dès le chargement du fichier (au-dessus
+   des boutons « Analyser BOM (IA) »), plus seulement dans la barre « Écrire dans GSheet achat » qui n apparaît qu après
+   l analyse ; libellé « SO · client · carte × qtés (Odoo) » n est plus ajouté en double. Retour : avant-15-6-2026-10-06. */
 /* 15.5 (06/10/2026, demande Olivier après la boulette Locatis 5 + 15 commandée pour 5) : GARDE-FOU MULTI-LOTS.
    La commande Odoo (so-info, champ cartes) a plusieurs lignes pour la même carte = plusieurs lots (ex. 4 + 36).
    Le nombre de cartes de l export Luminovo est déduit de la BOM (Aggregated qty ÷ nb de repères, valeur la plus fréquente).
@@ -1333,7 +1336,8 @@ function handleFileUpload(input) {
           if (choix.ambigu) label.innerHTML += ' <span style="color:var(--amber)">— plusieurs onglets Achats pour ' + soLu + ' : vérifiez l\'onglet</span>';
           else if (motif && /vérifier/.test(motif)) label.innerHTML += ' <span style="color:var(--amber)">— ' + motif + '</span>';
           const d = await appliquerInfoSO(soLu);
-          if (d) label.innerHTML += ' <span style="color:var(--text2)">— ' + libelleInfoSO(d) + '</span>';
+          label.querySelectorAll('.lbl-so').forEach(x => x.remove()); /* 15.6 : jamais en double */
+          if (d) label.innerHTML += ' <span class="lbl-so" style="color:var(--text2)">— ' + libelleInfoSO(d) + '</span>';
           else if (soLu) label.innerHTML += ' <span style="color:var(--amber)">— ' + soLu + ' introuvable dans Odoo, client à choisir</span>';
         })();
       } catch(err) {
