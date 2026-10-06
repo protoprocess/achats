@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v15.3 — 06/10/2026</title>
+<title>Achats PP — v15.4 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <link rel="stylesheet" href="css/app.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -458,7 +458,13 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.3";
+const APP_VERSION = "15.4";
+/* 15.4 (06/10/2026, demandes Olivier, cas SO2606-328) : (1) le panier d un SO (onglet Achats) EXCLUT les lignes de ce SO
+   deja dans Paniers en attente (hors Commandé / Clos), avec mention ; (2) « Alerte Luminovo » : en plus de l alerte, met
+   « ? » devant le fournisseur (convention existante : la ligne sort des paniers, reprises et Paniers à commander) et note
+   « Alerte Luminovo créée le JJ/MM » en commentaire — statut inchangé (« ce sont bien des pièces en attente ») ; depuis
+   l onglet Achats, la ligne est aussi mise en attente ; posé même si l alerte existait déjà (rattrapage) ;
+   (3) lignes du panier : MPN puis réf. fournisseur ; reprises cochables ligne par ligne. Retour : avant-15-4-2026-10-06. */
 /* 15.3 (06/10/2026, demande Olivier) : bouton « Alerte Luminovo » — sur chaque carte de l onglet En attente (MPN connu)
    et dans la barre d actions de l onglet Achats (lignes cochées). Workflow n8n « Achats — alerte Luminovo » v1.0
    (1JBxHhmBalLAll31, MCP Luminovo, compte d Olivier) : fiche trouvée par MPN (fabricant de la ligne, sinon fiche Active),
@@ -3632,23 +3638,27 @@ async function sendChat() {
     if (res.deja) return '= ' + mpn + f + ' : une alerte existe déjà' + (res.notes_existantes ? ' (« ' + res.notes_existantes + ' »)' : '');
     return '✓ ' + mpn + f + ' : alerte créée';
   }
+  /* 15.4 : apres l alerte (creee ou deja existante) : « ? » devant le fournisseur + commentaire, statut inchange */
+  async function attMarquerAlerte(l){
+    const d = new Date(), jj = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+    const post = b => fetch(ATT_PANIER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json()).catch(() => ({}));
+    const f = String(l.fournisseur || '').trim();
+    if (f && f.charAt(0) !== '?')
+      await post({ action: 'modifier', lignes: [{ so: l.so, mpn: l.mpn, ipn: l.ipn || '', fournisseur: '?' + f, refFour: l.refFour || '' }] });
+    const com = String(l.commentaire || '');
+    if (com.indexOf('Alerte Luminovo') === -1)
+      await post({ action: 'commenter', lignes: [{ so: l.so, mpn: l.mpn, ipn: l.ipn || '', commentaire: (com ? com + ' | ' : '') + 'Alerte Luminovo créée le ' + jj }] });
+  }
   window.attAlerteCarte = async function(i){
     const c = attVisibles[i];
     if (!c || !c.mpn) return;
     const note = [c.so, c.carte, c.qte ? 'besoin ' + c.qte + ' pcs' : ''].filter(Boolean).join(' · ');
-    if (!confirm('Créer une alerte Luminovo pour ' + c.mpn + ' ?\n\nPrévenir dès 1 pièce en stock.\nNote : ' + note)) return;
+    if (!confirm('Créer une alerte Luminovo pour ' + c.mpn + ' ?\n\nPrévenir dès 1 pièce en stock.\nNote : ' + note + '\n\nLa ligne reste en attente, avec « ? » devant le fournisseur : elle sort des paniers et des reprises.')) return;
     try {
       const res = await attAlerteAppel({ so: c.so, carte: c.carte, mpn: c.mpn, qte: c.qte, source: 'en_attente' });
-      if (res.success && !res.deja) {
-        const d = new Date(), jj = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
-        const com = (c.commentaire ? c.commentaire + ' | ' : '') + 'Alerte Luminovo créée le ' + jj;
-        try {
-          await fetch(ATT_PANIER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'commenter', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, commentaire: com }] }) });
-        } catch (e) { /* le commentaire est un plus : l alerte est créée quoi qu il arrive */ }
-      }
-      alert(attAlerteTexte(res, c.mpn));
-      if (res.success && !res.deja) attCharger();
+      if (res.success) await attMarquerAlerte({ so: c.so, mpn: c.mpn, ipn: c.ipn, fournisseur: c.fournisseur, refFour: c.refFourn, commentaire: c.commentaire });
+      alert(attAlerteTexte(res, c.mpn) + (res.success ? '\nFournisseur passé en « ? » + commentaire ajouté.' : ''));
+      if (res.success) attCharger();
     } catch (e) { alert('Erreur réseau : ' + e.message); }
   };
   window.attAlerteCoches = async function(){
@@ -3657,20 +3667,36 @@ async function sendChat() {
     const idx = Array.from(document.querySelectorAll('.att-dp-check:checked')).map(cb => parseInt(cb.dataset.i, 10)).filter(i => attSheetActives[i]);
     const lignes = idx.map(i => attSheetActives[i]).filter(l => (l['MPN'] || '').trim());
     if (!lignes.length) { alert('Aucune ligne cochée avec un MPN.'); return; }
-    if (!confirm('Créer ' + lignes.length + ' alerte' + (lignes.length > 1 ? 's' : '') + ' Luminovo (dès 1 pièce en stock) ?\n\n' + lignes.map(l => '• ' + l['MPN'].trim()).join('\n') + '\n\nNote : ' + d.so + ' · ' + d.fileName + ' · besoin')) return;
+    if (!confirm('Créer ' + lignes.length + ' alerte' + (lignes.length > 1 ? 's' : '') + ' Luminovo (dès 1 pièce en stock) ?\n\n' + lignes.map(l => '• ' + l['MPN'].trim()).join('\n') + '\n\nNote : ' + d.so + ' · ' + d.fileName + ' · besoin\n\nChaque ligne passe aussi en attente, avec « ? » devant le fournisseur.')) return;
     const btn = document.getElementById('att-al-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Alertes en cours…'; }
+    const U = x => String(x || '').trim().toUpperCase();
     const bilan = [];
     for (const l of lignes) {
       const mpn = l['MPN'].trim();
+      const ligne = { so: d.so, mpn, ipn: (l['Approved internal part number'] || '').trim(), fournisseur: (l['Supplier'] || '').trim(),
+        refFour: (l['Supplier part number'] || '').trim(), qte: (l['Purchase qty'] || '').toString().trim(), montant: attPrixNum(l['Purchase price']) };
       try {
-        const res = await attAlerteAppel({ so: d.so, carte: d.fileName, mpn, fabricant: (l['Manufacturer free'] || '').trim(), qte: (l['Purchase qty'] || '').toString().trim(), source: 'achats' });
-        bilan.push(attAlerteTexte(res, mpn));
+        const res = await attAlerteAppel({ so: d.so, carte: d.fileName, mpn, fabricant: (l['Manufacturer free'] || '').trim(), qte: ligne.qte, source: 'achats' });
+        let txt = attAlerteTexte(res, mpn);
+        if (res.success) {
+          const existe = (attData.panier || []).find(p => U(p['SO']) === U(d.so) && U(p['MPN']) === U(mpn) && (p['Statut'] || '').trim() !== 'Commandé' && (p['Statut'] || '').trim() !== 'Clos');
+          if (!existe) {
+            const cle = attPanierCle(ligne.fournisseur);
+            if (cle) {
+              await fetch(ATT_PANIER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'attente', so: d.so, carte: d.fileName, fournisseur: attFmt(cle).titre, lignes: [ligne] }) }).catch(() => {});
+            } else txt += ' (pas de fournisseur : non mise en attente)';
+          }
+          await attMarquerAlerte({ so: d.so, mpn, ipn: ligne.ipn, fournisseur: ligne.fournisseur, refFour: ligne.refFour, commentaire: existe ? (existe['Commentaire'] || '') : '' });
+          txt += ' — en attente, fournisseur « ? »';
+        }
+        bilan.push(txt);
       } catch (e) { bilan.push('✗ ' + mpn + ' : erreur réseau'); }
     }
     alert('Alertes Luminovo :\n\n' + bilan.join('\n'));
     if (btn) btn.innerHTML = '<i class="ti ti-bell" aria-hidden="true"></i> Alerte Luminovo';
-    attDpMaj();
+    attCharger();
   };
 
   window.attCommenter = function(i){
@@ -4116,8 +4142,20 @@ async function sendChat() {
     if (!d) return;
     const num = attPrixNum;
     const aff = [];
+    /* 15.4 : lignes de CE SO deja dans Paniers en attente (hors Commandé / Clos) -> exclues du panier */
+    const U = x => String(x || '').trim().toUpperCase();
+    const dejaAttente = new Set();
+    (attData.panier || []).forEach(p => {
+      const st = (p['Statut'] || '').trim();
+      if (st === 'Commandé' || st === 'Clos') return;
+      if (U(p['SO']) !== U(d.so)) return;
+      if (U(p['MPN'])) dejaAttente.add('M|' + U(p['MPN']));
+      if (U(p['IPN'])) dejaAttente.add('I|' + U(p['IPN']));
+    });
+    let exclues = 0;
     attSheetActives.forEach((l, i) => {
       if (attPanierCle(l['Supplier']) !== cle) return;
+      if ((U(l['MPN']) && dejaAttente.has('M|' + U(l['MPN']))) || (U(l['Approved internal part number']) && dejaAttente.has('I|' + U(l['Approved internal part number'])))) { exclues++; return; }
       aff.push({
         i, coche: true,
         fournisseur: (l['Supplier']||'').trim(),
@@ -4135,6 +4173,7 @@ async function sendChat() {
       if ((p['SO']||'').trim().toLowerCase() === d.so.toLowerCase()) return;
       if (attPanierCle(p['Fournisseur']) !== cle) return;
       att.push({
+        coche: true,
         so: (p['SO']||'').trim(),
         fournisseur: (p['Fournisseur']||'').trim(),
         refFour: (p['Ref. fournisseur']||'').toString().trim(),
@@ -4144,7 +4183,7 @@ async function sendChat() {
         montant: num(p['Montant'])
       });
     });
-    attPanier = { cle, aff, att, reprendre: false, restaure: false };
+    attPanier = { cle, aff, att, reprendre: false, restaure: false, exclues };
     /* 13.0 (D) : panier en cours garde jusqu a validation (on passe a un autre fournisseur
        puis on revient : coches et reprise retrouvees). Efface a la validation. */
     try {
@@ -4191,7 +4230,8 @@ async function sendChat() {
   };
 
   /* 15.0 : lignes d attente retenues (en mode « en attente », chaque ligne est décochable) */
-  window.attAttRetenues = function(P){ return P.mode === 'attente' ? P.att.filter(l => l.coche) : P.att; };
+  window.attAttRetenues = function(P){ return P.att.filter(l => l.coche !== false); }; /* 15.4 : cases dans les deux modes */
+  window.attLib = function(l){ const a = (l.mpn || l.ipn || '').trim(), b = (l.refFour || '').trim(); return attEsc(a && b && a.toUpperCase() !== b.toUpperCase() ? a + ' · ' + b : (a || b)); };
   window.attPanierTotaux = function(P){
     const seuil = attSeuilDe(P.cle);
     const totAff = P.aff.filter(l => l.coche).reduce((s,l) => s + l.montant, 0);
@@ -4267,19 +4307,21 @@ async function sendChat() {
       : '<span style="color:var(--amber); font-weight:500;"><i class="ti ti-hourglass" aria-hidden="true"></i> Sous le seuil (' + eur(totFinal) + ' < ' + seuil + ' €) — ' + (EA ? 'commande possible, frais de port à prévoir' : 'mise en attente conseillée' + (P.att.length && !P.reprendre ? ', ou coche la reprise ci-dessous' : '') + ', ou commande quand même (frais de port)') + '.</span>';
     const ligneAff = (l, ix) => '<label style="display:flex; gap:8px; align-items:center; font-size:12px; padding:3px 0;">'
       + '<input type="checkbox" ' + (l.coche?'checked':'') + ' onchange="attPanierToggle(' + ix + ')">'
-      + '<span style="font-family:var(--mono); font-size:11px; flex:1;">' + (l.refFour || l.mpn || l.ipn) + '</span>'
+      + '<span style="font-family:var(--mono); font-size:11px; flex:1;">' + attLib(l) + '</span>'
       + '<span>' + l.qte + ' pcs</span><span style="color:var(--text3); min-width:70px; text-align:right;">' + eur(l.montant) + '</span></label>';
     const blocAtt = EA
       ? '<div style="margin-top:4px;">' + P.att.map((l, ix) => '<label style="display:flex; gap:8px; align-items:center; font-size:12px; padding:3px 0;">'
           + '<input type="checkbox" ' + (l.coche ? 'checked' : '') + ' onchange="attPanierToggleAtt(' + ix + ')">'
           + '<span style="min-width:96px; color:var(--text2);">' + attEsc(l.so) + '</span>'
-          + '<span style="font-family:var(--mono); font-size:11px; flex:1;">' + attEsc(l.refFour || l.mpn || l.ipn) + '</span>'
+          + '<span style="font-family:var(--mono); font-size:11px; flex:1;">' + attLib(l) + '</span>'
           + (l.urgent ? '<span style="background:var(--red-bg); color:var(--red-badge); font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:20px;">Urgent</span>' : '')
           + '<span>' + attEsc(l.qte) + ' pcs</span><span style="color:var(--text3); min-width:70px; text-align:right;">' + eur(l.montant) + '</span></label>').join('') + '</div>'
       : P.att.length
       ? '<div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border);">'
         + '<label style="display:flex; gap:8px; align-items:center; font-size:12px; font-weight:500;"><input type="checkbox" ' + (P.reprendre?'checked':'') + ' onchange="attPanierReprendre()"> Reprendre aussi les paniers en attente — ' + P.att.length + ' ligne(s), ' + eur(totAtt) + ' (' + Array.from(new Set(P.att.map(l=>l.so))).join(', ') + ')</label>'
-        + (P.reprendre ? '<div style="margin-top:4px; padding-left:22px;">' + P.att.map(l => '<div style="font-size:11px; color:var(--text2);">' + l.so + ' · <span style="font-family:var(--mono)">' + (l.refFour||l.mpn) + '</span> · ' + l.qte + ' pcs · ' + eur(l.montant) + '</div>').join('') + '</div>' : '')
+        + (P.reprendre ? '<div style="margin-top:4px; padding-left:22px;">' + P.att.map((l, ix) => '<label style="display:flex; gap:8px; align-items:center; font-size:11px; color:var(--text2); padding:2px 0;">'
+            + (P.att.length > 1 ? '<input type="checkbox" ' + (l.coche !== false ? 'checked' : '') + ' onchange="attPanierToggleAtt(' + ix + ')">' : '')
+            + '<span style="min-width:90px;">' + attEsc(l.so) + '</span><span style="font-family:var(--mono); flex:1;">' + attLib(l) + '</span><span>' + attEsc(l.qte) + ' pcs</span><span style="min-width:64px; text-align:right;">' + eur(l.montant) + '</span></label>').join('') + '</div>' : '')
         + '</div>'
       : '';
     /* 15.2 : nombre de lignes à commander (affaire cochée + reprises retenues) */
@@ -4295,6 +4337,7 @@ async function sendChat() {
       + '<div style="font-size:13px; font-weight:500;"><i class="ti ti-basket" aria-hidden="true"></i> Commander — ' + fmt.titre + ' · ' + (EA ? 'paniers en attente' : attSheetData.so) + '</div>'
       + '<button class="btn" style="padding:2px 8px;" onclick="attPanierFermer()"><i class="ti ti-x" aria-hidden="true"></i></button></div>'
       + P.aff.map(ligneAff).join('')
+      + (P.exclues ? '<div style="font-size:11px; color:var(--text3); padding:4px 0;"><i class="ti ti-hourglass" aria-hidden="true"></i> ' + P.exclues + ' ligne' + (P.exclues > 1 ? 's' : '') + ' de ce SO en attente — exclue' + (P.exclues > 1 ? 's' : '') + ' du panier (voir l\'onglet En attente)</div>' : '')
       + blocAtt
       + (function(){
           const r = attSoRef(P);
