@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v15.4 — 06/10/2026</title>
+<title>Achats PP — v15.5 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <link rel="stylesheet" href="css/app.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -240,6 +240,7 @@
           </button>
           <div id="gsheet-write-status" style="font-size:12px; width:100%;"></div>
           <div id="fourn-avis" style="display:none; width:100%;"></div>
+          <div id="lots-avis" style="display:none; width:100%;"></div>
         </div>
       </div>
 
@@ -458,7 +459,13 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.4";
+const APP_VERSION = "15.5";
+/* 15.5 (06/10/2026, demande Olivier après la boulette Locatis 5 + 15 commandée pour 5) : GARDE-FOU MULTI-LOTS.
+   La commande Odoo (so-info, champ cartes) a plusieurs lignes pour la même carte = plusieurs lots (ex. 4 + 36).
+   Le nombre de cartes de l export Luminovo est déduit de la BOM (Aggregated qty ÷ nb de repères, valeur la plus fréquente).
+   Bandeau dans la barre « Écrire dans GSheet achat » ; écriture BLOQUÉE si l export couvre moins de cartes que le total
+   des lots ; confirmation si l export est en un seul lot (scrap calculé sur le total, pas lot par lot ; livraison cadencée
+   à prévoir). Les lots dans la feuille achat (étape 2) sont en file d attente. Retour : avant-15-5-2026-10-06. */
 /* 15.4 (06/10/2026, demandes Olivier, cas SO2606-328) : (1) le panier d un SO (onglet Achats) EXCLUT les lignes de ce SO
    deja dans Paniers en attente (hors Commandé / Clos), avec mention ; (2) « Alerte Luminovo » : en plus de l alerte, met
    « ? » devant le fournisseur (convention existante : la ligne sort des paniers, reprises et Paniers à commander) et note
@@ -743,6 +750,7 @@ async function appliquerInfoSO(so) {
     const d = await r.json();
     if (!d || !d.ok) return null;
     infoSOCourant = d;
+    try { majAvisLots(); } catch (e) {}
     if (!Array.isArray(clientsList) || !clientsList.length) { try { await chargerClientsOdoo(); } catch (e) {} }
     const sel = document.getElementById('client-select');
     const pid = d.partenaire && d.partenaire.id;
@@ -767,8 +775,52 @@ function nouveauDossier(so) {
 }
 function libelleInfoSO(d) {
   if (!d) return '';
-  return d.so + ' · ' + (d.partenaire && d.partenaire.nom || '?') + (d.carte ? ' · ' + d.carte + ' × ' + d.qte : '') + ' (Odoo)';
+  const L = lotsDuSO(d);
+  return d.so + ' · ' + (d.partenaire && d.partenaire.nom || '?') + (d.carte ? ' · ' + d.carte + ' × ' + (L ? L.qtes.join(' + ') : d.qte) : '') + ' (Odoo)';
 }
+/* 15.5 : lots de la commande Odoo = plusieurs lignes pour la meme carte */
+function lotsDuSO(d) {
+  if (!d || !Array.isArray(d.cartes)) return null;
+  const g = {};
+  d.cartes.forEach(c => { const k = String(c.ref || '').trim().toUpperCase(); if (!k) return; (g[k] = g[k] || { ref: c.ref, qtes: [] }).qtes.push(Number(c.qte) || 0); });
+  const multi = Object.values(g).filter(x => x.qtes.length >= 2);
+  if (!multi.length) return null;
+  const L = multi[0];
+  L.total = L.qtes.reduce((a, b) => a + b, 0);
+  return L;
+}
+/* 15.5 : nombre de cartes de l export Luminovo = Aggregated qty / nb de reperes (valeur la plus frequente) */
+function cartesDeLExport() {
+  const compte = {};
+  (bomData || []).forEach(r => {
+    const agg = parseFloat(String(r['Aggregated qty'] || '').replace(',', '.'));
+    const reps = String(r['Designator'] || '').split(/[,;]+/).map(x => x.trim()).filter(Boolean).length;
+    if (!(agg > 0) || !reps) return;
+    const n = agg / reps;
+    if (Math.abs(n - Math.round(n)) > 1e-6 || n < 1) return;
+    compte[Math.round(n)] = (compte[Math.round(n)] || 0) + 1;
+  });
+  const cles = Object.keys(compte);
+  if (!cles.length) return null;
+  cles.sort((a, b) => compte[b] - compte[a]);
+  return Number(cles[0]);
+}
+function majAvisLots() {
+  const el = document.getElementById('lots-avis');
+  if (!el) return;
+  const L = lotsDuSO(infoSOCourant);
+  if (!L) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const N = cartesDeLExport();
+  const bloque = N !== null && N < L.total;
+  el.style.display = 'block';
+  el.innerHTML = '<div style="margin-top:6px; padding:8px 12px; border-radius:var(--radius); background:' + (bloque ? 'var(--red-bg)' : 'var(--amber-bg)') + '; color:' + (bloque ? 'var(--red-badge)' : 'var(--amber-badge)') + '; font-size:12px;">'
+    + '<b><i class="ti ti-stack-2" aria-hidden="true"></i> Commande en ' + L.qtes.length + ' lots : ' + L.qtes.join(' + ') + ' = ' + L.total + ' cartes</b> (Odoo, ' + attEscG(L.ref) + ')<br>'
+    + (N === null ? 'Nombre de cartes de l\'export Luminovo non déterminé — vérifie qu\'il couvre bien ' + L.total + ' cartes.'
+      : bloque ? '⛔ L\'export Luminovo est calculé pour <b>' + N + ' cartes</b> seulement : écriture bloquée. Refais le scénario de sourcing pour ' + L.total + ' cartes.'
+      : 'Export Luminovo calculé pour <b>' + N + ' cartes en un seul lot</b> : le scrap est calculé sur ' + N + ', pas lot par lot. Pense à la <b>livraison cadencée</b> (lot 1 : ' + L.qtes[0] + ' cartes).')
+    + '</div>';
+}
+function attEscG(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 let activeClient = { nom:'Standard', mpn_strict:false, notes:'' };
 let sourceStatus = { clients:'none', stock:'none', rules:'none' };
 let apiKey = "";
@@ -2534,6 +2586,7 @@ function showGSheetBar(filename) {
   }
   const soEl = document.getElementById('so-reference');
   if (soEl && !soEl.value && infoSOCourant) soEl.value = infoSOCourant.so;
+  majAvisLots();
 }
 
 async function writeToGSheet() {
@@ -2548,6 +2601,22 @@ async function writeToGSheet() {
   if (!so) {
     statusEl.innerHTML = '<span style="color:var(--red)">N° SO obligatoire — la recherche du fichier se fait uniquement par SO côté N8N</span>';
     return;
+  }
+  /* 15.5 : garde-fou multi-lots (seulement si l info Odoo porte bien sur ce SO) */
+  if (infoSOCourant && String(infoSOCourant.so || '').toUpperCase() === so.toUpperCase()) {
+    const L = lotsDuSO(infoSOCourant);
+    if (L) {
+      const N = cartesDeLExport();
+      if (N !== null && N < L.total) {
+        statusEl.innerHTML = '<span style="color:var(--red)">⛔ Écriture bloquée : la commande compte ' + L.total + ' cartes (' + L.qtes.join(' + ') + '), l\'export Luminovo n\'en couvre que ' + N + '. Refais le scénario de sourcing pour ' + L.total + ' cartes.</span>';
+        return;
+      }
+      const msg = 'Commande en ' + L.qtes.length + ' lots : ' + L.qtes.join(' + ') + ' = ' + L.total + ' cartes.\n\n'
+        + (N === null ? 'Le nombre de cartes de l\'export Luminovo n\'a pas pu être déterminé : vérifie qu\'il couvre ' + L.total + ' cartes.'
+                      : 'L\'export Luminovo est calculé pour ' + N + ' cartes en un seul lot (scrap calculé sur ' + N + ', pas lot par lot).')
+        + '\n\nPense à la livraison cadencée chez le fournisseur (lot 1 : ' + L.qtes[0] + ' cartes).\n\nÉcrire la feuille achat quand même ?';
+      if (!confirm(msg)) { statusEl.innerHTML = ''; return; }
+    }
   }
 
   // Get ref from parsed filename (sert de départage si plusieurs fichiers matchent le même SO)
