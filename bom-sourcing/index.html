@@ -69,10 +69,8 @@
 
     <div class="setup-grid">
       <div class="setup-card">
-        <div class="setup-card-title"><i class="ti ti-users" aria-hidden="true"></i> Google Sheet clients <span class="fixed-tag">fixe</span></div>
-        <label>URL publiée en CSV</label>
-        <input type="text" id="setup-clients-url" value="https://script.google.com/macros/s/AKfycbxa04R-ZDzXx0OWsz3kISwFcpnT2hgk4-8uMxdI4wPBcjQ8N52xHzu_sjMfpLkrQesg/exec" />
-        <p class="hint">Colonnes : <code>Nom</code> | <code>MPN_strict</code> (oui/non) | <code>Notes</code></p>
+        <div class="setup-card-title"><i class="ti ti-users" aria-hidden="true"></i> Clients (Odoo) <span class="fixed-tag">fixe</span></div>
+        <p class="hint">Registre client lu dans Odoo (nom, MPN strict, alias). Plus de feuille Google en repli depuis la 15.9.</p>
         <div class="status-row" id="clients-status-row">
           <span class="status-dot" id="clients-dot"></span>
           <span id="clients-status-msg">En attente</span>
@@ -460,7 +458,10 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.8";
+const APP_VERSION = "15.9";
+/* 15.9 (07/10/2026, décision Olivier, chantier « Authentifier les 3 Apps Script ») : la feuille Google « clients » (PP CLI MPN,
+   script AKfycbxa04R…) n est plus appelée — Odoo est la seule source du registre client (carte « Clients (Odoo) » dans
+   Sources). Restent 2 Apps Script à sécuriser : STOCK PP et Règles Codif PP. Retour : commit bb76fe8 (15.8). */
 /* 15.8 (07/10/2026, chantier « Authentifier les 3 Apps Script BOM Sourcing ») : code d accès PP transmis aux Apps Script
    Clients / Stock / Règles (k en GET, k dans le corps POST) ; réponse AUTH_REFUSED reconnue. Sans effet tant que les
    scripts ne vérifient pas k (compatibilité ascendante). Retour : commit 99daa81 (15.7). */
@@ -1045,9 +1046,8 @@ async function loadAll() {
     const savedUrl = localStorage.getItem('bom_rules_url');
     if (savedUrl) document.getElementById('setup-rules-url').value = savedUrl;
   }
-  const clientsUrl = document.getElementById('setup-clients-url').value.trim();
   const stockUrl = document.getElementById('setup-stock-url').value.trim();
-  if (!clientsUrl && !stockUrl) {
+  if (!stockUrl) {
     document.getElementById('setup-error').textContent = 'Renseigne au moins une URL.';
     document.getElementById('setup-error').style.display = 'block';
     btn.disabled = false;
@@ -1067,29 +1067,10 @@ async function loadAll() {
     populateClientSelect();
     renderClientsPreview();
   } catch(eOdoo) {
-    if (clientsUrl) {
-      try {
-        const text = await fetchCSV(clientsUrl);
-        const rows = parseCSV(text);
-        clientsList = rows.map(r => ({
-          nom: findCol(r,['nom','name','client'])||'',
-          mpn_strict: (findCol(r,['mpn_strict','mpn strict','strict'])||'').toLowerCase().trim()==='oui',
-          notes: findCol(r,['notes','note','commentaire'])||'',
-          origine: 'feuille'
-        })).filter(c=>c.nom);
-        if (!clientsList.length) throw new Error('Aucun client trouvé — vérifiez les colonnes');
-        setDot('clients','warn', clientsList.length + ' client(s) — repli sur la feuille, Odoo injoignable');
-        sourceStatus.clients = 'ok';
-        populateClientSelect();
-        renderClientsPreview();
-      } catch(e) {
-        setDot('clients','err', e.message);
-        sourceStatus.clients = 'err';
-      }
-    } else {
-      setDot('clients','err','Odoo injoignable : ' + eOdoo.message);
-      sourceStatus.clients = 'err';
-    }
+    /* 15.9 (07/10/2026, decision Olivier) : plus de repli sur la feuille Google « clients » (PP CLI MPN) —
+       Odoo est la seule source du registre client (decision du 05/08, eprouvee depuis). */
+    setDot('clients','err','Odoo injoignable : ' + eOdoo.message);
+    sourceStatus.clients = 'err';
   }
   if (stockUrl) {
     setDot('stock','loading','Chargement…');
@@ -1411,7 +1392,7 @@ document.addEventListener('DOMContentLoaded', () => {
   onClientChange();
   // Auto-load fixed sources
   setTimeout(() => {
-    const url = document.getElementById('setup-clients-url')?.value.trim();
+    const url = document.getElementById('setup-stock-url')?.value.trim();
     if (url) loadAll();
   }, 400);
 });
