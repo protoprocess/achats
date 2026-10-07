@@ -460,7 +460,10 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.7";
+const APP_VERSION = "15.8";
+/* 15.8 (07/10/2026, chantier « Authentifier les 3 Apps Script BOM Sourcing ») : code d accès PP transmis aux Apps Script
+   Clients / Stock / Règles (k en GET, k dans le corps POST) ; réponse AUTH_REFUSED reconnue. Sans effet tant que les
+   scripts ne vérifient pas k (compatibilité ascendante). Retour : commit 99daa81 (15.7). */
 /* 15.7 (07/10/2026, séance Olivier) : (1) onglet Achats — une ligne « Consultation » affiche son fournisseur d origine
    DEVINÉ depuis la réf. fournisseur (…-ND = DigiKey, NNN-xxx = Mouser, 7 chiffres = Farnell, NNN-NNNN = RS) :
    « Consultation · ex-DigiKey », et le pop-up « Changer fournisseur / réf » est pré-rempli avec ce fournisseur pour y
@@ -980,10 +983,21 @@ function findCol(row, candidates) {
   return '';
 }
 
+/* 15.8 (07/10/2026, chantier « Authentifier les 3 Apps Script ») : le code d'accès PP (celui des webhooks n8n,
+   localStorage pp_access_code) est transmis aux Apps Script Clients / Stock / Règles — paramètre k en GET, champ k
+   dans le corps en POST (un Apps Script ne lit pas les en-têtes personnalisés). Côté script, doGet/doPost comparent k
+   à la propriété de script PP_ACCESS_CODE et répondent AUTH_REFUSED sinon. Un script pas encore mis à jour ignore k. */
+function ppCodeAcces(){ try { return localStorage.getItem('pp_access_code') || ''; } catch(e) { return ''; } }
+function ppUrlScript(url){
+  if (!url || url.indexOf('script.google.com') === -1) return url;
+  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'k=' + encodeURIComponent(ppCodeAcces());
+}
 async function fetchCSV(url) {
-  const resp = await fetch(url);
+  const resp = await fetch(ppUrlScript(url));
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  return resp.text();
+  const txt = await resp.text();
+  if (/^AUTH_REFUSED/.test(txt.trim())) throw new Error("Code d'accès refusé par le script Google (AUTH_REFUSED)");
+  return txt;
 }
 
 async function loadAll() {
@@ -2030,10 +2044,11 @@ async function pushRuleToSheet(key, value) {
     const resp = await fetch(url, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({key, value})
+      body: JSON.stringify({key, value, k: ppCodeAcces()}) /* 15.8 : code d'accès PP dans le corps */
     });
-    const data = await resp.json();
-    return data;
+    const txt = await resp.text();
+    if (/^AUTH_REFUSED/.test(txt.trim())) return {success: false, error: "Code d'accès refusé par le script Google"};
+    return JSON.parse(txt);
   } catch(e) {
     return {success: false, error: e.message};
   }
