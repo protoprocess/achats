@@ -276,6 +276,7 @@
             <thead>
               <tr>
                 <th style="width:40px">Qty</th>
+                <th style="width:96px" title="Scrap Luminovo, modifiable — la quantité d'achat suit">Scrap</th>
                 <th style="width:90px">Réf.</th>
                 <th style="width:130px">MPN</th>
                 <th style="width:215px">IPN (éditable)</th>
@@ -459,7 +460,18 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.6";
+const APP_VERSION = "15.7";
+/* 15.7 (07/10/2026, séance Olivier) : (1) onglet Achats — une ligne « Consultation » affiche son fournisseur d origine
+   DEVINÉ depuis la réf. fournisseur (…-ND = DigiKey, NNN-xxx = Mouser, 7 chiffres = Farnell, NNN-NNNN = RS) :
+   « Consultation · ex-DigiKey », et le pop-up « Changer fournisseur / réf » est pré-rempli avec ce fournisseur pour y
+   revenir en un clic (Supplier dans la feuille reste « Consultation », aucun changement n8n — option A validée).
+   (2) Panneau Commander — après « Copier », bandeau rouge persistant « commande NON enregistrée » tant que
+   « J ai commandé » n est pas cliqué (signalement Ariel du 07/10 : panier copié et commandé chez Mouser, aucun appel
+   « J ai commandé » reçu par n8n, donc pas de vert). (3) Analyse BOM — colonne « Scrap » ÉDITABLE : Qté achat et prix
+   recalculés (contrainte MOQ/conditionnement Luminovo conservée), avant l écriture de la feuille achat ; le post-traitement
+   n8n n y touche pas (il n arrondit que les chips Inventory). Révise la règle du 04/09 « Luminovo seul maître du scrap »
+   (décision Olivier 06/10). (4) Pastille d analyse du scrap : chip CMS (0201→1210) avec scrap 0 = « à vérifier » ;
+   scrap > 20 % ET > 10 pièces = « élevé » ; sinon rien. Retour : avant-15-7-2026-10-07. */
 /* 15.6 (06/10/2026, retour Olivier sur la 15.5) : le bandeau multi-lots s affiche dès le chargement du fichier (au-dessus
    des boutons « Analyser BOM (IA) »), plus seulement dans la barre « Écrire dans GSheet achat » qui n apparaît qu après
    l analyse ; libellé « SO · client · carte × qtés (Odoo) » n est plus ajouté en double. Retour : avant-15-6-2026-10-06. */
@@ -2116,6 +2128,7 @@ function buildBomRow(row, meta, idx) {
   tr.className=rowClass;
   tr.innerHTML=`
     <td>${qty}</td>
+    <td>${renderScrapCell(row, idx)}</td>
     <td style="font-size:11px">${ref}</td>
     <td style="font-size:11px;font-family:var(--mono)">${mpn}</td>
     <td>
@@ -2334,7 +2347,7 @@ function applyFilter() {
     if (!noRes) {
       const tr = document.createElement('tr');
       tr.className = 'no-results-row';
-      tr.innerHTML = '<td colspan="7">Aucun composant pour ce filtre</td>';
+      tr.innerHTML = '<td colspan="8">Aucun composant pour ce filtre</td>';
       document.getElementById('bom-tbody').appendChild(tr);
     }
   } else if (noRes) {
@@ -2396,6 +2409,56 @@ function updateIPN(input) {
   }
   delete stockOverrides[idx];
   if(rowMeta[idx]) delete rowMeta[idx].stockNote;
+  rerenderBomTable(false);
+}
+
+/* 15.7 — Scrap éditable (décision Olivier 06/10/2026, révise « Luminovo seul maître du scrap » du 04/09).
+   La cellule montre le scrap Luminovo ; une saisie recalcule Purchase qty et Purchase price AVANT l'écriture de la
+   feuille achat. Contrainte conservée : si Luminovo avait imposé plus que agg+scrap (MOQ / conditionnement), on garde
+   ce plancher. Analyse (pastille) : chip CMS avec scrap 0 → « à vérifier » ; scrap > 20 % ET > 10 pcs → « élevé ». */
+const SCRAP_CHIPS = /^(0201|0402|0603|0805|1206|1210)$/;
+function scrapNum(v){ const n = parseFloat(String(v === undefined || v === null ? '' : v).replace(',', '.')); return Number.isFinite(n) ? n : null; }
+function scrapColKey(row, nom){ return Object.keys(row).find(k => k.toLowerCase().trim() === nom.toLowerCase()) || nom; }
+function scrapAnalyse(row){
+  const agg = scrapNum(getColValue(row, 'Aggregated qty')) || 0;
+  const scrap = scrapNum(getColValue(row, 'Scrap qty'));
+  const pkg = String(getColValue(row, 'Package') || '').trim().replace(/^0?(\d{3})$/, '0$1');
+  const chip = SCRAP_CHIPS.test(pkg);
+  if (scrap === null) return null;
+  if (chip && scrap === 0 && agg > 0) return { cls: 'b-warn', txt: 'à vérifier', aide: 'Chip ' + pkg + ' sans scrap : une bande chargée sur la Mycronic perd toujours quelques pièces.' };
+  if (agg > 0 && scrap > 10 && scrap > 0.2 * agg) return { cls: 'b-warn', txt: 'élevé', aide: 'Scrap ' + scrap + ' pour un besoin de ' + agg + ' (' + Math.round(100 * scrap / agg) + ' %) : à confirmer avant d\'acheter.' };
+  return null;
+}
+function renderScrapCell(row, idx){
+  const scrap = getColValue(row, 'Scrap qty');
+  const pq = getColValue(row, 'Purchase qty');
+  const an = scrapAnalyse(row);
+  const badge = an ? `<span class="badge ${an.cls}" style="margin-left:4px; font-size:10px;" title="${an.aide.replace(/"/g, '&quot;')}">${an.txt}</span>` : '';
+  const modif = rowMeta[idx] && rowMeta[idx].scrapManuel ? ' style="border-color:var(--blue);" title="Scrap modifié à la main (Luminovo : ' + (rowMeta[idx].scrapLuminovo ?? '?') + ')"' : ' title="Scrap Luminovo — modifiable"';
+  return `<div style="display:flex; align-items:center; gap:2px; white-space:nowrap;"><input class="editable-ipn" style="width:44px; text-align:right; padding:3px 5px;" type="number" min="0" step="1" value="${scrap === '' ? '' : scrapNum(scrap) ?? ''}" data-idx="${idx}" onchange="updateScrap(this)"${modif}>${badge}</div>`
+    + `<div style="font-size:10px; color:var(--text3); margin-top:2px;" title="Quantité achetée (besoin + scrap, MOQ compris)">achat ${pq || '—'}</div>`;
+}
+function updateScrap(input){
+  const idx = parseInt(input.dataset.idx, 10);
+  const row = bomData[idx];
+  if (!row) return;
+  const nv = Math.max(0, Math.round(scrapNum(input.value) || 0));
+  const agg = scrapNum(getColValue(row, 'Aggregated qty')) || 0;
+  const ancienScrap = scrapNum(getColValue(row, 'Scrap qty')) || 0;
+  const ancienPq = scrapNum(getColValue(row, 'Purchase qty'));
+  const pu = scrapNum(getColValue(row, 'Unit price'));
+  const meta = rowMeta[idx] || (rowMeta[idx] = { status: 'ok', warnings: [], qc_issues: [], confidence: 'medium', ipn: '—' });
+  if (meta.scrapLuminovo === undefined) meta.scrapLuminovo = ancienScrap;
+  if (meta.pqLuminovo === undefined) meta.pqLuminovo = ancienPq;
+  /* plancher Luminovo (MOQ / conditionnement) = ce que Luminovo imposait AU-DELÀ de agg + scrap d'origine */
+  const plancher = (meta.pqLuminovo !== null && meta.pqLuminovo > agg + meta.scrapLuminovo) ? meta.pqLuminovo : 0;
+  const nouveauPq = Math.max(agg + nv, plancher);
+  row[scrapColKey(row, 'Scrap qty')] = String(nv);
+  row[scrapColKey(row, 'Purchase qty')] = String(nouveauPq);
+  if (pu !== null && pu > 0) row[scrapColKey(row, 'Purchase price')] = (pu * nouveauPq).toFixed(2);
+  meta.scrapManuel = (nv !== meta.scrapLuminovo);
+  delete stockOverrides[idx];
+  delete meta.stockNote;
   rerenderBomTable(false);
 }
 
@@ -3945,6 +4008,12 @@ async function sendChat() {
        la consultation broker vaut rarement le coup) */
     const SEUIL_PRIX_LIGNE = 500;
     let nbChers = 0;
+    /* 15.7 : nom du fournisseur ; pour une ligne « Consultation », on ajoute l'origine devinée depuis la réf. */
+    const fournHtml = (fourn, ref) => {
+      if (fourn.toLowerCase() !== 'consultation') return attEsc(fourn || '—');
+      const o = attOrigineRef(ref);
+      return 'Consultation' + (o ? ' <span style="font-size:10.5px; color:var(--text3); font-weight:400;" title="Fournisseur d\'origine, déduit de la réf. ' + attEsc(ref) + ' — « Changer fournisseur / réf » le propose pour y revenir">· ex-' + o + '</span>' : '');
+    };
     /* v12.3 : lignes signalees par l appro (MPN normalises) */
     const sig = attSignalements(d.so);
     const sigSet = sig ? new Set(sig.mpns.map(function(m){ return String(m||'').trim().toUpperCase(); })) : null;
@@ -3984,7 +4053,7 @@ async function sendChat() {
       return '<tr' + teinte + '>'
         + '<td style="padding:5px 6px;"><input type="checkbox" class="att-dp-check" data-i="' + i + '" onchange="attDpMaj()"' + (cher ? ' title="Prix élevé"' : '') + '></td>'
         + '<td style="padding:5px 2px 5px 0;"><button class="btn" style="padding:2px 7px; font-size:12px; color:#7FDDF0; background:rgba(91,196,216,0.16); border-color:var(--pp-blue); font-weight:600;" onclick="attBasculer(' + i + ')" title="Changer fournisseur / réf pour cette ligne"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></button></td>'
-        + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + (fourn || '—') + '</td>'
+        + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + fournHtml(fourn, (l['Supplier part number']||'').trim()) + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Supplier part number']||'') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['MPN']||'') + sigBadge + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Approved internal part number']||'') + '</td>'
@@ -4265,6 +4334,7 @@ async function sendChat() {
         const dec = sv.decoches || [];
         aff.forEach(l => { if (dec.indexOf(attLigneCle(l)) >= 0) l.coche = false; });
         attPanier.reprendre = !!sv.reprendre;
+        attPanier.copie = !!sv.copie; /* 15.7 : le rappel « non enregistrée » survit au rechargement */
         attPanier.restaure = true;
       }
     } catch(e) {}
@@ -4274,7 +4344,7 @@ async function sendChat() {
   window.attLigneCle = function(l){ return [l.refFour, l.ipn, l.mpn].join('|'); };
   window.attPanierMemoriser = function(){
     const P = attPanier; if (!P || P.mode === 'attente') return;
-    try { localStorage.setItem(attPanierCleMemo(P.cle), JSON.stringify({ decoches: P.aff.filter(l => !l.coche).map(attLigneCle), reprendre: P.reprendre })); } catch(e) {}
+    try { localStorage.setItem(attPanierCleMemo(P.cle), JSON.stringify({ decoches: P.aff.filter(l => !l.coche).map(attLigneCle), reprendre: P.reprendre, copie: !!P.copie })); } catch(e) {}
   };
   window.attPanierOublier = function(cle){ try { localStorage.removeItem(attPanierCleMemo(cle)); } catch(e) {} };
 
@@ -4434,7 +4504,10 @@ async function sendChat() {
           : '<button class="btn" style="color:var(--amber); border-color:var(--amber);" onclick="attPanierValider()" title="Sous le seuil franco : frais de port à prévoir"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Commander sous le franco</button>')
       + (EA ? '' : '<button class="btn" style="color:var(--amber); border-color:var(--amber);" onclick="attPanierAttente()"><i class="ti ti-hourglass" aria-hidden="true"></i> Mettre en attente</button>')
       + '<span id="att-panier-msg" style="font-size:12px; color:var(--amber); font-weight:500; align-self:center;"></span>'
-      + '</div></div>';
+      + '</div>'
+      /* 15.7 (signalement Ariel 07/10) : copié ≠ commandé — tant que « J ai commandé » n est pas cliqué, rien n est écrit */
+      + (P.copie ? '<div id="att-panier-rappel" style="margin-top:10px; padding:8px 12px; border-left:3px solid var(--red-badge); background:rgba(240,149,149,0.10); border-radius:var(--radius); font-size:12px; color:var(--red);"><i class="ti ti-alert-triangle" aria-hidden="true"></i> <b>Commande NON enregistrée.</b> Le panier est copié, mais rien n\'est écrit : ni vert dans la feuille achat, ni « Commandé » dans Paniers en attente. Une fois la commande passée chez ' + attEsc(fmt.titre) + ', clique <b>« J\'ai commandé »</b> ci-dessus.</div>' : '')
+      + '</div>';
   }
 
   window.attPanierFermer = function(){
@@ -4453,6 +4526,7 @@ async function sendChat() {
       .concat(P.reprendre ? attAttRetenues(P) : []);
     const tsv = lignes.map(l => fmt.colonnes.map(c => l[c] || '').join('\t')).join('\n');
     navigator.clipboard.writeText(tsv).then(() => {
+      P.copie = true; attPanierMemoriser(); attPanierRender(); /* 15.7 : bandeau « commande NON enregistrée » */
       const m = document.getElementById('att-panier-msg');
       if (m) m.textContent = lignes.length + ' ligne' + (lignes.length > 1 ? 's' : '') + ' copiée' + (lignes.length > 1 ? 's' : '') + ' — vérifie que ton panier ' + fmt.titre + ' affiche bien ' + lignes.length + ' ligne' + (lignes.length > 1 ? 's' : '') + ' avant de payer.';
     }).catch(() => alert('Copie impossible — sélectionne et copie manuellement :\n\n' + tsv));
@@ -4556,13 +4630,30 @@ async function sendChat() {
   /* v14.0 (29/09/2026, chantier 186 s1) : le panneau « Basculer » est remplacé par le
      pop-up partagé PPChangerFourn (js/changer-fournisseur.js), commun avec l onglet
      En attente. L écriture reste ici (achats-resolution), le pop-up ne sait qu afficher. */
+  /* 15.7 : fournisseur d'origine deviné depuis la forme de la réf. fournisseur (ligne « Consultation ») */
+  function attOrigineRef(ref){
+    const r = String(ref || '').trim().toUpperCase();
+    if (!r) return '';
+    if (/-ND$/.test(r)) return 'DigiKey';
+    if (/^\d{3,4}-\d{4}$/.test(r)) return 'RS';
+    if (/^\d{7}[A-Z]{0,2}$/.test(r)) return 'Farnell';
+    if (/^\d{3}-[A-Z0-9][A-Z0-9#.,_\/()-]*$/.test(r)) return 'Mouser';   /* après le RS NNN-NNNN : lettres, ou 5+ chiffres (305-154766) */
+    return '';
+  }
+  /* 15.7 : fournisseur à proposer dans le pop-up — l'origine devinée quand la ligne est en consultation */
+  function attFournPourPopup(l){
+    const f = (l['Supplier']||'').trim();
+    if (f.toLowerCase() !== 'consultation') return f;
+    return attOrigineRef((l['Supplier part number']||'').trim()) || f;
+  }
+
   window.attBasculer = function(i){
     const l = attSheetActives[i];
     if (!l || !attSheetData) return;
     attPanierFermer();
     PPChangerFourn.ouvrir({
       lignes: [{ so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
-                 fournisseur: (l['Supplier']||'').trim(), ref: (l['Supplier part number']||'').trim() }],
+                 fournisseur: attFournPourPopup(l), ref: (l['Supplier part number']||'').trim() }],
       refInfoUrl: ATT_REFINFO_URL,
       stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
       appliquer: attBasculerAppliquer,
@@ -4578,7 +4669,7 @@ async function sendChat() {
     attPanierFermer();
     PPChangerFourn.ouvrir({
       lignes: idx.map(i => { const l = attSheetActives[i]; return { so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
-        fournisseur: (l['Supplier']||'').trim(), ref: (l['Supplier part number']||'').trim() }; }),
+        fournisseur: attFournPourPopup(l), ref: (l['Supplier part number']||'').trim() }; }),
       refInfoUrl: ATT_REFINFO_URL,
       stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
       appliquer: attBasculerAppliquer,
