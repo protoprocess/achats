@@ -458,7 +458,9 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.9";
+const APP_VERSION = "15.10";
+/* 15.10 (07/10/2026, incident SO2609-472 HORIBA) : colonne IPN de la feuille achat mélangée depuis 15.7 (la case Scrap éditable
+   avait la classe des cases IPN) — corrigé : cases Scrap à part, chaque IPN recopié sur sa ligne (data-idx). */
 /* 15.9 (07/10/2026, décision Olivier, chantier « Authentifier les 3 Apps Script ») : la feuille Google « clients » (PP CLI MPN,
    script AKfycbxa04R…) n est plus appelée — Odoo est la seule source du registre client (carte « Clients (Odoo) » dans
    Sources). Restent 2 Apps Script à sécuriser : STOCK PP et Règles Codif PP. Retour : commit bb76fe8 (15.8). */
@@ -523,7 +525,7 @@ const APP_VERSION = "15.9";
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "06/10/2026";
+const APP_DATE = "07/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -2070,6 +2072,14 @@ function skipRule(rowIdx) {
 }
 // ============================================================
 
+/* 15.10 (07/10/2026, incident SO2609-472) : les cases IPN du tableau, chacune avec SA ligne (data-idx).
+   Depuis 15.7 la case Scrap portait aussi la classe editable-ipn : les boucles « par position » recopiaient
+   scrap, IPN, scrap, IPN… dans la colonne IPN (chaque ligne recevait l IPN ou le scrap d une autre ligne).
+   On ne prend plus que les vraies cases IPN, et la ligne est lue dans data-idx, jamais déduite de la position. */
+function champsIPN(){
+  return Array.from(document.querySelectorAll('input.editable-ipn:not(.editable-scrap)'))
+    .map((inp, pos) => { const i = parseInt(inp.dataset.idx, 10); return [inp, isNaN(i) ? pos : i]; });
+}
 // Helper global (case-insensitive, aussi utilisé par exportCSV/writeToGSheet) — cherche une
 // valeur de colonne par nom exact d'abord, puis par correspondance insensible à la casse.
 function getColValue(row, colName) {
@@ -2431,7 +2441,7 @@ function renderScrapCell(row, idx){
   const an = scrapAnalyse(row);
   const badge = an ? `<span class="badge ${an.cls}" style="margin-left:4px; font-size:10px;" title="${an.aide.replace(/"/g, '&quot;')}">${an.txt}</span>` : '';
   const modif = rowMeta[idx] && rowMeta[idx].scrapManuel ? ' style="border-color:var(--blue);" title="Scrap modifié à la main (Luminovo : ' + (rowMeta[idx].scrapLuminovo ?? '?') + ')"' : ' title="Scrap Luminovo — modifiable"';
-  return `<div style="display:flex; align-items:center; gap:2px; white-space:nowrap;"><input class="editable-ipn" style="width:44px; text-align:right; padding:3px 5px;" type="number" min="0" step="1" value="${scrap === '' ? '' : scrapNum(scrap) ?? ''}" data-idx="${idx}" onchange="updateScrap(this)"${modif}>${badge}</div>`
+  return `<div style="display:flex; align-items:center; gap:2px; white-space:nowrap;"><input class="editable-ipn editable-scrap" style="width:44px; text-align:right; padding:3px 5px;" type="number" min="0" step="1" value="${scrap === '' ? '' : scrapNum(scrap) ?? ''}" data-idx="${idx}" onchange="updateScrap(this)"${modif}>${badge}</div>`
     + `<div style="font-size:10px; color:var(--text3); margin-top:2px;" title="Quantité achetée (besoin + scrap, MOQ compris)">achat ${pq || '—'}</div>`;
 }
 function updateScrap(input){
@@ -2462,7 +2472,7 @@ function exportCSV() {
   if(!bomData.length){alert("Aucune donnée.");return;}
 
   // 1. Mettre à jour les IPN éditables
-  document.querySelectorAll('.editable-ipn').forEach((inp,i)=>{
+  champsIPN().forEach(([inp,i])=>{
     if(bomData[i]){
       const key=Object.keys(bomData[i]).find(k=>k.toLowerCase().includes('ipn')||k.toLowerCase().includes('internal'))||'IPN';
       bomData[i][key]=inp.value;
@@ -2510,7 +2520,7 @@ function exportCSV() {
       (meta.warnings||[]).forEach(w => { if (!found[w]) found[w]=[]; found[w].push(ref); });
       if (meta.mpnWarn) mpnWarnRefs.push(ref);
     });
-    document.querySelectorAll('.editable-ipn').forEach((inp, i) => {
+    champsIPN().forEach(([inp, i]) => {
       if (inp.value === '—' || inp.value === '') {
         const row = bomData[i] || {};
         uncodified.push(findCol(row, ['designator','reference','ref']) || '');
@@ -2691,7 +2701,7 @@ async function writeToGSheet() {
   statusEl.innerHTML = '<div class="spinner" style="width:13px;height:13px;border-width:2px;display:inline-block;vertical-align:middle"></div> Recherche de la GSheet dans Drive…';
 
   // Sync edited IPNs
-  document.querySelectorAll('.editable-ipn').forEach((inp,i) => {
+  champsIPN().forEach(([inp,i]) => {
     if (bomData[i]) {
       const key = Object.keys(bomData[i]).find(k=>k.toLowerCase().includes('ipn')||k.toLowerCase().includes('internal'))||'IPN';
       bomData[i][key] = inp.value;
@@ -2822,7 +2832,7 @@ async function writeToGSheet() {
       if (meta.mpnWarn) warningsSummary.error.push(ref2);
       if (meta.status === 'error') warningsSummary.error.push(ref2);
     });
-    document.querySelectorAll('.editable-ipn').forEach((inp, i) => {
+    champsIPN().forEach(([inp, i]) => {
       if (inp.value === '—' || inp.value === '') {
         const row = bomData[i] || {};
         warningsSummary.uncodified.push(findCol(row, ['designator','reference','ref']) || '');
