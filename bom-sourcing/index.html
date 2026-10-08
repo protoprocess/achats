@@ -458,7 +458,7 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.11";
+const APP_VERSION = "15.12";
 /* 15.11 (07/10/2026, demande Olivier) : onglet Achats — colonne Scrap (lecture seule) avant la quantité, renommée « QTE Totale » en bleu PP. */
 /* 15.10 (07/10/2026, incident SO2609-472 HORIBA) : colonne IPN de la feuille achat mélangée depuis 15.7 (la case Scrap éditable
    avait la classe des cases IPN) — corrigé : cases Scrap à part, chaque IPN recopié sur sa ligne (data-idx). */
@@ -526,7 +526,7 @@ const APP_VERSION = "15.11";
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "07/10/2026";
+const APP_DATE = "08/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -833,7 +833,9 @@ function majAvisLots() {
   const L = lotsDuSO(infoSOCourant);
   if (!L) { el.style.display = 'none'; el.innerHTML = ''; return; }
   const N = cartesDeLExport();
-  const bloque = N !== null && N < L.total;
+  /* 15.12 (08/10/2026) : dérogation temporaire SO2607-411 — voir le garde-fou plus bas. À retirer avec lui. */
+  const derog = String((document.getElementById('so-reference') || {}).value || '').trim().toUpperCase() === 'SO2607-411';
+  const bloque = N !== null && N < L.total && !derog;
   el.style.display = 'block';
   el.innerHTML = '<div style="margin-top:6px; padding:8px 12px; border-radius:var(--radius); background:' + (bloque ? 'var(--red-bg)' : 'var(--amber-bg)') + '; color:' + (bloque ? 'var(--red-badge)' : 'var(--amber-badge)') + '; font-size:12px;">'
     + '<b><i class="ti ti-stack-2" aria-hidden="true"></i> Commande en ' + L.qtes.length + ' lots : ' + L.qtes.join(' + ') + ' = ' + L.total + ' cartes</b> (Odoo, ' + attEscG(L.ref) + ')<br>'
@@ -2681,15 +2683,32 @@ async function writeToGSheet() {
     const L = lotsDuSO(infoSOCourant);
     if (L) {
       const N = cartesDeLExport();
-      if (N !== null && N < L.total) {
+      /* 15.12 (08/10/2026) : DÉROGATION TEMPORAIRE, UN SEUL SO — à retirer après écriture.
+         SO2607-411 PRIME ENGINEERING : le lot de 1 carte (EVTQ 260722) est déjà acheté,
+         seul le lot de 20 (EVTQ 261006) reste à écrire. L'historique du lot 1 est archivé
+         dans la feuille « ARCHIVE lot 1 (1 carte) — SO2607-411 … ».
+         Retour : commit 29faa0c / étiquette locale avant-derogation-411-2026-10-08. */
+      const DEROGATION_SO = 'SO2607-411';
+      const derogation = so.toUpperCase() === DEROGATION_SO;
+      if (N !== null && N < L.total && !derogation) {
         statusEl.innerHTML = '<span style="color:var(--red)">⛔ Écriture bloquée : la commande compte ' + L.total + ' cartes (' + L.qtes.join(' + ') + '), l\'export Luminovo n\'en couvre que ' + N + '. Refais le scénario de sourcing pour ' + L.total + ' cartes.</span>';
         return;
       }
+      if (N !== null && N < L.total && derogation) {
+        const msgD = 'DÉROGATION ' + DEROGATION_SO + '\n\n'
+          + 'Commande Odoo : ' + L.qtes.join(' + ') + ' = ' + L.total + ' cartes.\n'
+          + 'Export Luminovo : ' + N + ' cartes.\n\n'
+          + 'Le lot déjà acheté n\'est pas réécrit. La feuille va être REMPLACÉE par les '
+          + N + ' cartes (l\'historique du lot précédent est dans la feuille ARCHIVE).\n\n'
+          + 'Écrire la feuille achat ?';
+        if (!confirm(msgD)) { statusEl.innerHTML = ''; return; }
+      } else {
       const msg = 'Commande en ' + L.qtes.length + ' lots : ' + L.qtes.join(' + ') + ' = ' + L.total + ' cartes.\n\n'
         + (N === null ? 'Le nombre de cartes de l\'export Luminovo n\'a pas pu être déterminé : vérifie qu\'il couvre ' + L.total + ' cartes.'
                       : 'L\'export Luminovo est calculé pour ' + N + ' cartes en un seul lot (scrap calculé sur ' + N + ', pas lot par lot).')
         + '\n\nPense à la livraison cadencée chez le fournisseur (lot 1 : ' + L.qtes[0] + ' cartes).\n\nÉcrire la feuille achat quand même ?';
-      if (!confirm(msg)) { statusEl.innerHTML = ''; return; }
+        if (!confirm(msg)) { statusEl.innerHTML = ''; return; }
+      }
     }
   }
 
