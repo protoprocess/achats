@@ -458,7 +458,11 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.14";
+const APP_VERSION = "15.15";
+/* 15.15 (09/10/2026, blocage constaté en production) : minuteur de 20 s sur les lectures distantes du démarrage
+   (feuilles Google via fetchCSV, registre client Odoo). Le soir du 09/10 le script Google du stock n'a pas répondu :
+   l'appli est restée bloquée sur « Chargement… », écran principal jamais affiché, alors que le stock ne sert qu'au
+   contrôle de substitution. Désormais la source passe en rouge au bout de 20 s et le démarrage se poursuit. */
 /* 15.14 (09/10/2026, plafond n8n) : « Marquer commandé », « Clore » et « Commenter » ne rechargent plus toute la liste
    En attente (1 exécution n8n chacun) : l'appli vient d'écrire le changement, elle l'applique sur place et re-rend.
    Même règle que la v13.5 du 28/09 — n8n confirme sans problème : 0 appel ; le moindre doute : on relit, la vérité d'abord.
@@ -1008,12 +1012,48 @@ function ppUrlScript(url){
   if (!url || url.indexOf('script.google.com') === -1) return url;
   return url + (url.indexOf('?') === -1 ? '?' : '&') + 'k=' + encodeURIComponent(ppCodeAcces());
 }
+/* ---- v15.15 (09/10/2026) : minuteur sur les lectures distantes -----------
+   Un fetch() sans minuteur peut ne JAMAIS retomber. Constate le 09/10 au soir :
+   le script Google du stock n a pas repondu, l appli est restee bloquee sur
+   « Chargement… » et l ecran principal n a jamais ete affiche — alors que le
+   stock ne sert qu au controle de substitution. Une source lente ne doit pas
+   pouvoir prendre le demarrage en otage.
+   Au-dela du delai on abandonne proprement : les appelants ont deja un catch
+   qui passe la source en rouge et laisse le demarrage se poursuivre.
+   Le signal couvre aussi la lecture du corps, pas seulement la connexion :
+   c est pour ca que le minuteur n est annule qu a la toute fin. */
+const DELAI_SOURCE_MS = 20000;
+async function ppFetchDelai(url, options) {
+  const ctrl = new AbortController();
+  const minuteur = setTimeout(function () { ctrl.abort(); }, DELAI_SOURCE_MS);
+  try {
+    return await fetch(url, Object.assign({}, options || {}, { signal: ctrl.signal }));
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw new Error('pas de réponse au bout de ' + (DELAI_SOURCE_MS / 1000) + ' s');
+    }
+    throw e;
+  } finally {
+    clearTimeout(minuteur);
+  }
+}
 async function fetchCSV(url) {
-  const resp = await fetch(ppUrlScript(url));
-  if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  const txt = await resp.text();
-  if (/^AUTH_REFUSED/.test(txt.trim())) throw new Error("Code d'accès refusé par le script Google (AUTH_REFUSED)");
-  return txt;
+  const ctrl = new AbortController();
+  const minuteur = setTimeout(function () { ctrl.abort(); }, DELAI_SOURCE_MS);
+  try {
+    const resp = await fetch(ppUrlScript(url), { signal: ctrl.signal });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const txt = await resp.text();
+    if (/^AUTH_REFUSED/.test(txt.trim())) throw new Error("Code d'accès refusé par le script Google (AUTH_REFUSED)");
+    return txt;
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw new Error('pas de réponse au bout de ' + (DELAI_SOURCE_MS / 1000) + ' s — Google ne répond pas');
+    }
+    throw e;
+  } finally {
+    clearTimeout(minuteur);
+  }
 }
 
 async function loadAll() {
@@ -1172,7 +1212,10 @@ async function chargerClientsOdoo() {
   if (!webhookUrl) throw new Error('Webhook N8N non configuré');
   const base = webhookUrl.replace(/\/[^\/]*$/, '');
 
-  const rs = await fetch(base + '/po-societes');
+  /* v15.15 : meme minuteur. Ce chargement est AVANT celui du stock dans le
+     demarrage : sans lui, le registre client pourrait bloquer l appli au meme
+     endroit, et le correctif ne servirait a rien. */
+  const rs = await ppFetchDelai(base + '/po-societes');
   const ds = await rs.json();
   if (!ds || !ds.ok || !Array.isArray(ds.societes)) throw new Error('Registre Odoo illisible');
 
