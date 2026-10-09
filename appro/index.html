@@ -3,14 +3,56 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- achats/appro v2.0 — 25/09/2026 : la page « Analyse Achats » est integree a Achats PP (onglet Commandes).
-     Cette adresse redirige pour ne casser ni favoris ni liens. Retour : etiquette avant-bascule-2026-09-25. -->
-<title>Analyse Achats → Achats PP — v2.0 — 25/09/2026</title>
-<meta http-equiv="refresh" content="0; url=../bom-sourcing/">
+<!-- achats/appro — redirection de l ancienne page « Analyse Achats »
+
+     v2.0 (25/09/2026) : la page est integree a Achats PP (onglet Commandes) ;
+     cette adresse redirige pour ne casser ni favoris ni liens.
+     Retour : etiquette avant-bascule-2026-09-25.
+
+     v2.1 (09/10/2026, constate par Olivier) : la redirection se declenchait
+     AUSSI quand la page etait chargee dans l iframe de l onglet Commandes.
+     Les pages carte publiees par le script Luminovo « appro-so » portent un
+     bouton « ← Tableau de bord » qui pointe ici : dans le cadre, il rechargeait
+     donc Achats PP EN ENTIER — sources comprises, plusieurs secondes, et le
+     soir du 09/10 un blocage net pendant que Google ne repondait pas — au lieu
+     de revenir simplement au tableau de bord que le cadre affichait.
+
+     Desormais la page regarde ou elle est :
+       - dans un cadre  -> retour direct au tableau de bord Luminovo ;
+       - en plein ecran -> redirection vers Achats PP, ce qui reste juste
+                           pour un favori ou un vieux lien.
+
+     Le <meta http-equiv="refresh"> a ete retire a dessein : il part avant que
+     le script ait pu decider, et c est lui qui provoquait le rechargement. -->
+<title>Analyse Achats → Achats PP — v2.1 — 09/10/2026</title>
 <style>body{background:#0a0c12;color:#e2e8f0;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:40px}a{color:#F07B1F}</style>
 </head>
 <body>
-<p>L'analyse achats est maintenant dans <a href="../bom-sourcing/">Achats PP</a> (onglet Commandes). Redirection…</p>
-<p style="color:#64748b;font-size:12px">v2.0 — 25/09/2026</p>
+<p id="msg">Redirection…</p>
+<p style="color:#64748b;font-size:12px">v2.1 — 09/10/2026</p>
+<noscript>
+  <p>Sans JavaScript, rien ne part tout seul :
+     <a href="../bom-sourcing/">ouvrir Achats PP</a> (onglet Commandes).</p>
+</noscript>
+<script>
+(function () {
+  var TABLEAU = "https://reports.luminovo.com/r/appro-tableau-de-bord-wnIro11y7qiexgm8";
+  var APPLI   = "../bom-sourcing/";
+  /* window.top !== window.self => on est dans un cadre. En cross-origin la
+     simple lecture de window.top peut lever : dans ce cas on est forcement
+     dans un cadre, donc on traite l exception comme un oui. */
+  var dansCadre;
+  try { dansCadre = (window.top !== window.self); } catch (e) { dansCadre = true; }
+  var msg = document.getElementById("msg");
+  if (msg) {
+    msg.innerHTML = dansCadre
+      ? "Retour au tableau de bord…"
+      : "L'analyse achats est maintenant dans <a href=\"../bom-sourcing/\">Achats PP</a> (onglet Commandes). Redirection…";
+  }
+  /* replace() et pas href : pas d entree d historique, donc le bouton Retour
+     du navigateur ne renvoie pas sur cette page de transit. */
+  location.replace(dansCadre ? TABLEAU : APPLI);
+})();
+</script>
 </body>
 </html>
