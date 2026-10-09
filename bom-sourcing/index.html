@@ -458,7 +458,13 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.13";
+const APP_VERSION = "15.14";
+/* 15.14 (09/10/2026, plafond n8n) : « Marquer commandé », « Clore » et « Commenter » ne rechargent plus toute la liste
+   En attente (1 exécution n8n chacun) : l'appli vient d'écrire le changement, elle l'applique sur place et re-rend.
+   Même règle que la v13.5 du 28/09 — n8n confirme sans problème : 0 appel ; le moindre doute : on relit, la vérité d'abord.
+   Deux garde-fous : la carte porte une référence DIRECTE vers sa ligne source (_ligne), on ne re-cherche plus la ligne
+   par SO + MPN/IPN (piège de l'incident Locatis SO2609-484 : même IPN, deux MPN) ; et « Marquer commandé » n'escamote
+   la ligne que si n8n renvoie panier_marque:true — il répond success:true même quand il n'a pas trouvé la ligne panier. */
 /* 15.13 (09/10/2026, demande Olivier) : demande de prix fournisseur — le nom du fabricant envoyé au mail et à l'alerte
    Luminovo vient désormais de « Approved parts » (Fabricant; MPN) et non de la colonne « Manufacturer free », qui est un
    drapeau Yes/No : le tableau du mail affichait « No » partout. Référence envoyée = MPN seul (avant : « Fabricant; MPN »).
@@ -3426,6 +3432,38 @@ async function sendChat() {
 
   function attNorm(s){ return (s||'').toString().trim(); }
 
+  /* ---- v15.14 (09/10/2026) : rafraichissement SUR PLACE -------------------
+     Jusqu ici, chaque action sur une ligne de « En attente » relisait TOUTE la
+     liste (1 appel n8n) alors que l appli venait d ecrire elle-meme le
+     changement et sait donc exactement ce qui a bouge.
+     C est la regle que tu as tranchee le 28/09 pour le panier (v13.5), reprise
+     ici : n8n confirme sans probleme -> on applique sur place, 0 appel ; au
+     moindre doute -> on relit, la verite d abord.
+     Le doute, ici, c est : liste pas encore chargee, ligne introuvable dans
+     Paniers en attente, ou n importe quelle exception. Dans ces cas on retombe
+     sur attCharger() et l ecran montre ce que la feuille contient vraiment.
+     Pourquoi ca ne peut pas faire commander deux fois : une ligne ne disparait
+     de l ecran que si n8n a CONFIRME avoir ecrit son statut dans la feuille.
+     Plafond n8n : ~10 appels/jour en moins.
+
+     PAS de recherche de ligne ici, volontairement. Retrouver la ligne par
+     SO + MPN/IPN, c est le piege qui a deja coute l incident Locatis
+     SO2609-484 : deux lignes du meme SO portent le meme IPN avec deux MPN
+     differents, et chercher par IPN d abord vise la mauvaise. La carte
+     affichee porte donc une reference DIRECTE vers sa ligne (`_ligne`,
+     posee par attCartes) : on ecrit sur l objet exact qui a produit la carte
+     sur laquelle l acheteur a clique. Aucun ecart possible. */
+  function attMajLocale(c, champs){
+    try {
+      if (!window.__attLoaded || !Array.isArray(attData.panier)) return false;
+      const l = c && c._ligne;
+      if (!l || attData.panier.indexOf(l) === -1) return false;
+      Object.keys(champs).forEach(function(k){ l[k] = champs[k]; });
+      attRender();
+      return true;
+    } catch(e) { return false; }
+  }
+
   /* v10.0 (07/09/2026, ch.111) — refonte de la carte En attente, decision
      Olivier : sept boutons pour trois verbes, c etait du bricolage.
      v10.1 (07/09) — retour Olivier sur l ecran reel : "illisible". Barre sur
@@ -3468,6 +3506,7 @@ async function sendChat() {
       if (statut === 'Commandé' || statut === 'Clos') continue; /* traite ou sorti du circuit */
       const depuis = attNorm(l['Date ajout']);
       cartes.push({
+        _ligne: l,   /* v15.14 : lien direct vers la ligne source (cf. attMajLocale) */
         origine: type === 'Stock manquant' ? 'reception' : 'sourcing',
         type: type || 'Sans solution',
         statut: statut,
@@ -3880,7 +3919,11 @@ async function sendChat() {
           body: JSON.stringify({ action: 'commenter', lignes: [{ so: c.so, mpn: c.mpn, ipn: c.ipn, commentaire: v.com }] })
         });
         const d = await r.json();
-        if (d.success && d.nb > 0) { attCharger(); return true; }
+        if (d.success && d.nb > 0) {
+          /* v15.14 : seul le commentaire change, l appli vient de l ecrire. */
+          if (!attMajLocale(c, { 'Commentaire': v.com })) attCharger();
+          return true;
+        }
         msg('Non enregistré : ' + (d.manquees && d.manquees.length ? 'ligne introuvable dans la sheet' : (d.reason || 'inconnu')));
         return false;
       }
@@ -4826,7 +4869,14 @@ async function sendChat() {
       });
       const d = await r.json();
       if (d.success) {
-        attCharger();
+        /* v15.14 : la ligne passe en Commandé — elle sort de la liste. On ne
+           la masque que si n8n confirme avoir ecrit DANS Paniers en attente
+           (panier_marque). Il repond aussi success:true quand il a mis a jour
+           la feuille achat SANS trouver la ligne panier (MPN corrige entre
+           temps) : dans ce cas la ligne est toujours en attente, et la relire
+           est justement ce qui le montre. Seul le Statut est touche : n8n
+           n ecrit que les colonnes J:K, pas le fournisseur de la ligne. */
+        if (d.panier_marque !== true || !attMajLocale(c, { 'Statut': 'Commandé' })) attCharger();
       } else {
         alert('Échec : ' + (d.reason || 'inconnu') + (d.detail ? '\n' + d.detail : ''));
         attRender();
@@ -4998,7 +5048,11 @@ async function sendChat() {
             });
           } catch(e) {}
         }
-        attCharger();
+        /* v15.14 : la ligne de feuille passe en Clos, elle sort de la file.
+           Une question client ne vit pas dans la feuille Paniers : on relit.
+           (L API renvoie fabstory:[] depuis le 11/09, ce cas ne se produit
+           plus, mais le jour ou il revient il doit passer par la relecture.) */
+        if (client || !attMajLocale(c, { 'Statut': 'Clos' })) attCharger();
         return true;
       }
     });
