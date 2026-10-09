@@ -458,7 +458,13 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.16";
+const APP_VERSION = "15.17";
+/* 15.17 (09/10/2026, choix Olivier) : le badge de panier annonce CETTE affaire et rien d'autre — « Mouser (0) ↩2 ».
+   Le chiffre entre parenthèses = lignes de ce SO à commander ; ↩N = reprises en attente chez ce fournisseur sur
+   d'AUTRES SO, qui ne partent au panier que si la reprise est cochée dans le panneau. La 15.16 affichait
+   « 0 + 1 en attente », exact mais sans rapport avec le « 2 LIGNES À COMMANDER » du panneau : deux nombres qui ne
+   parlaient pas de la même chose. La règle de reprise vit désormais dans attReprisesPour(), servie au panneau
+   comme au badge. Info-bulle détaillée sur le bouton. Affichage seul. */
 /* 15.16 (09/10/2026, constaté par Olivier sur SO2610-535) : le badge « Panier : Mouser (1) » annonçait une ligne
    alors que le panneau affichait « 0 ligne à commander ». Le badge comptait toutes les lignes du fournisseur, le
    panneau excluait celles déjà dans Paniers en attente (règle 15.4) : deux comptages, deux règles. La règle est
@@ -4220,11 +4226,20 @@ async function sendChat() {
         + '<span style="font-size:12px; color:var(--text3)">Panier :</span>'
         + Object.keys(parFourn).map(function(cle){
             const g = parFourn[cle];
-            const compte = g.enAttente ? (g.aCommander + ' + ' + g.enAttente + ' en attente') : String(g.aCommander);
-            const info = g.enAttente
-              ? ' title="' + g.aCommander + ' ligne(s) à commander · ' + g.enAttente + ' déjà dans Paniers en attente, donc exclue(s) du panier — reprenables depuis le panneau"'
+            /* 15.17 (choix Olivier) : le chiffre entre parentheses, c est CETTE
+               affaire et rien d autre. Les reprises d autres SO en attente chez
+               ce fournisseur sont signalees a part par ↩N — elles ne partent au
+               panier que si tu coches la reprise dans le panneau. */
+            const nbReprises = attReprisesPour(cle, d.so).length;
+            const marque = nbReprises
+              ? ' <span style="color:var(--amber-badge)" aria-label="' + nbReprises + ' reprise(s) disponible(s)">↩' + nbReprises + '</span>'
               : '';
-            return '<button class="btn primary" style="padding:4px 10px; font-size:12px;" onclick="attPanierOuvrir(' + attJsArg(cle) + ')"' + info + '><i class="ti ti-basket" aria-hidden="true"></i> ' + attEsc(attFmt(cle).titre) + ' (' + compte + ')</button>';
+            const detail = [
+              g.aCommander + ' ligne(s) de ce SO à commander',
+              g.enAttente ? (g.enAttente + ' ligne(s) de ce SO déjà en attente, exclue(s) du panier') : '',
+              nbReprises ? (nbReprises + ' reprise(s) en attente chez ce fournisseur, sur d\'autres SO — à cocher dans le panneau') : ''
+            ].filter(Boolean).join(' · ');
+            return '<button class="btn primary" style="padding:4px 10px; font-size:12px;" onclick="attPanierOuvrir(' + attJsArg(cle) + ')" title="' + attEsc(detail) + '"><i class="ti ti-basket" aria-hidden="true"></i> ' + attEsc(attFmt(cle).titre) + ' (' + g.aCommander + ')' + marque + '</button>';
           }).join('')
         + '</div><div id="att-panier-panel"></div>'
       : '<div id="att-panier-panel"></div>';
@@ -4459,6 +4474,19 @@ async function sendChat() {
     const m = U(l['MPN']), i = U(l['Approved internal part number']);
     return (!!m && cles.has('M|' + m)) || (!!i && cles.has('I|' + i));
   }
+  /* 15.17 : la regle de REPRISE vit ici, et nulle part ailleurs — le panneau et
+     le badge s en servent tous les deux.
+     Reprise = statut EXACTEMENT « En attente » (decision Olivier 04/09 : ni
+     Sans solution, ni Clos / Commandé / Consultation), d un AUTRE SO, chez ce
+     fournisseur. */
+  function attReprisesPour(cle, so){
+    const S = String(so || '').trim().toLowerCase();
+    return (attData.panier || []).filter(function(p){
+      if (attNorm(p['Statut']) !== 'En attente') return false;
+      if (String(p['SO'] || '').trim().toLowerCase() === S) return false;
+      return attPanierCle(p['Fournisseur']) === cle;
+    });
+  }
 
   window.attPanierOuvrir = async function(cle){
     if (!window.__attLoaded) { try { await attCharger(); } catch(e) {} }
@@ -4485,11 +4513,8 @@ async function sendChat() {
       });
     });
     const att = [];
-    (attData.panier||[]).forEach(p => {
-      const st = (p['Statut']||'').trim();
-      if (st !== 'En attente') return; /* reprise = uniquement ce statut precis (Olivier 04/09) -- ni Sans solution, ni Clos/Commande/Consultation */
-      if ((p['SO']||'').trim().toLowerCase() === d.so.toLowerCase()) return;
-      if (attPanierCle(p['Fournisseur']) !== cle) return;
+    /* 15.17 : regle de reprise deplacee dans attReprisesPour(), partagee avec le badge. */
+    attReprisesPour(cle, d.so).forEach(p => {
       att.push({
         coche: true,
         so: (p['SO']||'').trim(),
