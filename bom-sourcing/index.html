@@ -458,7 +458,11 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.12";
+const APP_VERSION = "15.13";
+/* 15.13 (09/10/2026, demande Olivier) : demande de prix fournisseur — le nom du fabricant envoyé au mail et à l'alerte
+   Luminovo vient désormais de « Approved parts » (Fabricant; MPN) et non de la colonne « Manufacturer free », qui est un
+   drapeau Yes/No : le tableau du mail affichait « No » partout. Référence envoyée = MPN seul (avant : « Fabricant; MPN »).
+   Côté n8n (Demande de prix v1.2) : sujet réduit au SO, sans nom de client ni nombre de références, texte accentué. */
 /* 15.11 (07/10/2026, demande Olivier) : onglet Achats — colonne Scrap (lecture seule) avant la quantité, renommée « QTE Totale » en bleu PP. */
 /* 15.10 (07/10/2026, incident SO2609-472 HORIBA) : colonne IPN de la feuille achat mélangée depuis 15.7 (la case Scrap éditable
    avait la classe des cases IPN) — corrigé : cases Scrap à part, chaque IPN recopié sur sa ligne (data-idx). */
@@ -526,7 +530,7 @@ const APP_VERSION = "15.12";
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "08/10/2026";
+const APP_DATE = "09/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -3839,7 +3843,7 @@ async function sendChat() {
       const ligne = { so: d.so, mpn, ipn: (l['Approved internal part number'] || '').trim(), fournisseur: (l['Supplier'] || '').trim(),
         refFour: (l['Supplier part number'] || '').trim(), qte: (l['Purchase qty'] || '').toString().trim(), montant: attPrixNum(l['Purchase price']) };
       try {
-        const res = await attAlerteAppel({ so: d.so, carte: d.fileName, mpn, fabricant: (l['Manufacturer free'] || '').trim(), qte: ligne.qte, source: 'achats' });
+        const res = await attAlerteAppel({ so: d.so, carte: d.fileName, mpn, fabricant: attFabricantLigne(l), qte: ligne.qte, source: 'achats' });
         let txt = attAlerteTexte(res, mpn);
         if (res.success) {
           const existe = (attData.panier || []).find(p => U(p['SO']) === U(d.so) && U(p['MPN']) === U(mpn) && (p['Statut'] || '').trim() !== 'Commandé' && (p['Statut'] || '').trim() !== 'Clos');
@@ -4145,6 +4149,17 @@ async function sendChat() {
 
   const ATT_DP_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-demande-prix';
 
+  /* 15.13 (09/10/2026) : le vrai nom du fabricant n existe que dans « Approved parts »,
+     au format « Fabricant; MPN » (parfois plusieurs pieces separees par un retour ligne).
+     La colonne « Manufacturer free » est un drapeau Yes/No (le client accepte-t-il un
+     autre fabricant) : elle etait envoyee par erreur comme nom de fabricant -> « No »
+     dans tous les mails de demande de prix et dans la recherche de piece Luminovo. */
+  function attFabricantLigne(l){
+    const prem = String((l && l['Approved parts']) || '').split(/[\r\n]+/)[0];
+    const i = prem.indexOf(';');
+    return i > 0 ? prem.slice(0, i).trim() : '';
+  }
+
   window.attDemandePrix = async function(motif){
     const d = attSheetData;
     if (!d) return;
@@ -4153,10 +4168,10 @@ async function sendChat() {
     const lignes = cochees.map(i => {
       const l = attSheetActives[i];
       return {
-        ref: (l['Approved parts']||'').trim() || (l['MPN']||'').trim() || (l['Approved internal part number']||'').trim(),
+        ref: (l['MPN']||'').trim() || (l['Approved internal part number']||'').trim() || (l['Approved parts']||'').trim(),
         mpn: (l['MPN']||'').trim(),
         ipn: (l['Approved internal part number']||'').trim(),
-        fabricant: (l['Manufacturer free']||'').trim(),
+        fabricant: attFabricantLigne(l),
         qte: (l['Purchase qty']||'').toString().trim()
       };
     }).filter(l => l.ref || l.mpn);
