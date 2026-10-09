@@ -458,7 +458,12 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.15";
+const APP_VERSION = "15.16";
+/* 15.16 (09/10/2026, constaté par Olivier sur SO2610-535) : le badge « Panier : Mouser (1) » annonçait une ligne
+   alors que le panneau affichait « 0 ligne à commander ». Le badge comptait toutes les lignes du fournisseur, le
+   panneau excluait celles déjà dans Paniers en attente (règle 15.4) : deux comptages, deux règles. La règle est
+   maintenant écrite une seule fois (attDejaEnAttente / attLigneEnAttente) et servie aux deux, et le badge affiche
+   la décomposition — « Mouser (0 + 1 en attente) ». Affichage seul, rien ne change à ce qui est commandé. */
 /* 15.15 (09/10/2026, blocage constaté en production) : minuteur de 20 s sur les lectures distantes du démarrage
    (feuilles Google via fetchCSV, registre client Odoo). Le soir du 09/10 le script Google du stock n'a pas répondu :
    l'appli est restée bloquée sur « Chargement… », écran principal jamais affiché, alors que le stock ne sert qu'au
@@ -3468,6 +3473,12 @@ async function sendChat() {
       attSoProduits = d.so_produits || attSoProduits;
       window.__attLoaded = true;
       attRender();
+      /* 15.16 : les badges de panier de l onglet Achats dependent de cette
+         liste. L onglet Achats declenche attCharger() mais sans l attendre :
+         si la feuille s est affichee avant la reponse, les badges ont ete
+         calcules sans savoir ce qui etait deja en attente. On les recalcule
+         ici, maintenant qu on sait. Aucun appel reseau de plus. */
+      try { if (attSheetData) attSheetRender(); } catch(e) {}
     } catch(e) {
       liste.innerHTML = '<p style="font-size:13px; color:var(--red)">Erreur de chargement : ' + e.message + '</p>';
     }
@@ -4191,16 +4202,30 @@ async function sendChat() {
       ? '<div style="background:var(--amber-bg); color:var(--amber-badge); border-radius:var(--radius); padding:8px 12px; font-size:12px; margin-bottom:8px;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + nbChers + ' ligne' + (nbChers>1?'s':'') + ' au-dessus de ' + SEUIL_PRIX_LIGNE + ' € — une demande de prix broker peut valoir le coup : coche les lignes puis clique "Demande de prix (meilleur prix)".</div>'
       : '';
     /* Boutons Panier par fournisseur present dans la sheet */
+    /* 15.16 : le compte du badge suit la MEME regle que le panneau — les lignes
+       deja dans Paniers en attente ne sont pas commandables, on les affiche a
+       part au lieu de les compter comme si elles l etaient. Le bouton reste
+       meme a zero : c est lui qui donne acces a « reprendre aussi les paniers
+       en attente ». */
     const parFourn = {};
-    actives.forEach((l, i) => {
+    const enAttenteDuSo = attDejaEnAttente(d.so);
+    actives.forEach((l) => {
       const cle = attPanierCle((l['Supplier']||''));
       if (!cle) return;
-      (parFourn[cle] = parFourn[cle] || []).push(i);
+      const g = (parFourn[cle] = parFourn[cle] || { aCommander: 0, enAttente: 0 });
+      if (attLigneEnAttente(l, enAttenteDuSo)) g.enAttente++; else g.aCommander++;
     });
     const panierBtns = Object.keys(parFourn).length
       ? '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">'
         + '<span style="font-size:12px; color:var(--text3)">Panier :</span>'
-        + Object.keys(parFourn).map(cle => '<button class="btn primary" style="padding:4px 10px; font-size:12px;" onclick="attPanierOuvrir(' + attJsArg(cle) + ')"><i class="ti ti-basket" aria-hidden="true"></i> ' + attEsc(attFmt(cle).titre) + ' (' + parFourn[cle].length + ')</button>').join('')
+        + Object.keys(parFourn).map(function(cle){
+            const g = parFourn[cle];
+            const compte = g.enAttente ? (g.aCommander + ' + ' + g.enAttente + ' en attente') : String(g.aCommander);
+            const info = g.enAttente
+              ? ' title="' + g.aCommander + ' ligne(s) à commander · ' + g.enAttente + ' déjà dans Paniers en attente, donc exclue(s) du panier — reprenables depuis le panneau"'
+              : '';
+            return '<button class="btn primary" style="padding:4px 10px; font-size:12px;" onclick="attPanierOuvrir(' + attJsArg(cle) + ')"' + info + '><i class="ti ti-basket" aria-hidden="true"></i> ' + attEsc(attFmt(cle).titre) + ' (' + compte + ')</button>';
+          }).join('')
         + '</div><div id="att-panier-panel"></div>'
       : '<div id="att-panier-panel"></div>';
     zone.innerHTML = bandeauSig + '<div style="font-size:12px; color:var(--text3); margin-bottom:6px;">' + d.fileName + ' — ' + actives.length + ' ligne(s) à traiter' + (nbFiltrees ? ' · ' + nbFiltrees + ' masquée(s) par le filtre « ' + attEsc(attSheetFiltre.trim()) + ' »' : '') + (masquees ? ' · masquées : ' + masquees : '') + '</div>'
@@ -4407,26 +4432,48 @@ async function sendChat() {
   const ATT_PANIER_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-panier';
   let attPanier = null;
 
+  /* ---- v15.16 (09/10/2026) : UNE seule regle « deja en attente » -----------
+     Le badge de panier par fournisseur comptait TOUTES les lignes du
+     fournisseur, alors que le panneau excluait celles deja dans Paniers en
+     attente (regle de la 15.4). Constate par Olivier sur SO2610-535 : badge
+     « Mouser (1) », panneau « 0 ligne a commander ». Le badge faisait cliquer
+     pour rien.
+     La regle est desormais ecrite UNE fois et utilisee par les deux. Meme
+     travers que le ciblage de ligne corrige en 15.14 : une regle en double
+     finit toujours par diverger. */
+  function attDejaEnAttente(so){
+    const U = x => String(x || '').trim().toUpperCase();
+    const S = U(so);
+    const cles = new Set();
+    (attData.panier || []).forEach(function(p){
+      const st = attNorm(p['Statut']);
+      if (st === 'Commandé' || st === 'Clos') return;   /* sorti du circuit */
+      if (U(p['SO']) !== S) return;
+      if (U(p['MPN'])) cles.add('M|' + U(p['MPN']));
+      if (U(p['IPN'])) cles.add('I|' + U(p['IPN']));
+    });
+    return cles;
+  }
+  function attLigneEnAttente(l, cles){
+    const U = x => String(x || '').trim().toUpperCase();
+    const m = U(l['MPN']), i = U(l['Approved internal part number']);
+    return (!!m && cles.has('M|' + m)) || (!!i && cles.has('I|' + i));
+  }
+
   window.attPanierOuvrir = async function(cle){
     if (!window.__attLoaded) { try { await attCharger(); } catch(e) {} }
     const d = attSheetData;
     if (!d) return;
     const num = attPrixNum;
     const aff = [];
-    /* 15.4 : lignes de CE SO deja dans Paniers en attente (hors Commandé / Clos) -> exclues du panier */
+    /* 15.4 : lignes de CE SO deja dans Paniers en attente (hors Commandé / Clos) -> exclues du panier.
+       15.16 : la regle vit dans attDejaEnAttente / attLigneEnAttente, partagees avec le badge. */
     const U = x => String(x || '').trim().toUpperCase();
-    const dejaAttente = new Set();
-    (attData.panier || []).forEach(p => {
-      const st = (p['Statut'] || '').trim();
-      if (st === 'Commandé' || st === 'Clos') return;
-      if (U(p['SO']) !== U(d.so)) return;
-      if (U(p['MPN'])) dejaAttente.add('M|' + U(p['MPN']));
-      if (U(p['IPN'])) dejaAttente.add('I|' + U(p['IPN']));
-    });
+    const dejaAttente = attDejaEnAttente(d.so);
     let exclues = 0;
     attSheetActives.forEach((l, i) => {
       if (attPanierCle(l['Supplier']) !== cle) return;
-      if ((U(l['MPN']) && dejaAttente.has('M|' + U(l['MPN']))) || (U(l['Approved internal part number']) && dejaAttente.has('I|' + U(l['Approved internal part number'])))) { exclues++; return; }
+      if (attLigneEnAttente(l, dejaAttente)) { exclues++; return; }
       aff.push({
         i, coche: true,
         fournisseur: (l['Supplier']||'').trim(),
