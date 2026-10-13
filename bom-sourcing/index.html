@@ -458,7 +458,17 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.17";
+const APP_VERSION = "15.18";
+/* 15.18 (13/10/2026, constaté par Olivier sur SO2609-472, lignes ACME) : une CONSULTATION CONCLUE redevient
+   commandable. Le circuit : « Demande de prix » met la ligne en Consultation (Paniers en attente + Supplier=Consultation
+   sur la feuille) ; quand le prix arrive, « Changer fournisseur / réf » remet le vrai fournisseur (ACME) sur la feuille.
+   Mais la règle 15.4 (« une ligne de ce SO présente dans Paniers en attente est exclue de son panier ») ne regardait
+   que la présence : la ligne restait exclue (« ACME (0) », « 0 ligne à commander ») et l'onglet En attente n'ouvre
+   pas de panier aux Consultations — commande impossible nulle part. Désormais une ligne dont le panier en attente
+   est en statut « Consultation » ET dont la feuille porte à nouveau un vrai fournisseur revient dans le panier de
+   son SO, marquée « consultation conclue » ; à « J'ai commandé », sa ligne des Paniers en attente passe en Commandé
+   comme une reprise (même appel n8n, action valider, lignes_affaire + lignes). Les lignes « En attente » gardent la
+   règle d'Olivier du 06/10 : jamais de retour dans le panier de leur SO (commande depuis l'onglet En attente). */
 /* 15.17 (09/10/2026, choix Olivier) : le badge de panier annonce CETTE affaire et rien d'autre — « Mouser (0) ↩2 ».
    Le chiffre entre parenthèses = lignes de ce SO à commander ; ↩N = reprises en attente chez ce fournisseur sur
    d'AUTRES SO, qui ne partent au panier que si la reprise est cochée dans le panneau. La 15.16 affichait
@@ -4215,11 +4225,12 @@ async function sendChat() {
        en attente ». */
     const parFourn = {};
     const enAttenteDuSo = attDejaEnAttente(d.so);
+    const consultsDuSo = attConsultationsDuSo(d.so);   /* 15.18 */
     actives.forEach((l) => {
       const cle = attPanierCle((l['Supplier']||''));
       if (!cle) return;
       const g = (parFourn[cle] = parFourn[cle] || { aCommander: 0, enAttente: 0 });
-      if (attLigneEnAttente(l, enAttenteDuSo)) g.enAttente++; else g.aCommander++;
+      if (!attConsultationConclue(l, consultsDuSo) && attLigneEnAttente(l, enAttenteDuSo)) g.enAttente++; else g.aCommander++;
     });
     const panierBtns = Object.keys(parFourn).length
       ? '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">'
@@ -4469,6 +4480,28 @@ async function sendChat() {
     });
     return cles;
   }
+  /* 15.18 : lignes de CE SO dont le panier en attente est une CONSULTATION (demande de prix). Clé -> ligne du panier. */
+  function attConsultationsDuSo(so){
+    const U = x => String(x || '').trim().toUpperCase();
+    const S = U(so); const m = new Map();
+    (attData.panier || []).forEach(function(p){
+      if (attNorm(p['Statut']) !== 'Consultation') return;
+      if (U(p['SO']) !== S) return;
+      if (U(p['MPN'])) m.set('M|' + U(p['MPN']), p);
+      if (U(p['IPN'])) m.set('I|' + U(p['IPN']), p);
+    });
+    return m;
+  }
+  /* 15.18 : consultation conclue = la feuille porte à nouveau un vrai fournisseur (clé de panier) pour une ligne
+     en Consultation dans les Paniers en attente. Rend la ligne du panier, ou null. */
+  function attConsultationConclue(l, consults){
+    if (!consults || !consults.size) return null;
+    const U = x => String(x || '').trim().toUpperCase();
+    const sup = U(l['Supplier']);
+    if (!sup || sup === 'CONSULTATION' || sup[0] === '?' || !attPanierCle(l['Supplier'])) return null;
+    const m = U(l['MPN']), i = U(l['Approved internal part number']);
+    return (m && consults.get('M|' + m)) || (i && consults.get('I|' + i)) || null;
+  }
   function attLigneEnAttente(l, cles){
     const U = x => String(x || '').trim().toUpperCase();
     const m = U(l['MPN']), i = U(l['Approved internal part number']);
@@ -4498,12 +4531,15 @@ async function sendChat() {
        15.16 : la regle vit dans attDejaEnAttente / attLigneEnAttente, partagees avec le badge. */
     const U = x => String(x || '').trim().toUpperCase();
     const dejaAttente = attDejaEnAttente(d.so);
-    let exclues = 0;
+    const consults = attConsultationsDuSo(d.so);   /* 15.18 */
+    let exclues = 0, conclues = 0;
     attSheetActives.forEach((l, i) => {
       if (attPanierCle(l['Supplier']) !== cle) return;
-      if (attLigneEnAttente(l, dejaAttente)) { exclues++; return; }
+      const conclue = attConsultationConclue(l, consults);   /* 15.18 : consultation conclue -> dans le panier */
+      if (!conclue && attLigneEnAttente(l, dejaAttente)) { exclues++; return; }
+      if (conclue) conclues++;
       aff.push({
-        i, coche: true,
+        i, coche: true, conclue: !!conclue,
         fournisseur: (l['Supplier']||'').trim(),
         refFour: (l['Supplier part number']||'').trim(),
         ipn: (l['Approved internal part number']||'').trim(),
@@ -4526,7 +4562,7 @@ async function sendChat() {
         montant: num(p['Montant'])
       });
     });
-    attPanier = { cle, aff, att, reprendre: false, restaure: false, exclues };
+    attPanier = { cle, aff, att, reprendre: false, restaure: false, exclues, conclues };
     /* 13.0 (D) : panier en cours garde jusqu a validation (on passe a un autre fournisseur
        puis on revient : coches et reprise retrouvees). Efface a la validation. */
     try {
@@ -4652,6 +4688,7 @@ async function sendChat() {
     const ligneAff = (l, ix) => '<label style="display:flex; gap:8px; align-items:center; font-size:12px; padding:3px 0;">'
       + '<input type="checkbox" ' + (l.coche?'checked':'') + ' onchange="attPanierToggle(' + ix + ')">'
       + '<span style="font-family:var(--mono); font-size:11px; flex:1;">' + attLib(l) + '</span>'
+      + (l.conclue ? '<span style="background:rgba(91,196,216,0.15); color:#8FD8E6; font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:20px;" title="Demande de prix conclue : la ligne des Paniers en attente passera en Commandé avec cette commande">consultation conclue</span>' : '')
       + '<span>' + l.qte + ' pcs</span><span style="color:var(--text3); min-width:70px; text-align:right;">' + eur(l.montant) + '</span></label>';
     const blocAtt = EA
       ? '<div style="margin-top:4px;">' + P.att.map((l, ix) => '<label style="display:flex; gap:8px; align-items:center; font-size:12px; padding:3px 0;">'
@@ -4774,10 +4811,13 @@ async function sendChat() {
     /* 15.0 (decision Olivier 05/10/2026) : sous le franco, on peut commander -- confirmation des frais de port d abord */
     if (!TT.atteint && !confirm('Sous le seuil franco : ' + TT.tot.toFixed(2) + ' € pour un franco ' + fmt.titre + ' de ' + TT.seuil + ' €.\nFrais de port à prévoir.\n\nCommander quand même ?')) return;
     const r = attSoRef(P);
+    /* 15.18 : consultations conclues de CE SO -> leur ligne des Paniers en attente passe en Commandé (comme une reprise) */
+    const conclues = EA ? [] : P.aff.filter(l => l.coche && l.conclue).map(l => ({ so: so, fournisseur: fmt.titre, refFour: l.refFour, ipn: l.ipn, mpn: l.mpn, qte: l.qte, montant: l.montant }));
     const nbAutres = EA ? att.length - aff.length : att.length;
     const txt = 'Valider la commande ' + fmt.titre + (r.ref ? ' (réf. ' + r.ref + ')' : '') + ' ?\n\n'
       + '• ' + aff.length + ' ligne(s) de ' + so + ' passent en vert dans la sheet achat\n'
       + (nbAutres ? '• ' + nbAutres + ' ligne(s) d autres SO passent en Commandé, en vert dans leur feuille, avec la note « Commandé via ' + so + ' »\n' : '')
+      + (conclues.length ? '• ' + conclues.length + ' consultation(s) conclue(s) : leur ligne des Paniers en attente passe en Commandé\n' : '')
       + '• Planning : les SO encore « AF » passent en « EC », réception prévue J+7';
     if (!confirm(txt)) return;
     const m = document.getElementById('att-panier-msg');
@@ -4786,7 +4826,7 @@ async function sendChat() {
       const rq = await fetch(ATT_PANIER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'valider', fournisseur: fmt.titre, so: so, so_commandeur: so, carte: EA ? '' : attSheetData.fileName, lignes_affaire: aff, lignes: att.map(l => ({ so: l.so, fournisseur: l.fournisseur, refFour: l.refFour, ipn: l.ipn, mpn: l.mpn, qte: l.qte, montant: l.montant })) })
+        body: JSON.stringify({ action: 'valider', fournisseur: fmt.titre, so: so, so_commandeur: so, carte: EA ? '' : attSheetData.fileName, lignes_affaire: aff, lignes: att.map(l => ({ so: l.so, fournisseur: l.fournisseur, refFour: l.refFour, ipn: l.ipn, mpn: l.mpn, qte: l.qte, montant: l.montant })).concat(conclues) })
       });
       const res = await rq.json();
       alert((res.success ? '✅ ' : '⚠ ') + (res.message || res.reason || 'Réponse inattendue'));
