@@ -1,0 +1,6 @@
+-- stock_permanent v1.1 / lignes_commandees v1.0 — 18/10/2026 (Supabase gzljssjjrqbxgnxugiqu)
+-- Migrations appliquees : stock_permanent_v1_0, lignes_commandees_v1_0 (voir Supabase > migrations).
+-- Lecture par Achats PP : workflow n8n « Achats — Stock permanent » v1.0 (Uzx9MdCnY0RArdM8), GET achats-stock-permanent.
+-- Ecriture a « J'ai commande » : workflow « Achats — Panier attente/reprise » v2.4 (LK4cwW1Zxdlm3geS), noeuds
+--   « V - Preparer lignes commandees » + « V - Ecrire lignes commandees ».
+-- Desactiver une ref : update stock_permanent set actif=false where ipn='...';  (jamais de delete)

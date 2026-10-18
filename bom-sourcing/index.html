@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/app.css?v=15.20">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,17 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.19";
+const APP_VERSION = "15.20";
+/* 15.20 (18/10/2026, décision Olivier — voie B, étape 1) : STOCK PERMANENT + TABLE lignes_commandees.
+   Liste fixe de 73 refs R/C achetées en bobine (table Supabase stock_permanent, lue via n8n
+   « Achats — Stock permanent » v1.0). Dans Analyse BOM, pour un IPN de la liste : stock >= besoin ->
+   badge « Stock permanent » ; sinon la ligne carte passe en Inventory (besoin) et, s'il n'y a pas déjà
+   une bobine en commande, une ligne BOBINE est ajoutée (fournisseur de la ligne, qté = bobine, ref
+   fournisseur vide : à sourcer en bobine, jamais la ref cut-tape de la carte). On ne gonfle jamais la
+   ligne de la carte. À « J'ai commandé », n8n Panier attente/reprise v2.4 écrit TOUT dans la table
+   lignes_commandees (carte / reprise / consultation / bobine / inventory, avec besoin et rejet) et
+   marque la bobine en commande (commande_le, commande_via, attendu_par). La réception ne change pas
+   encore : étape 2 = nouvelle appli Réception sur cette table (voir ETAT_DES_LIEUX_reception_18-10-2026). */
 /* 15.19 (18/10/2026, décision Olivier) : ÉQUIVALENT EN STOCK PROPOSÉ D'OFFICE. La règle « le candidat couvre
    la demande » sort dans une brique partagée shared/equivalence.js (PP_EQUIV v1.0) : valeur et boîtier
    identiques ; tension, puissance, diélectrique (C0G > X8R > X7R > X7S > X6S > X5R > Y5V) au moins égaux ;
@@ -574,7 +584,7 @@ const APP_VERSION = "15.19";
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "09/10/2026";
+const APP_DATE = "18/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -1181,6 +1191,8 @@ async function loadAll() {
       sourceStatus.stock = 'err';
     }
   }
+  /* 15.20 : liste « stock permanent » (refs achetées en bobine), table Supabase via n8n. Non bloquant. */
+  try { await chargerStockPermanent(); } catch(e) { console.warn('stock permanent :', e.message); }
   btn.disabled = false;
   // Sync config to localStorage for bom-client.html
   try {
@@ -1208,6 +1220,85 @@ function loadStockData(csvText) {
   });
   // Le stock a change : l'index normalise et les recherches memorisees deviennent caducs.
   if (typeof _viderIndexFlou === 'function') _viderIndexFlou();
+}
+
+/* ============================================================
+   STOCK PERMANENT (15.20 — décision Olivier 18/10/2026)
+   Liste FIXE de références achetées en bobine (table Supabase stock_permanent,
+   73 refs R/C au 18/10, revue à la main — pas de compteur automatique).
+   Règle, ligne par ligne, quand l'IPN est dans la liste :
+     stock >= besoin            -> « Stock permanent » : rien à acheter (couvert par Reçus, comme aujourd'hui)
+     stock <  besoin, bobine en commande (commande_le posé)
+                                -> la ligne carte passe en Inventory (besoin), note « bobine en commande via SOx »
+     stock <  besoin, pas de commande
+                                -> la ligne carte passe en Inventory (besoin) + une ligne BOBINE ajoutée :
+                                   fournisseur de la ligne, qté = bobine, ref fournisseur VIDE (à sourcer en
+                                   bobine, jamais la ref « cut tape » de la carte), prix vide.
+   On ne gonfle JAMAIS la ligne de la carte. À « J'ai commandé », n8n (Panier attente/reprise v2.4)
+   pose commande_le / commande_via / attendu_par dans stock_permanent et écrit lignes_commandees.
+   ============================================================ */
+let stockPermanent = {};          // IPN -> { bobine, commande_le, commande_via, attendu_par }
+const STOCK_PERMANENT_MARQUE = 'BOBINE STOCK PERMANENT';
+async function chargerStockPermanent() {
+  stockPermanent = {};
+  if (!webhookUrl) return;
+  const base = webhookUrl.replace(/\/[^\/]*$/, '');
+  const r = await ppFetchDelai(base + '/achats-stock-permanent');
+  const d = await r.json();
+  (d && Array.isArray(d.refs) ? d.refs : []).forEach(x => { if (x && x.ipn) stockPermanent[String(x.ipn).trim().toUpperCase()] = x; });
+}
+function refStockPermanent(ipn) { return stockPermanent[String(ipn || '').trim().toUpperCase()] || null; }
+function dateCourte(iso) { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('fr-FR'); }
+
+/* Applique la règle sur toute la BOM analysée (appelée après la codification, avant tout rendu).
+   Idempotent : une ligne déjà traitée (meta.stockPermanent) ou une ligne bobine n'est pas retraitée. */
+function appliquerStockPermanent() {
+  if (!Object.keys(stockPermanent).length || !bomData.length) return 0;
+  let n = 0;
+  for (let i = 0; i < bomData.length; i++) {
+    const row = bomData[i], meta = rowMeta[i] || (rowMeta[i] = {});
+    if (meta.stockPermanent || meta.bobine) continue;
+    const ipn = String(meta.ipn && meta.ipn !== '—' ? meta.ipn : (row['Approved internal part number'] || row['IPN'] || '')).trim().toUpperCase();
+    const sp = refStockPermanent(ipn);
+    if (!sp) continue;
+    const besoin = besoinLigne(row) || 0;
+    const si = resolveStockQty(row, i, ipn);
+    const stock = si.qty || 0;
+    const fournisseur = String(row['Supplier'] || '').trim();
+    if (stock >= besoin) { meta.stockPermanent = 'couvert'; continue; }
+    /* stock insuffisant : la ligne carte prend sur le stock (Inventory, besoin), la bobine est une autre ligne */
+    row['Supplier'] = 'Inventory';
+    row['Purchase qty'] = String(besoin);
+    row['Purchase price'] = '0';
+    row['Supplier part number'] = '';
+    if (sp.commande_le) {
+      meta.stockPermanent = 'attend';
+      meta.stockNote = 'Stock permanent — bobine ' + ipn + ' en commande depuis le ' + dateCourte(sp.commande_le) + (sp.commande_via ? ' via ' + sp.commande_via : '') + ' : la carte prend sur le stock à réception (stock actuel ' + stock + ', besoin ' + besoin + ').';
+    } else {
+      meta.stockPermanent = 'reappro';
+      meta.stockNote = 'Stock permanent — stock ' + stock + ' < besoin ' + besoin + ' : bobine ' + ipn + ' (' + sp.bobine + ' pcs) ajoutée à la commande, la carte prend sur le stock.';
+      const bob = { ...row };
+      bob['Supplier'] = fournisseur && fournisseur.toLowerCase() !== 'inventory' ? fournisseur : 'DigiKey';
+      bob['Supplier part number'] = '';
+      bob['Aggregated qty'] = String(sp.bobine);
+      bob['Scrap qty'] = '0';
+      bob['MOQ'] = String(sp.bobine);
+      bob['Purchase qty'] = String(sp.bobine);
+      bob['Purchase price'] = '';
+      bob['Unit price'] = '';
+      bob['Designator'] = '';
+      bob['Reçus'] = '';
+      const bobMeta = { ...meta, bobine: true, stockPermanent: 'bobine', warnings: [], qc_issues: [], stockNote: STOCK_PERMANENT_MARQUE + ' — réappro ' + ipn + ' : bobine de ' + sp.bobine + ' pcs, ref fournisseur à sourcer en bobine (pas la ref de la carte).' };
+      bomData.splice(i + 1, 0, bob);
+      rowMeta.splice(i + 1, 0, bobMeta);
+      const shifted = {};
+      Object.keys(stockOverrides).forEach(k => { const x = parseInt(k); shifted[x > i ? x + 1 : x] = stockOverrides[k]; });
+      stockOverrides = shifted;
+      i++;
+    }
+    n++;
+  }
+  return n;
 }
 
 function populateClientSelect() {
@@ -1853,6 +1944,17 @@ function besoinLigne(row) {
   return isNaN(p) ? undefined : p;
 }
 function renderStockCell(si, idx, besoin) {
+  /* 15.20 : lignes « stock permanent » — on dit ce que l'appli a décidé et pourquoi */
+  const spm = rowMeta[idx] && rowMeta[idx].stockPermanent;
+  if (spm) {
+    const note = (rowMeta[idx].stockNote || '').replace(/"/g, '&quot;');
+    const libelle = spm === 'couvert' ? 'Stock permanent' : spm === 'attend' ? 'Bobine en commande' : spm === 'reappro' ? 'Réappro bobine' : 'BOBINE';
+    const icone = spm === 'bobine' ? 'ti-circle-dot' : 'ti-infinity';
+    return `<div class="stock-cell equiv-cell">
+      <span class="stock-line"><span class="slbl">${si.source || 'STK PP'}</span><span class="${(si.qty||0)>0?'s-ok':'s-zero'}">${si.qty == null ? '—' : si.qty}</span></span>
+      <span class="sp-badge sp-${spm}" title="${note}"><i class="ti ${icone}" aria-hidden="true"></i> ${libelle}</span>
+    </div>`;
+  }
   const needSplit = besoin!==undefined && si.qty>0 && si.qty<besoin;
   // Stock ≥ besoin : rien à faire ici, la GSheet achat gère déjà la couverture (Reçus / Manquant).
   const splitBtn = needSplit
@@ -2393,6 +2495,8 @@ function renderBOMTable(rows,results) {
       ipn: res.ipn || '—'
     };
   });
+  /* 15.20 : règle « stock permanent » appliquée une fois la codification connue */
+  try { appliquerStockPermanent(); } catch(e) { console.warn('stock permanent :', e); }
   rerenderBomTable(true);
 }
 
@@ -4570,6 +4674,33 @@ async function sendChat() {
     });
   }
 
+  /* 15.20 : détail d'une ligne de feuille achat pour la table lignes_commandees (voie B, étape 1).
+     Le fabricant vient d'« Approved parts » (Fabricant;MPN), jamais de « Manufacturer free » (drapeau Yes/No). */
+  function attDetailLigne(l){
+    const mpn = String(l['MPN'] || '').trim().toUpperCase();
+    let fab = '';
+    String(l['Approved parts'] || '').split(/;\s*\n|\n/).forEach(e => {
+      const k = e.indexOf(';'); if (k < 0) return;
+      if (String(e.slice(k + 1)).trim().toUpperCase().replace(/;$/, '') === mpn) fab = e.slice(0, k).trim();
+    });
+    const vig = String(l['Vigilance'] || '');
+    return {
+      besoin: String(l['Aggregated qty'] || '').trim(),
+      rejet: String(l['Scrap qty'] || '').trim(),
+      prix_unit: String(l['Unit price'] || '').trim(),
+      designators: String(l['Designator'] || '').trim(),
+      fabricant: fab,
+      bobine: vig.indexOf(STOCK_PERMANENT_MARQUE) >= 0,
+      attend_bobine: /Stock permanent/i.test(vig) && vig.indexOf(STOCK_PERMANENT_MARQUE) < 0
+    };
+  }
+  /* 15.20 : lignes Inventory de CE SO (pièces prises sur le stock), pour « carte complète » côté réception */
+  function attLignesInventory(){
+    return (attSheetActives || []).filter(l => String(l['Supplier'] || '').trim().toLowerCase() === 'inventory').map(l => Object.assign({
+      ipn: (l['Approved internal part number']||'').trim(), mpn: (l['MPN']||'').trim(), qte: (l['Purchase qty']||'').toString().trim()
+    }, attDetailLigne(l)));
+  }
+
   window.attPanierOuvrir = async function(cle){
     if (!window.__attLoaded) { try { await attCharger(); } catch(e) {} }
     const d = attSheetData;
@@ -4587,7 +4718,7 @@ async function sendChat() {
       const conclue = attConsultationConclue(l, consults);   /* 15.18 : consultation conclue -> dans le panier */
       if (!conclue && attLigneEnAttente(l, dejaAttente)) { exclues++; return; }
       if (conclue) conclues++;
-      aff.push({
+      aff.push(Object.assign({
         i, coche: true, conclue: !!conclue,
         fournisseur: (l['Supplier']||'').trim(),
         refFour: (l['Supplier part number']||'').trim(),
@@ -4595,7 +4726,7 @@ async function sendChat() {
         mpn: (l['MPN']||'').trim(),
         qte: (l['Purchase qty']||'').toString().trim(),
         montant: num(l['Purchase price'])
-      });
+      }, attDetailLigne(l)));   /* 15.20 : besoin / rejet / fabricant / repères / bobine, pour lignes_commandees */
     });
     const att = [];
     /* 15.17 : regle de reprise deplacee dans attReprisesPour(), partagee avec le badge. */
@@ -4851,9 +4982,11 @@ async function sendChat() {
        ses propres lignes partent en lignes_affaire (vert dans sa feuille), toutes restent dans lignes (Paniers = Commandé). */
     const so = EA ? ((att[0] && att[0].so) || '') : attSheetData.so;
     const U = x => String(x || '').trim().toUpperCase();
+    /* 15.20 : besoin / rejet / fabricant / repères / bobine partent avec la ligne (table lignes_commandees) */
     const aff = EA
       ? att.filter(l => U(l.so) === U(so)).map(l => ({ ipn: l.ipn, mpn: l.mpn, qte: l.qte, refFour: l.refFour }))
-      : P.aff.filter(l => l.coche).map(l => ({ ipn: l.ipn, mpn: l.mpn, qte: l.qte, refFour: l.refFour }));
+      : P.aff.filter(l => l.coche).map(l => ({ ipn: l.ipn, mpn: l.mpn, qte: l.qte, refFour: l.refFour, fournisseur: l.fournisseur, besoin: l.besoin, rejet: l.rejet, prix_unit: l.prix_unit, designators: l.designators, fabricant: l.fabricant, bobine: !!l.bobine }));
+    const lignesInventory = EA ? [] : attLignesInventory();
     if (!aff.length && !att.length) return;
     if (EA && !so) { alert('SO introuvable sur la ligne la plus ancienne : commande impossible depuis ce panier.'); return; }
     const TT = attPanierTotaux(P);
@@ -4867,6 +5000,7 @@ async function sendChat() {
       + '• ' + aff.length + ' ligne(s) de ' + so + ' passent en vert dans la sheet achat\n'
       + (nbAutres ? '• ' + nbAutres + ' ligne(s) d autres SO passent en Commandé, en vert dans leur feuille, avec la note « Commandé via ' + so + ' »\n' : '')
       + (conclues.length ? '• ' + conclues.length + ' consultation(s) conclue(s) : leur ligne des Paniers en attente passe en Commandé\n' : '')
+      + (aff.filter(l => l.bobine).length ? '• ' + aff.filter(l => l.bobine).length + ' bobine(s) « stock permanent » : marquée(s) en commande, la réception les entrera au stock\n' : '')
       + '• Planning : les SO encore « AF » passent en « EC », réception prévue J+7';
     if (!confirm(txt)) return;
     const m = document.getElementById('att-panier-msg');
@@ -4875,7 +5009,7 @@ async function sendChat() {
       const rq = await fetch(ATT_PANIER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'valider', fournisseur: fmt.titre, so: so, so_commandeur: so, carte: EA ? '' : attSheetData.fileName, lignes_affaire: aff, lignes: att.map(l => ({ so: l.so, fournisseur: l.fournisseur, refFour: l.refFour, ipn: l.ipn, mpn: l.mpn, qte: l.qte, montant: l.montant })).concat(conclues) })
+        body: JSON.stringify({ action: 'valider', fournisseur: fmt.titre, so: so, so_commandeur: so, carte: EA ? '' : attSheetData.fileName, lignes_affaire: aff, lignes_inventory: lignesInventory, lignes: att.map(l => ({ so: l.so, fournisseur: l.fournisseur, refFour: l.refFour, ipn: l.ipn, mpn: l.mpn, qte: l.qte, montant: l.montant })).concat(conclues) })
       });
       const res = await rq.json();
       alert((res.success ? '✅ ' : '⚠ ') + (res.message || res.reason || 'Réponse inattendue'));
