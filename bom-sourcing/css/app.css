@@ -833,3 +833,9 @@ tr:hover td { background: var(--surface2); }
 .btn.att-action { background: rgba(91,196,216,0.14); color: #8FD8E6; border-color: rgba(91,196,216,0.55); font-weight: 500; }
 .btn.att-action:hover:not(:disabled) { background: rgba(91,196,216,0.26); color: #fff; }
 .btn.att-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 15.19 : équivalent en stock proposé d'office */
+.equiv-cell { display:flex; flex-direction:column; gap:2px; }
+.equiv-line { font-size:11px; color:var(--blue); display:inline-flex; gap:4px; align-items:center; }
+.equiv-line .fuzzy-key { font-family:inherit; }
+.equiv-line .fuzzy-qty { font-weight:600; }

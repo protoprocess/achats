@@ -12,6 +12,7 @@
 <body>
 <!-- ===== ACCES PROTO PROCESS ===== -->
 <script src="../shared/pp-acces.js"></script>
+<script src="../shared/equivalence.js"></script>
 <!-- ===== FIN ACCES ===== -->
 
 
@@ -261,7 +262,7 @@
           <button class="filter-btn f-err" onclick="setFilter('error',this)"><i class="ti ti-x" aria-hidden="true"></i> Erreurs <span class="filter-count" id="fc-err">0</span></button>
           <button class="filter-btn f-warn" onclick="setFilter('warn',this)"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Warnings <span class="filter-count" id="fc-warn">0</span></button>
           <button class="filter-btn f-mpn" onclick="setFilter('mpn',this)"><i class="ti ti-lock" aria-hidden="true"></i> MPN strict <span class="filter-count" id="fc-mpn">0</span></button>
-          <button class="filter-btn f-fuzzystock" onclick="setFilter('fuzzy-stock',this)"><i class="ti ti-help-circle" aria-hidden="true"></i> Stock potentiel <span class="filter-count" id="fc-fuzzystock">0</span></button>
+          <button class="filter-btn f-fuzzystock" onclick="setFilter('fuzzy-stock',this)"><i class="ti ti-replace" aria-hidden="true"></i> Équivalent en stock <span class="filter-count" id="fc-fuzzystock">0</span></button>
           <button class="filter-btn f-partialstock" onclick="setFilter('partial-stock',this)"><i class="ti ti-split" aria-hidden="true"></i> Stock partiel <span class="filter-count" id="fc-partialstock">0</span></button>
           <div class="filter-sep"></div>
           <button class="filter-btn f-sensor" onclick="setFilter('sensor',this)"><i class="ti ti-radar" aria-hidden="true"></i> Capteurs <span class="filter-count" id="fc-sensor">0</span></button>
@@ -458,7 +459,15 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.18";
+const APP_VERSION = "15.19";
+/* 15.19 (18/10/2026, décision Olivier) : ÉQUIVALENT EN STOCK PROPOSÉ D'OFFICE. La règle « le candidat couvre
+   la demande » sort dans une brique partagée shared/equivalence.js (PP_EQUIV v1.0) : valeur et boîtier
+   identiques ; tension, puissance, diélectrique (C0G > X8R > X7R > X7S > X6S > X5R > Y5V) au moins égaux ;
+   tolérance, ppm, ESR au plus égaux ; un champ demandé absent chez le candidat = refus. Corrige deux trous
+   (diélectrique et ESR n'étaient pas comparés) et un bug (la puissance « 0W33 » était lue comme 0 ppm).
+   Un candidat n'est proposé que si son stock couvre le BESOIN (qté + rejet) ; sinon on achète. Le meilleur
+   (le plus proche, puis le plus de stock) s'affiche directement sur la ligne avec un bouton « Prendre »,
+   les autres restent dans le menu. Jamais sur un MPN imposé. Filtre renommé « Équivalent en stock ». */
 /* 15.18 (13/10/2026, constaté par Olivier sur SO2609-472, lignes ACME) : une CONSULTATION CONCLUE redevient
    commandable. Le circuit : « Demande de prix » met la ligne en Consultation (Paniers en attente + Supplier=Consultation
    sur la feuille) ; quand le prix arrive, « Changer fournisseur / réf » remet le vrai fournisseur (ACME) sur la feuille.
@@ -743,6 +752,13 @@ function ipnPassif(s) {
   return m ? { type: m[1], valeur: m[2], boitier: m[3] } : null;
 }
 function substitutionCompatible(origine, remplacant) {
+  /* 15.19 : la règle complète vit dans shared/equivalence.js ; ici on garde le repli valeur/boîtier
+     si la brique n'est pas chargée. */
+  if (window.PP_EQUIV) {
+    const r = PP_EQUIV.couvre(origine, remplacant);
+    if (r.ok === true) return { ok: true };
+    if (r.ok === false) return { ok: false, motif: r.motif };
+  }
   const a = ipnPassif(origine), b = ipnPassif(remplacant);
   if (!a || !b) return { ok: true };
   const ecarts = [];
@@ -1640,6 +1656,7 @@ function parseRCIpn(str) {
 // sur un MPN générique. Renvoie true/false si les deux côtés sont des R/C reconnus, null sinon
 // (dans ce cas fuzzyScore retombe sur le matching flou générique par distance d'édition).
 function rcCompatible(searchKey, candidateKey) {
+  if (window.PP_EQUIV) { const r = PP_EQUIV.couvre(searchKey, candidateKey); return r.ok; }   // 15.19
   const a = parseRCIpn(searchKey), b = parseRCIpn(candidateKey);
   if (!a || !b) return null;
   if (a.type !== b.type) return false;
@@ -1739,9 +1756,10 @@ function _construireIndexFlou() {
 // Ne renvoie que les candidats qui franchissent FUZZY_MIN_SCORE, jusqu'à `limit` — peut
 // renvoyer 0 candidat si rien n'est assez proche. N'inclut pas les correspondances exactes
 // (déjà gérées ailleurs).
-function findFuzzyStockCandidates(searchKey, limit) {
+function findFuzzyStockCandidates(searchKey, limit, besoin) {
   if (!searchKey) return [];
-  const memo = _memoireFlou.get(searchKey);
+  const cleMemo = searchKey + '|' + (besoin === undefined ? '' : besoin);
+  const memo = _memoireFlou.get(cleMemo);
   if (memo) return memo;
 
   const idx = _construireIndexFlou();
@@ -1750,11 +1768,16 @@ function findFuzzyStockCandidates(searchKey, limit) {
   for (const e of idx) {
     if (e.key === searchKey) continue;
     if (!(e.qty > 0)) continue;   // regle 0 (Olivier 02/09) : sans stock, inutile de proposer
+    if (besoin !== undefined && besoin !== null && !(e.qty >= besoin)) continue;   // 15.19 : stock < besoin (rejet compris) -> on achete
     if (!substitutionCompatible(searchKey, e.key).ok) continue;   // 13.6 : valeur/boitier differents = jamais propose
     const sc = fuzzyScoreNorm(searchKey, aNorm, e.key, e.norm);
-    if (sc >= FUZZY_MIN_SCORE) retenus.push({ key:e.key, qty:e.qty, source:e.source, score:sc });
+    if (sc >= FUZZY_MIN_SCORE) {
+      const eq = window.PP_EQUIV ? PP_EQUIV.couvre(searchKey, e.key) : { ecart: 0 };
+      retenus.push({ key:e.key, qty:e.qty, source:e.source, score:sc, ecart:(eq && eq.ecart !== null && eq.ecart !== undefined) ? eq.ecart : 0 });
+    }
   }
-  retenus.sort((a,b) => b.score - a.score);
+  // 15.19 : le plus proche de la demande d'abord (tension la plus basse au-dessus...), puis le plus de stock
+  retenus.sort((a,b) => (a.ecart - b.ecart) || (b.qty - a.qty) || (b.score - a.score));
 
   const seen = new Set();
   const out = [];
@@ -1765,7 +1788,7 @@ function findFuzzyStockCandidates(searchKey, limit) {
     out.push(c);
     if (out.length >= limit) break;
   }
-  _memoireFlou.set(searchKey, out);
+  _memoireFlou.set(cleMemo, out);
   return out;
 }
 
@@ -1779,7 +1802,7 @@ function resolveStockQty(row, idx, ipnOverride) {
   const mfrFree = row['Manufacturer free']||'';
   if (ov) return {qty:ov.qty, source:ov.source, status:ov.qty>0?'ok':'zero', mpnWarn:false, fuzzyApplied:true, matchedKey:ov.matchedKey};
   const si = getStockInfo(ipn, mpn, mfrFree);
-  if (si.status==='na') si.fuzzy = findFuzzyStockCandidates(ipn||mpn, 3);
+  if (si.status==='na') si.fuzzy = findFuzzyStockCandidates(ipn||mpn, 3, besoinLigne(row));   // 15.19 : stock >= besoin seulement
   return si;
 }
 
@@ -1790,7 +1813,7 @@ function applyFuzzyStock(idx, key, qty, source) {
   if (!cc.ok) { alert('Substitution refusée : ' + ipnLigne + ' → ' + key + '\n' + cc.motif + '.\nCe n\'est pas un équivalent.'); return; }
   stockOverrides[idx] = { qty, source, matchedKey: key };
   if (rowMeta[idx]) {
-    rowMeta[idx].stockNote = `Stock substitué : correspondance approchante avec ${key} (${source}) — à vérifier avant utilisation.`;
+    rowMeta[idx].stockNote = `Stock substitué : équivalent couvrant ${key} (${source}) pris en stock à la place.`;
   }
   rerenderBomTable(false);
 }
@@ -1828,15 +1851,21 @@ function renderStockCell(si, idx, besoin) {
     if (!cands.length) return manuel
       ? `<div class="stock-cell"><span class="s-na" style="font-size:11px" title="Ni cet IPN ni le MPN ne figurent dans le stock PP">IPN inconnu du stock</span></div>`
       : `<div class="stock-cell"><span class="s-na">—</span></div>`;
-    const list = cands.map(c => `<div class="fuzzy-cand" onclick="applyFuzzyStock(${idx},'${String(c.key).replace(/'/g,"\\'")}',${c.qty},'${c.source}')">
+    /* 15.19 : le meilleur equivalent couvrant (stock >= besoin) s'affiche d'office, bouton « Prendre » ;
+       les autres candidats restent dans le menu. */
+    const meilleur = cands[0];
+    const autres = cands.slice(1);
+    const esc = k => String(k).replace(/'/g,"\\'");
+    const list = autres.map(c => `<div class="fuzzy-cand" onclick="applyFuzzyStock(${idx},'${esc(c.key)}',${c.qty},'${c.source}')">
       <span class="fuzzy-key" title="${c.key}">${c.key}</span><span class="fuzzy-qty">${c.qty}</span>
     </div>`).join('');
-    return `<div class="stock-cell">
-      <span class="s-na">—</span>
-      <span class="fuzzy-wrap">
-        <button class="fuzzy-toggle" type="button" onclick="this.nextElementSibling.classList.toggle('open')" title="Correspondances approchantes"><i class="ti ti-help-circle" aria-hidden="true"></i></button>
+    const menu = autres.length ? `<span class="fuzzy-wrap">
+        <button class="fuzzy-toggle" type="button" onclick="this.nextElementSibling.classList.toggle('open')" title="${autres.length} autre(s) équivalent(s) en stock"><i class="ti ti-dots" aria-hidden="true"></i></button>
         <div class="fuzzy-dropdown">${list}</div>
-      </span>
+      </span>` : '';
+    return `<div class="stock-cell equiv-cell">
+      <span class="equiv-line" title="Équivalent en stock qui couvre la demande (valeur et boîtier identiques, caractéristiques au moins égales) et le besoin"><i class="ti ti-replace" aria-hidden="true"></i> <span class="fuzzy-key">${meilleur.key}</span> <span class="fuzzy-qty">${meilleur.qty}</span></span>
+      <button class="stock-split-btn" onclick="applyFuzzyStock(${idx},'${esc(meilleur.key)}',${meilleur.qty},'${meilleur.source}')" title="Prendre ${meilleur.key} en stock à la place (${meilleur.qty} disponibles)">Prendre</button>${menu}
     </div>`;
   }
   if (si.status==='mpnwarn') return `<div class="stock-cell">
