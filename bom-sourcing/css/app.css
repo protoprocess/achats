@@ -839,3 +839,4 @@ tr:hover td { background: var(--surface2); }
 .equiv-line { font-size:11px; color:var(--blue); display:inline-flex; gap:4px; align-items:center; }
 .equiv-line .fuzzy-key { font-family:inherit; }
 .equiv-line .fuzzy-qty { font-weight:600; }
+.equiv-why { font-size:10px; color:var(--text3); line-height:1.25; max-width:260px; }

@@ -467,7 +467,11 @@ const APP_VERSION = "15.19";
    (diélectrique et ESR n'étaient pas comparés) et un bug (la puissance « 0W33 » était lue comme 0 ppm).
    Un candidat n'est proposé que si son stock couvre le BESOIN (qté + rejet) ; sinon on achète. Le meilleur
    (le plus proche, puis le plus de stock) s'affiche directement sur la ligne avec un bouton « Prendre »,
-   les autres restent dans le menu. Jamais sur un MPN imposé. Filtre renommé « Équivalent en stock ». */
+   les autres restent dans le menu. Jamais sur un MPN imposé. Filtre renommé « Équivalent en stock ».
+   Bémol Olivier (18/10) : ce que le client n'a PAS précisé n'est pas une contrainte — l'IPN porte des défauts PP
+   (50V, X7R…). On lit la remarque client (Notes Luminovo = « Remarques PP » posée à l'import, PP_EQUIV v1.1) et on
+   ne compare que les champs qu'il a écrits ; tension non précisée = plancher 16 V. La ligne affiche la remarque
+   et la raison de la proposition. Sans remarque lisible : règle stricte. */
 /* 15.18 (13/10/2026, constaté par Olivier sur SO2609-472, lignes ACME) : une CONSULTATION CONCLUE redevient
    commandable. Le circuit : « Demande de prix » met la ligne en Consultation (Paniers en attente + Supplier=Consultation
    sur la feuille) ; quand le prix arrive, « Changer fournisseur / réf » remet le vrai fournisseur (ACME) sur la feuille.
@@ -751,11 +755,11 @@ function ipnPassif(s) {
   const m = /^([RC])([0-9A-Z]+)-(\d{4})(?:-|$)/.exec(String(s || '').trim().toUpperCase());
   return m ? { type: m[1], valeur: m[2], boitier: m[3] } : null;
 }
-function substitutionCompatible(origine, remplacant) {
+function substitutionCompatible(origine, remplacant, contraintes) {
   /* 15.19 : la règle complète vit dans shared/equivalence.js ; ici on garde le repli valeur/boîtier
-     si la brique n'est pas chargée. */
+     si la brique n'est pas chargée. `contraintes` = ce que le client a réellement demandé (remarque). */
   if (window.PP_EQUIV) {
-    const r = PP_EQUIV.couvre(origine, remplacant);
+    const r = PP_EQUIV.couvre(origine, remplacant, contraintes || null);
     if (r.ok === true) return { ok: true };
     if (r.ok === false) return { ok: false, motif: r.motif };
   }
@@ -1756,9 +1760,9 @@ function _construireIndexFlou() {
 // Ne renvoie que les candidats qui franchissent FUZZY_MIN_SCORE, jusqu'à `limit` — peut
 // renvoyer 0 candidat si rien n'est assez proche. N'inclut pas les correspondances exactes
 // (déjà gérées ailleurs).
-function findFuzzyStockCandidates(searchKey, limit, besoin) {
+function findFuzzyStockCandidates(searchKey, limit, besoin, contraintes) {
   if (!searchKey) return [];
-  const cleMemo = searchKey + '|' + (besoin === undefined ? '' : besoin);
+  const cleMemo = searchKey + '|' + (besoin === undefined ? '' : besoin) + '|' + (contraintes ? contraintes.texte : '');
   const memo = _memoireFlou.get(cleMemo);
   if (memo) return memo;
 
@@ -1769,11 +1773,12 @@ function findFuzzyStockCandidates(searchKey, limit, besoin) {
     if (e.key === searchKey) continue;
     if (!(e.qty > 0)) continue;   // regle 0 (Olivier 02/09) : sans stock, inutile de proposer
     if (besoin !== undefined && besoin !== null && !(e.qty >= besoin)) continue;   // 15.19 : stock < besoin (rejet compris) -> on achete
-    if (!substitutionCompatible(searchKey, e.key).ok) continue;   // 13.6 : valeur/boitier differents = jamais propose
-    const sc = fuzzyScoreNorm(searchKey, aNorm, e.key, e.norm);
+    const eq = window.PP_EQUIV ? PP_EQUIV.couvre(searchKey, e.key, contraintes || null) : { ok: null, ecart: 0, raisons: [] };
+    if (eq.ok === false) continue;                                  // passif PP : regle d'equivalence (15.19)
+    if (eq.ok === null && !substitutionCompatible(searchKey, e.key).ok) continue;   // repli 13.6
+    const sc = eq.ok === true ? 1 : fuzzyScoreNorm(searchKey, aNorm, e.key, e.norm);
     if (sc >= FUZZY_MIN_SCORE) {
-      const eq = window.PP_EQUIV ? PP_EQUIV.couvre(searchKey, e.key) : { ecart: 0 };
-      retenus.push({ key:e.key, qty:e.qty, source:e.source, score:sc, ecart:(eq && eq.ecart !== null && eq.ecart !== undefined) ? eq.ecart : 0 });
+      retenus.push({ key:e.key, qty:e.qty, source:e.source, score:sc, ecart:(eq.ecart !== null && eq.ecart !== undefined) ? eq.ecart : 0, raisons: eq.raisons || [] });
     }
   }
   // 15.19 : le plus proche de la demande d'abord (tension la plus basse au-dessus...), puis le plus de stock
@@ -1802,18 +1807,21 @@ function resolveStockQty(row, idx, ipnOverride) {
   const mfrFree = row['Manufacturer free']||'';
   if (ov) return {qty:ov.qty, source:ov.source, status:ov.qty>0?'ok':'zero', mpnWarn:false, fuzzyApplied:true, matchedKey:ov.matchedKey};
   const si = getStockInfo(ipn, mpn, mfrFree);
-  if (si.status==='na') si.fuzzy = findFuzzyStockCandidates(ipn||mpn, 3, besoinLigne(row));   // 15.19 : stock >= besoin seulement
+  if (si.status==='na') si.fuzzy = findFuzzyStockCandidates(ipn||mpn, 3, besoinLigne(row), contraintesLigne(row));   // 15.19 : stock >= besoin, selon la remarque client
   return si;
 }
 
 function applyFuzzyStock(idx, key, qty, source) {
   const row = bomData[idx] || {};
   const ipnLigne = (row['Approved internal part number'] || row['IPN'] || row['ipn'] || row['MPN'] || '').trim();
-  const cc = substitutionCompatible(ipnLigne, key);
+  const ctr = contraintesLigne(row);
+  const cc = substitutionCompatible(ipnLigne, key, ctr);
   if (!cc.ok) { alert('Substitution refusée : ' + ipnLigne + ' → ' + key + '\n' + cc.motif + '.\nCe n\'est pas un équivalent.'); return; }
+  const eq = window.PP_EQUIV ? PP_EQUIV.couvre(ipnLigne, key, ctr) : null;
+  const pourquoi = (eq && eq.raisons && eq.raisons.length) ? ' — ' + eq.raisons.join(' ; ') : '';
   stockOverrides[idx] = { qty, source, matchedKey: key };
   if (rowMeta[idx]) {
-    rowMeta[idx].stockNote = `Stock substitué : équivalent couvrant ${key} (${source}) pris en stock à la place.`;
+    rowMeta[idx].stockNote = `Stock substitué : équivalent couvrant ${key} (${source}) pris en stock à la place` + (ctr ? ` (client : « ${ctr.texte.slice(0, 80)} »)` : '') + pourquoi + '.';
   }
   rerenderBomTable(false);
 }
@@ -1830,6 +1838,13 @@ function clearFuzzyStock(idx) {
 // v11.3 — Le BESOIN = qté agrégée + scrap. La "Purchase qty" Luminovo inclut le MOQ
 // (bobine de 2000 pour un besoin de 37) : comparer le stock au MOQ faisait commander
 // ce qu'on avait déjà. Le stock se compare au besoin, jamais au MOQ.
+// 15.19 : ce que le client a réellement demandé, lu dans la remarque de la ligne
+// (Notes Luminovo = « Remarques PP » posée à l'import). null = pas de remarque -> règle stricte.
+function contraintesLigne(row) {
+  if (!window.PP_EQUIV || !row) return null;
+  const txt = getColValue(row, 'Notes') || findCol(row, ['remarques pp', 'remarque', 'notes', 'note']) || '';
+  return PP_EQUIV.contraintesDepuisRemarque(txt);
+}
 function besoinLigne(row) {
   const agg = parseFloat(getColValue(row,'Aggregated qty'));
   const scrap = parseFloat(getColValue(row,'Scrap qty'));
@@ -1863,8 +1878,13 @@ function renderStockCell(si, idx, besoin) {
         <button class="fuzzy-toggle" type="button" onclick="this.nextElementSibling.classList.toggle('open')" title="${autres.length} autre(s) équivalent(s) en stock"><i class="ti ti-dots" aria-hidden="true"></i></button>
         <div class="fuzzy-dropdown">${list}</div>
       </span>` : '';
+    const ctr = contraintesLigne(bomData[idx] || {});
+    const raisons = (meilleur.raisons && meilleur.raisons.length) ? meilleur.raisons.join(' ; ') : 'toutes les caractéristiques demandées sont au moins égales';
+    const remarque = ctr ? ctr.texte : '(pas de remarque client : règle stricte)';
+    const pourquoi = `<span class="equiv-why" title="Remarque client : ${String(remarque).replace(/"/g,'&quot;')}&#10;Pourquoi : ${String(raisons).replace(/"/g,'&quot;')}">« ${String(remarque).slice(0, 48)}${String(remarque).length > 48 ? '…' : ''} » · ${raisons}</span>`;
     return `<div class="stock-cell equiv-cell">
-      <span class="equiv-line" title="Équivalent en stock qui couvre la demande (valeur et boîtier identiques, caractéristiques au moins égales) et le besoin"><i class="ti ti-replace" aria-hidden="true"></i> <span class="fuzzy-key">${meilleur.key}</span> <span class="fuzzy-qty">${meilleur.qty}</span></span>
+      <span class="equiv-line" title="Équivalent en stock qui couvre la demande du client et le besoin (qté + rejet)"><i class="ti ti-replace" aria-hidden="true"></i> <span class="fuzzy-key">${meilleur.key}</span> <span class="fuzzy-qty">${meilleur.qty}</span></span>
+      ${pourquoi}
       <button class="stock-split-btn" onclick="applyFuzzyStock(${idx},'${esc(meilleur.key)}',${meilleur.qty},'${meilleur.source}')" title="Prendre ${meilleur.key} en stock à la place (${meilleur.qty} disponibles)">Prendre</button>${menu}
     </div>`;
   }
@@ -2852,7 +2872,7 @@ async function writeToGSheet() {
       const cle = Object.keys(row).find(k => k.toLowerCase().includes('ipn') || k.toLowerCase().includes('internal')) || 'IPN';
       const origine = String(row[cle] || '').trim();
       const remplacant = String(si.matchedKey).trim();
-      const cc = substitutionCompatible(origine, remplacant);
+      const cc = substitutionCompatible(origine, remplacant, contraintesLigne(row));
       if (remplacant && remplacant !== origine && !cc.ok) {
         // 13.6 : on n'ecrit ni l'IPN remplacant ni son stock — la ligne part a la commande avec son IPN d'origine
         row['Reçus'] = '';
