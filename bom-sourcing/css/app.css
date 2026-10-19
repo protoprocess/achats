@@ -847,3 +847,6 @@ tr:hover td { background: var(--surface2); }
 .sp-badge.sp-attend { color:var(--orange, #b26a00); border-color:var(--orange, #b26a00); }
 .sp-badge.sp-reappro { color:var(--pp-blue, #1565c0); border-color:var(--pp-blue, #1565c0); }
 .sp-badge.sp-bobine { color:#fff; background:var(--pp-blue, #1565c0); border-color:var(--pp-blue, #1565c0); }
+
+/* 15.21 — IPN pour information (client MPN strict) */
+.ipn-info { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:600; padding:1px 6px; border-radius:999px; color:var(--pink, #ad1457); border:1px solid var(--pink, #ad1457); cursor:help; margin-left:4px; }

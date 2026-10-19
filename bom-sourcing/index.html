@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.20">
+<link rel="stylesheet" href="css/app.css?v=15.21">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,12 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.20";
+const APP_VERSION = "15.21";
+/* 15.21 (19/10/2026, décision Olivier) : IPN POUR INFORMATION chez les clients MPN strict. Le service
+   (v1.9) calcule l'IPN quand elle est sûre et la renvoie ipn_info ; Achats - fondation v3.0 la transmet.
+   Elle est écrite en col. C de la feuille achat (prod / réception en ont besoin) avec un cadenas « info » à
+   l'écran ; on achète le MPN, rien ne part dans Luminovo, et la ligne n'a ni équivalent en stock ni stock
+   permanent / bobine (on ne substitue jamais chez un client strict). */
 /* 15.20 (18/10/2026, décision Olivier — voie B, étape 1) : STOCK PERMANENT + TABLE lignes_commandees.
    Liste fixe de 73 refs R/C achetées en bobine (table Supabase stock_permanent, lue via n8n
    « Achats — Stock permanent » v1.0). Dans Analyse BOM, pour un IPN de la liste : stock >= besoin ->
@@ -584,7 +589,7 @@ const APP_VERSION = "15.20";
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "18/10/2026";
+const APP_DATE = "19/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -1258,6 +1263,8 @@ function appliquerStockPermanent() {
   for (let i = 0; i < bomData.length; i++) {
     const row = bomData[i], meta = rowMeta[i] || (rowMeta[i] = {});
     if (meta.stockPermanent || meta.bobine) continue;
+    /* 15.21 : client MPN strict -> on achète le MPN, pas de stock permanent ni de bobine sur cette ligne */
+    if (meta.ipnInfo || (activeClient.mpn_strict && String(row['Manufacturer free'] || '').toLowerCase().trim() !== 'yes')) continue;
     const ipn = String(meta.ipn && meta.ipn !== '—' ? meta.ipn : (row['Approved internal part number'] || row['IPN'] || '')).trim().toUpperCase();
     const sp = refStockPermanent(ipn);
     if (!sp) continue;
@@ -1898,7 +1905,9 @@ function resolveStockQty(row, idx, ipnOverride) {
   const mfrFree = row['Manufacturer free']||'';
   if (ov) return {qty:ov.qty, source:ov.source, status:ov.qty>0?'ok':'zero', mpnWarn:false, fuzzyApplied:true, matchedKey:ov.matchedKey};
   const si = getStockInfo(ipn, mpn, mfrFree);
-  if (si.status==='na') si.fuzzy = findFuzzyStockCandidates(ipn||mpn, 3, besoinLigne(row), contraintesLigne(row));   // 15.19 : stock >= besoin, selon la remarque client
+  /* 15.21 : client MPN strict (ligne non « Manufacturer free ») -> jamais d'équivalent proposé, on achète le MPN */
+  const strict = activeClient.mpn_strict && String(mfrFree || '').toLowerCase().trim() !== 'yes';
+  if (si.status==='na' && !strict) si.fuzzy = findFuzzyStockCandidates(ipn||mpn, 3, besoinLigne(row), contraintesLigne(row));   // 15.19 : stock >= besoin, selon la remarque client
   return si;
 }
 
@@ -2367,6 +2376,7 @@ function buildBomRow(row, meta, idx) {
     <td style="font-size:11px;font-family:var(--mono)">${mpn}</td>
     <td>
       <input class="editable-ipn" value="${ipn}" data-idx="${idx}" onchange="updateIPN(this)"/>
+      ${meta.ipnInfo && ipn !== '—' ? `<span class="ipn-info" title="Client MPN strict : IPN pour information (prod / réception). On achète le MPN, rien ne va dans Luminovo, pas de stock ni d'équivalent sur cet IPN."><i class="ti ti-lock" aria-hidden="true"></i> info</span>` : ''}
       <span class="${meta.confidence==='high'?'conf-high':meta.confidence==='medium'?'conf-med':'conf-low'}" title="Confiance IA">
         ${meta.confidence==='high'?'🟢':meta.confidence==='medium'?'🟡':'🔴'} ${meta.confidence||'?'}
       </span>
@@ -2492,7 +2502,8 @@ function renderBOMTable(rows,results) {
       warnings: res.warnings || [],
       qc_issues: res.qc_issues || [],
       confidence: res.confidence || 'medium',
-      ipn: res.ipn || '—'
+      ipn: res.ipn || '—',
+      ipnInfo: res.ipn_info === true   /* 15.21 : client MPN strict, IPN pour information (prod / réception), achat sur le MPN */
     };
   });
   /* 15.20 : règle « stock permanent » appliquée une fois la codification connue */
