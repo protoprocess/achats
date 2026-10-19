@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.21">
+<link rel="stylesheet" href="css/app.css?v=15.22">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,10 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.21";
+const APP_VERSION = "15.22";
+/* 15.22 (19/10/2026, demande Olivier) : STOCK PERMANENT DANS L'ONGLET ACHATS. Sur une feuille déjà écrite, badge à côté de
+   l'IPN (« Stock permanent » / « Bobine en commande » / « Réappro bobine ») et bouton « + bobine » qui ajoute la ligne
+   BOBINE à la feuille (n8n « Achats — Ajouter ligne feuille » v1.0). Rien d'automatique : la feuille a pu être travaillée. */
 /* 15.21 (19/10/2026, décision Olivier) : IPN POUR INFORMATION chez les clients MPN strict. Le service
    (v1.9) calcule l'IPN quand elle est sûre et la renvoie ipn_info ; Achats - fondation v3.0 la transmet.
    Elle est écrite en col. C de la feuille achat (prod / réception en ont besoin) avec un cadenas « info » à
@@ -4363,7 +4366,7 @@ async function sendChat() {
         + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + fournHtml(fourn, (l['Supplier part number']||'').trim()) + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Supplier part number']||'') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['MPN']||'') + sigBadge + '</td>'
-        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Approved internal part number']||'') + '</td>'
+        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Approved internal part number']||'') + attStockPermanentHtml(l, i) + '</td>'
         /* 15.11 (07/10/2026, demande Olivier) : colonne Scrap (lecture seule — se règle dans Analyse BOM) avant QTE Totale (bleu PP) */
         + '<td style="padding:5px 8px; color:var(--text3);" title="Scrap Luminovo inclus dans la quantité totale — modifiable dans l\'onglet Analyse BOM, avant d\'écrire la feuille">' + attEsc(String(l['Scrap qty'] == null ? '' : l['Scrap qty']).trim()) + '</td>'
         + '<td style="padding:5px 8px; color:var(--pp-blue); font-weight:600;">' + (l['Purchase qty']||'') + '</td>'
@@ -4684,6 +4687,57 @@ async function sendChat() {
       return attPanierCle(p['Fournisseur']) === cle;
     });
   }
+
+  /* ============================================================
+     15.22 (19/10/2026, demande Olivier : « je vois pas de bobine ici, or on a le R10K-0402 ») — STOCK PERMANENT
+     DANS L'ONGLET ACHATS. La règle de 15.20 ne jouait qu'à l'écriture de la feuille depuis Analyse BOM ; une
+     feuille déjà écrite (ex. SO2610-998 MERIO) n'en voyait rien. Ici, sur une feuille EXISTANTE, rien n'est
+     automatique : un badge dit l'état, et un bouton ajoute la ligne BOBINE si on le décide.
+       stock STK PP >= besoin            -> « Stock permanent » (vert)
+       bobine deja en commande           -> « Bobine en commande via SOx » (orange)
+       sinon                             -> « Réappro bobine » (bleu) + bouton « + bobine » :
+                                            ligne ajoutée à la feuille (n8n achats-ajouter-ligne v1.0) :
+                                            fournisseur de la ligne, qté = bobine, ref VIDE, Vigilance = marque,
+                                            puis relecture de la feuille. La ligne carte n'est PAS modifiée ici.
+     ============================================================ */
+  function attBesoinLigne(l){
+    const n = v => { const x = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(x) ? null : x; };
+    const agg = n(l['Aggregated qty']), scrap = n(l['Scrap qty']);
+    if (agg !== null) return agg + (scrap || 0);
+    return n(l['Purchase qty']) || 0;
+  }
+  function attStockPermanentHtml(l, i){
+    if (typeof stockPermanent !== 'object' || !Object.keys(stockPermanent).length) return '';
+    const ipn = String(l['Approved internal part number'] || '').trim().toUpperCase();
+    const sp = refStockPermanent(ipn);
+    if (!sp) return '';
+    const vig = String(l['Vigilance'] || '');
+    if (vig.indexOf(STOCK_PERMANENT_MARQUE) >= 0) return ' <span class="sp-badge sp-bobine" title="Ligne de réappro bobine (stock permanent)"><i class="ti ti-circle-dot" aria-hidden="true"></i> BOBINE</span>';
+    const besoin = attBesoinLigne(l);
+    const stock = (typeof stockByIPN === 'object' && stockByIPN[ipn] !== undefined) ? Number(stockByIPN[ipn]) : null;
+    if (stock !== null && stock >= besoin) return ' <span class="sp-badge sp-couvert" title="Stock permanent : ' + stock + ' en STK PP pour un besoin de ' + besoin + '. Rien à acheter : passe la ligne en Inventory si tu prends sur le stock."><i class="ti ti-infinity" aria-hidden="true"></i> Stock permanent</span>';
+    if (sp.commande_le) return ' <span class="sp-badge sp-attend" title="Bobine ' + ipn + ' en commande depuis le ' + dateCourte(sp.commande_le) + (sp.commande_via ? ' via ' + sp.commande_via : '') + ' (stock ' + (stock === null ? '?' : stock) + ', besoin ' + besoin + ')"><i class="ti ti-infinity" aria-hidden="true"></i> Bobine en commande</span>';
+    return ' <span class="sp-badge sp-reappro" title="Stock permanent : stock ' + (stock === null ? 'inconnu' : stock) + ' < besoin ' + besoin + '. Bobine de ' + sp.bobine + ' pcs à commander."><i class="ti ti-infinity" aria-hidden="true"></i> Réappro bobine</span>'
+      + ' <button class="btn" style="padding:1px 7px; font-size:10.5px; color:var(--pp-blue); border-color:var(--pp-blue);" onclick="attAjouterBobine(' + i + ')" title="Ajoute une ligne BOBINE (' + sp.bobine + ' pcs, ref fournisseur à sourcer) dans la feuille achat de ce SO">+ bobine</button>';
+  }
+  window.attAjouterBobine = async function(i){
+    const l = attSheetActives[i]; if (!l || !attSheetData) return;
+    const ipn = String(l['Approved internal part number'] || '').trim().toUpperCase();
+    const sp = refStockPermanent(ipn); if (!sp) return;
+    const fourn = String(l['Supplier'] || '').trim();
+    const fournBob = (fourn && fourn.toLowerCase() !== 'inventory' && fourn.charAt(0) !== '?' && fourn.toLowerCase() !== 'consultation') ? fourn : 'DigiKey';
+    if (!confirm('Ajouter une ligne BOBINE ' + ipn + ' (' + sp.bobine + ' pcs, ' + fournBob + ', réf fournisseur à sourcer) dans la feuille achat ' + attSheetData.so + ' ?\n\nLa ligne de la carte n\'est pas modifiée : passe-la en Inventory si elle doit prendre sur le stock.')) return;
+    const vig = STOCK_PERMANENT_MARQUE + ' — réappro ' + ipn + ' : bobine de ' + sp.bobine + ' pcs, ref fournisseur à sourcer en bobine (pas la ref de la carte). Ajoutée depuis l\'onglet Achats le ' + new Date().toLocaleDateString('fr-FR') + '.';
+    try {
+      const base = (writerUrl || 'https://protoprocess.app.n8n.cloud/webhook/x').replace(/\/[^\/]*$/, '');
+      const r = await fetch(base + '/achats-ajouter-ligne', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ so: attSheetData.so, ligne: { supplier: fournBob, ref: '', ipn: ipn, agg: String(sp.bobine), scrap: '0', moq: String(sp.bobine), package: String(l['Package'] || sp.boitier || ''), unit_price: '', purchase_qty: String(sp.bobine), purchase_price: '', mpn: String(l['MPN'] || ''), designator: '', approved_parts: String(l['Approved parts'] || ''), mounting: String(l['Mounting'] || ''), notes: '', manufacturer_free: '', vigilance: vig, marque: STOCK_PERMANENT_MARQUE } }) });
+      const res = await r.json().catch(() => ({}));
+      if (!r.ok || !res.success) { alert('Échec : ' + (res.message || res.error || ('HTTP ' + r.status))); return; }
+      alert('✅ ' + res.message);
+      attSheetCharger();
+    } catch(e) { alert('Erreur réseau : ' + e.message); }
+  };
 
   /* 15.20 : détail d'une ligne de feuille achat pour la table lignes_commandees (voie B, étape 1).
      Le fabricant vient d'« Approved parts » (Fabricant;MPN), jamais de « Manufacturer free » (drapeau Yes/No). */
