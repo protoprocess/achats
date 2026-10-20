@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.24">
+<link rel="stylesheet" href="css/app.css?v=15.25">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,9 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.24";
+const APP_VERSION = "15.25";
+/* 15.25 (20/10/2026, demande Olivier) : onglet Achats — la recherche filtre aussi sur le fabricant (Approved parts) et le mot
+   « bobine » (ou le bouton Bobines) ne garde que les lignes du stock permanent. */
 /* 15.24 (20/10/2026, Olivier) : « + bobine » = un seul geste : bobine ajoutée ET ligne carte passée en Inventory (on ne commande
    jamais la bande et la bobine). Plus de question. */
 /* 15.23 (20/10/2026, retour Olivier « ce message n'aide pas du tout ») : « + bobine » dit ce qui va se passer (1 ligne de plus,
@@ -4265,6 +4267,7 @@ async function sendChat() {
      Porte sur fournisseur, ref fournisseur, IPN, MPN et repere (Designator).
      Cas d'usage cite : taper « ? » pour sortir toutes les lignes sans solution. */
   let attSheetFiltre = '';
+  window.attSheetFiltreEst = function(v){ return attSheetFiltre.trim().toLowerCase() === v; };
   window.attSheetFiltrer = function(v){
     attSheetFiltre = String(v || '');
     if (!attSheetData) return;
@@ -4276,7 +4279,8 @@ async function sendChat() {
   function attFiltreHtml(){
     return '<div style="display:flex; align-items:center; gap:6px; margin:4px 0 6px;">'
       + '<i class="ti ti-search" aria-hidden="true" style="color:var(--text3)"></i>'
-      + '<input type="text" id="att-sheet-filtre" value="' + attEsc(attSheetFiltre) + '" placeholder="Filtrer : ?, MPN, IPN, réf, repère…" title="Filtre sur fournisseur, réf fournisseur, IPN, MPN et repère. Un ? seul affiche les lignes sans solution." style="width:280px; max-width:100%;" oninput="attSheetFiltrer(this.value)" />' /* 13.3 : ~1,5 x un MPN (signalement Ariel 53) */
+      + '<input type="text" id="att-sheet-filtre" value="' + attEsc(attSheetFiltre) + '" placeholder="Filtrer : ?, MPN, IPN, réf, repère, fabricant, bobine…" title="Filtre sur fournisseur, réf fournisseur, IPN, MPN, repère et fabricant. Un ? seul affiche les lignes sans solution ; « bobine » les lignes du stock permanent." style="width:300px; max-width:100%;" oninput="attSheetFiltrer(this.value)" />' /* 13.3 : ~1,5 x un MPN (signalement Ariel 53) */
+      + '<button class="btn" style="padding:3px 9px; font-size:11px; ' + (attSheetFiltre.trim().toLowerCase() === 'bobine' ? 'color:var(--pp-blue); border-color:var(--pp-blue);' : '') + '" onclick="attSheetFiltrer(attSheetFiltreEst(\'bobine\') ? \'\' : \'bobine\')" title="Seulement les lignes du stock permanent (bobines)"><i class="ti ti-infinity" aria-hidden="true"></i> Bobines</button>'
       + '</div>';
   }
   /* 13.1 : 3 premiers reperes, le reste au survol (hauteur de ligne constante) */
@@ -4285,10 +4289,19 @@ async function sendChat() {
     if (t.length <= 3) return attEsc(t.join(', '));
     return '<span title="' + attEsc(t.join(', ')) + '">' + attEsc(t.slice(0,3).join(', ')) + ' <span style="color:var(--text3)">+' + (t.length - 3) + '</span></span>';
   }
+  /* 15.25 (20/10/2026, demande Olivier) : deux filtres de plus dans la même recherche.
+       « bobine »  -> lignes concernées par le stock permanent (IPN de la liste, ou ligne BOBINE)
+       fabricant   -> cherché dans « Approved parts » (Fabricant;MPN), en plus des champs habituels */
+  function attLigneStockPermanent(l){
+    if (typeof stockPermanent !== 'object' || !Object.keys(stockPermanent).length) return false;
+    if (String(l['Vigilance'] || '').indexOf(STOCK_PERMANENT_MARQUE) >= 0) return true;
+    return !!refStockPermanent(String(l['Approved internal part number'] || '').trim().toUpperCase());
+  }
   function attSheetMatch(l){
     const q = attSheetFiltre.trim().toLowerCase();
     if (!q) return true;
-    const champs = [l['Supplier'], l['Supplier part number'], l['Approved internal part number'], l['MPN'], l['Designator']];
+    if (q === 'bobine' || q === 'bobines') return attLigneStockPermanent(l);
+    const champs = [l['Supplier'], l['Supplier part number'], l['Approved internal part number'], l['MPN'], l['Designator'], l['Approved parts']];
     return champs.some(function(c){ return String(c == null ? '' : c).toLowerCase().indexOf(q) !== -1; });
   }
 
