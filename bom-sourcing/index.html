@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.28">
+<link rel="stylesheet" href="css/app.css?v=15.29">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,9 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.28";
+const APP_VERSION = "15.29";
+/* 15.29 (20/10/2026) : masquage sur place après « J'ai commandé » — MPN d'abord puis IPN, ligne BOBINE distinguée de la ligne
+   carte (même IPN) : la bobine R10K-0402 restait affichée et la ligne carte était masquée à sa place. */
 /* 15.28 (20/10/2026) : « J'ai commandé » envoie les lignes Inventory depuis la feuille complète (elles sont masquées à l'écran,
    donc jamais envoyées avant) ; alerte si aucune ligne cochée ; cases du panier blindées (TypeError Safari). */
 /* 15.27 (20/10/2026) : « Changer fournisseur / réf » envoie bobine:true/false à la Résolution (v1.7) pour viser la ligne BOBINE
@@ -5134,7 +5136,13 @@ async function sendChat() {
           const U = x => String(x || '').trim().toUpperCase();
           aff.forEach(l => {
             const I = U(l.ipn), M = U(l.mpn);
-            const cible = attSheetData.lignes.find(o => (I && U(o['Approved internal part number']) === I) || (M && U(o['MPN']) === M));
+            /* 15.29 : MPN d'abord, puis IPN, en ignorant les lignes deja commandees / Inventory et en
+               respectant la marque BOBINE (une IPN peut etre sur 2 lignes : carte + bobine). */
+            const libre = o => !o._commande && U(o['Supplier']) !== 'INVENTORY';
+            const estBob = o => String(o['Vigilance'] || '').indexOf(STOCK_PERMANENT_MARQUE) >= 0;
+            const cible = (M && attSheetData.lignes.find(o => libre(o) && U(o['MPN']) === M && estBob(o) === !!l.bobine))
+              || (I && attSheetData.lignes.find(o => libre(o) && U(o['Approved internal part number']) === I && estBob(o) === !!l.bobine))
+              || (M && attSheetData.lignes.find(o => libre(o) && U(o['MPN']) === M));
             if (cible) cible._commande = true;
           });
           attSheetRender();
