@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.22">
+<link rel="stylesheet" href="css/app.css?v=15.23">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,10 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.22";
+const APP_VERSION = "15.23";
+/* 15.23 (20/10/2026, retour Olivier « ce message n'aide pas du tout ») : « + bobine » dit ce qui va se passer (1 ligne de plus,
+   qté, réf à choisir, la ligne carte inchangée) puis PROPOSE le 2e geste au lieu de le décrire : « la carte prend-elle sur la bobine ? »
+   OK = sa ligne passe en Inventory (résolution, sans vert ni panier). */
 /* 15.22 (19/10/2026, demande Olivier) : STOCK PERMANENT DANS L'ONGLET ACHATS. Sur une feuille déjà écrite, badge à côté de
    l'IPN (« Stock permanent » / « Bobine en commande » / « Réappro bobine ») et bouton « + bobine » qui ajoute la ligne
    BOBINE à la feuille (n8n « Achats — Ajouter ligne feuille » v1.0). Rien d'automatique : la feuille a pu être travaillée. */
@@ -4724,19 +4727,39 @@ async function sendChat() {
     const l = attSheetActives[i]; if (!l || !attSheetData) return;
     const ipn = String(l['Approved internal part number'] || '').trim().toUpperCase();
     const sp = refStockPermanent(ipn); if (!sp) return;
+    const so = attSheetData.so;
     const fourn = String(l['Supplier'] || '').trim();
     const fournBob = (fourn && fourn.toLowerCase() !== 'inventory' && fourn.charAt(0) !== '?' && fourn.toLowerCase() !== 'consultation') ? fourn : 'DigiKey';
-    if (!confirm('Ajouter une ligne BOBINE ' + ipn + ' (' + sp.bobine + ' pcs, ' + fournBob + ', réf fournisseur à sourcer) dans la feuille achat ' + attSheetData.so + ' ?\n\nLa ligne de la carte n\'est pas modifiée : passe-la en Inventory si elle doit prendre sur le stock.')) return;
-    const vig = STOCK_PERMANENT_MARQUE + ' — réappro ' + ipn + ' : bobine de ' + sp.bobine + ' pcs, ref fournisseur à sourcer en bobine (pas la ref de la carte). Ajoutée depuis l\'onglet Achats le ' + new Date().toLocaleDateString('fr-FR') + '.';
+    const qteCarte = String(l['Purchase qty'] || '').trim();
+    const N = n => Number(n).toLocaleString('fr-FR');
+    /* 15.22b : dire ce qui va se passer, pas comment s'y prendre */
+    if (!confirm('Commander une bobine ' + ipn + ' ?\n\n'
+      + '→ 1 ligne de plus dans la feuille achat et dans le panier ' + fournBob + ' :\n'
+      + '   ' + N(sp.bobine) + ' pcs, réf fournisseur à choisir (bobine, pas la réf coupe de bande).\n\n'
+      + '→ La ligne de la carte (' + qteCarte + ' pcs) reste à acheter telle quelle pour l’instant.')) return;
+    const vig = STOCK_PERMANENT_MARQUE + ' — réappro ' + ipn + ' : bobine de ' + sp.bobine + ' pcs, ref fournisseur à sourcer en bobine (pas la ref de la carte). Ajoutée depuis l’onglet Achats le ' + new Date().toLocaleDateString('fr-FR') + '.';
+    const base = (writerUrl || 'https://protoprocess.app.n8n.cloud/webhook/x').replace(/\/[^\/]*$/, '');
     try {
-      const base = (writerUrl || 'https://protoprocess.app.n8n.cloud/webhook/x').replace(/\/[^\/]*$/, '');
       const r = await fetch(base + '/achats-ajouter-ligne', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ so: attSheetData.so, ligne: { supplier: fournBob, ref: '', ipn: ipn, agg: String(sp.bobine), scrap: '0', moq: String(sp.bobine), package: String(l['Package'] || sp.boitier || ''), unit_price: '', purchase_qty: String(sp.bobine), purchase_price: '', mpn: String(l['MPN'] || ''), designator: '', approved_parts: String(l['Approved parts'] || ''), mounting: String(l['Mounting'] || ''), notes: '', manufacturer_free: '', vigilance: vig, marque: STOCK_PERMANENT_MARQUE } }) });
+        body: JSON.stringify({ so, ligne: { supplier: fournBob, ref: '', ipn: ipn, agg: String(sp.bobine), scrap: '0', moq: String(sp.bobine), package: String(l['Package'] || sp.boitier || ''), unit_price: '', purchase_qty: String(sp.bobine), purchase_price: '', mpn: String(l['MPN'] || ''), designator: '', approved_parts: String(l['Approved parts'] || ''), mounting: String(l['Mounting'] || ''), notes: '', manufacturer_free: '', vigilance: vig, marque: STOCK_PERMANENT_MARQUE } }) });
       const res = await r.json().catch(() => ({}));
-      if (!r.ok || !res.success) { alert('Échec : ' + (res.message || res.error || ('HTTP ' + r.status))); return; }
-      alert('✅ ' + res.message);
-      attSheetCharger();
-    } catch(e) { alert('Erreur réseau : ' + e.message); }
+      if (!r.ok || !res.success) { alert('Rien n’a été ajouté : ' + (res.message || res.error || ('HTTP ' + r.status))); return; }
+    } catch(e) { alert('Erreur réseau : ' + e.message); return; }
+    /* 2e geste, proposé : la carte prend sur la bobine -> sa ligne passe en Inventory (même chemin que « Changer fournisseur », sans vert ni panier) */
+    let inv = false;
+    if (confirm('Bobine ajoutée.\n\nLa carte peut-elle prendre ses ' + qteCarte + ' pcs sur la bobine à réception ?\n\n'
+      + 'OK = sa ligne passe en « Inventory » : plus rien à acheter pour elle, le stock la servira.\n'
+      + 'Annuler = on achète les deux (la ligne de la carte reste dans le panier).')) {
+      try {
+        const rr = await fetch(ATT_RESOL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ so, mpn: String(l['MPN'] || '').trim(), ipn, fournisseur: 'Inventory', ref_fournisseur: '', panier: 'skip', vert: false }) });
+        const dr = await rr.json().catch(() => ({}));
+        inv = !!dr.success;
+        if (!inv) alert('La ligne de la carte n’a pas pu être passée en Inventory : ' + (dr.reason || 'inconnu') + '. Fais-le avec « Changer fournisseur / réf ».');
+      } catch(e) { alert('Erreur réseau (ligne carte inchangée) : ' + e.message); }
+    }
+    alert('✅ Bobine ' + ipn + ' (' + N(sp.bobine) + ' pcs) ajoutée au panier ' + fournBob + (inv ? ' — la carte prendra sur le stock.' : '.'));
+    attSheetCharger();
   };
 
   /* 15.20 : détail d'une ligne de feuille achat pour la table lignes_commandees (voie B, étape 1).
