@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.29">
+<link rel="stylesheet" href="css/app.css?v=15.30">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,11 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.29";
+const APP_VERSION = "15.30";
+/* 15.30 (20/10/2026, demande Olivier) : onglet Achats — une ligne de ce SO présente dans les Paniers en attente (En attente,
+   Sans solution, Consultation, Réponse client…) porte un badge avec le statut et la date, est grisée, et n'a plus le bouton
+   « question client » si la question est déjà posée. Filtre « attente ». Avant : elle avait l'air commandable alors qu'elle
+   était exclue du panier (le « ↩1 » des pastilles). */
 /* 15.29 (20/10/2026) : masquage sur place après « J'ai commandé » — MPN d'abord puis IPN, ligne BOBINE distinguée de la ligne
    carte (même IPN) : la bobine R10K-0402 restait affichée et la ligne carte était masquée à sa place. */
 /* 15.28 (20/10/2026) : « J'ai commandé » envoie les lignes Inventory depuis la feuille complète (elles sont masquées à l'écran,
@@ -4287,7 +4291,7 @@ async function sendChat() {
   function attFiltreHtml(){
     return '<div style="display:flex; align-items:center; gap:6px; margin:4px 0 6px;">'
       + '<i class="ti ti-search" aria-hidden="true" style="color:var(--text3)"></i>'
-      + '<input type="text" id="att-sheet-filtre" value="' + attEsc(attSheetFiltre) + '" placeholder="Filtrer : ?, MPN, IPN, réf, repère, fabricant, bobine…" title="Filtre sur fournisseur, réf fournisseur, IPN, MPN, repère et fabricant. Un ? seul affiche les lignes sans solution ; « bobine » les lignes du stock permanent." style="width:300px; max-width:100%;" oninput="attSheetFiltrer(this.value)" />' /* 13.3 : ~1,5 x un MPN (signalement Ariel 53) */
+      + '<input type="text" id="att-sheet-filtre" value="' + attEsc(attSheetFiltre) + '" placeholder="Filtrer : ?, MPN, IPN, réf, repère, fabricant, bobine, attente…" title="Filtre sur fournisseur, réf fournisseur, IPN, MPN, repère et fabricant. Un ? seul affiche les lignes sans solution ; « bobine » les lignes du stock permanent ; « attente » les lignes qui sont dans les Paniers en attente." style="width:300px; max-width:100%;" oninput="attSheetFiltrer(this.value)" />' /* 13.3 : ~1,5 x un MPN (signalement Ariel 53) */
       + '<button class="btn" style="padding:3px 9px; font-size:11px; ' + (attSheetFiltre.trim().toLowerCase() === 'bobine' ? 'color:var(--pp-blue); border-color:var(--pp-blue);' : '') + '" onclick="attSheetFiltrer(attSheetFiltreEst(\'bobine\') ? \'\' : \'bobine\')" title="Seulement les lignes du stock permanent (bobines)"><i class="ti ti-infinity" aria-hidden="true"></i> Bobines</button>'
       + '</div>';
   }
@@ -4309,6 +4313,7 @@ async function sendChat() {
     const q = attSheetFiltre.trim().toLowerCase();
     if (!q) return true;
     if (q === 'bobine' || q === 'bobines') return attLigneStockPermanent(l);
+    if (q === 'attente' || q === 'en attente') return !!attPanierDeLigne(l, attPaniersDuSo(attSheetData ? attSheetData.so : ''));   /* 15.30 */
     const champs = [l['Supplier'], l['Supplier part number'], l['Approved internal part number'], l['MPN'], l['Designator'], l['Approved parts']];
     return champs.some(function(c){ return String(c == null ? '' : c).toLowerCase().indexOf(q) !== -1; });
   }
@@ -4364,32 +4369,39 @@ async function sendChat() {
     });
     actives.sort((a,b) => a._rang - b._rang || (a._rang === 1 ? b._prix - a._prix : a._ordre - b._ordre));
     /* Colonnes courtes et importantes d'abord (charte §5), le reste accessible dans Sheets */
+    const paniersSo = attPaniersDuSo(d.so);   /* 15.30 : lignes de ce SO dans Paniers en attente */
     const rows = actives.map((l, i) => {
       const fourn = (l['Supplier']||'').trim();
       const inv = fourn.toLowerCase() === 'inventory';
       const consult = fourn.toLowerCase() === 'consultation';
       const sansSol = fourn.charAt(0) === '?';
+      const pAtt = attPanierDeLigne(l, paniersSo);
+      const enAttente = !!pAtt && !consult && !attConsultationConclue(l, attConsultationsDuSo(d.so));
       const prix = l._prix;
       const cher = prix >= SEUIL_PRIX_LIGNE;
       if (cher) nbChers++;
       const signale = !!(sigSet && sigSet.has(String(l['MPN']||'').trim().toUpperCase()));
       if (signale) nbSignales++;
       /* 13.1 : « Cmde chez … » retires (doublon de « J ai commande » du panier) ; reste Sans solution */
-      const cmdBtn = '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink); white-space:nowrap;" onclick="attSheetSansSolution(' + i + ')" title="Marque le fournisseur ? et ouvre FabStory pour poser la question au client">Non dispo → question client</button>';
+      /* 15.30 : question deja posee (Sans solution / Reponse client) -> pas de 2e bouton */
+      const dejaPosee = !!pAtt && ['Sans solution', 'Reponse client', 'Réponse client'].indexOf(attNorm(pAtt['Statut'])) >= 0;
+      const cmdBtn = dejaPosee
+        ? '<span style="font-size:11px; color:var(--text3);">question posée</span>'
+        : '<button class="btn" style="padding:3px 8px; font-size:11px; color:var(--pink); border-color:var(--pink); white-space:nowrap;" onclick="attSheetSansSolution(' + i + ')" title="Marque le fournisseur ? et ouvre FabStory pour poser la question au client">Non dispo → question client</button>';
       const bascBtn = ''; /* v14.0 : le ↔ par ligne est remplacé par la barre d actions (coche + « Changer fournisseur / réf ») */
       const prixHtml = prix
         ? (cher
           ? '<span style="color:var(--amber); font-weight:500;" title="Demande de prix conseillée — un broker peut faire mieux que les distributeurs sur ce montant">' + prix.toFixed(2) + ' € <i class="ti ti-alert-triangle" aria-hidden="true"></i></span>'
           : prix.toFixed(2) + ' €')
         : '';
-      const teinte = sansSol ? ' style="background:rgba(237,147,177,0.07)"' : (signale ? ' style="background:rgba(91,196,216,0.07)"' : (cher ? ' style="background:rgba(234,182,118,0.06)"' : ''));
+      const teinte = sansSol ? ' style="background:rgba(237,147,177,0.07)"' : (enAttente ? ' style="background:rgba(234,182,118,0.08); opacity:.75;"' : (signale ? ' style="background:rgba(91,196,216,0.07)"' : (cher ? ' style="background:rgba(234,182,118,0.06)"' : '')));
       const sigBadge = signale
         ? '<span style="background:rgba(91,196,216,0.15); color:#8FD8E6; font-size:10.5px; padding:2px 7px; border-radius:20px; white-space:nowrap; margin-left:6px;" title="Repérée dans le scénario Luminovo par l\'appro — à trancher ici : autre fournisseur, ou Sans solution."><i class="ti ti-flag" aria-hidden="true"></i> appro</span>'
         : '';
       return '<tr' + teinte + '>'
         + '<td style="padding:5px 6px;"><input type="checkbox" class="att-dp-check" data-i="' + i + '" onchange="attDpMaj()"' + (cher ? ' title="Prix élevé"' : '') + '></td>'
         + '<td style="padding:5px 2px 5px 0;"><button class="btn" style="padding:2px 7px; font-size:12px; color:#7FDDF0; background:rgba(91,196,216,0.16); border-color:var(--pp-blue); font-weight:600;" onclick="attBasculer(' + i + ')" title="Changer fournisseur / réf pour cette ligne"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></button></td>'
-        + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + fournHtml(fourn, (l['Supplier part number']||'').trim()) + '</td>'
+        + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + fournHtml(fourn, (l['Supplier part number']||'').trim()) + (enAttente ? attBadgeAttente(pAtt) : '') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Supplier part number']||'') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['MPN']||'') + sigBadge + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Approved internal part number']||'') + attStockPermanentHtml(l, i) + '</td>'
@@ -4699,6 +4711,38 @@ async function sendChat() {
     const U = x => String(x || '').trim().toUpperCase();
     const m = U(l['MPN']), i = U(l['Approved internal part number']);
     return (!!m && cles.has('M|' + m)) || (!!i && cles.has('I|' + i));
+  }
+  /* 15.30 (20/10/2026, demande Olivier) : la ligne des Paniers en attente de CE SO pour une ligne de feuille
+     (statut hors Commandé / Clos), pour afficher dans le tableau « En attente / Sans solution / … » au lieu
+     d'une ligne qui a l'air commandable. Clé -> ligne du panier. */
+  function attPaniersDuSo(so){
+    const U = x => String(x || '').trim().toUpperCase();
+    const S = U(so); const m = new Map();
+    (attData.panier || []).forEach(function(p){
+      const st = attNorm(p['Statut']);
+      if (st === 'Commandé' || st === 'Clos') return;
+      if (U(p['SO']) !== S) return;
+      if (U(p['MPN']) && !m.has('M|' + U(p['MPN']))) m.set('M|' + U(p['MPN']), p);
+      if (U(p['IPN']) && !m.has('I|' + U(p['IPN']))) m.set('I|' + U(p['IPN']), p);
+    });
+    return m;
+  }
+  function attPanierDeLigne(l, paniers){
+    if (!paniers || !paniers.size) return null;
+    const U = x => String(x || '').trim().toUpperCase();
+    const m = U(l['MPN']), i = U(l['Approved internal part number']);
+    return (m && paniers.get('M|' + m)) || (i && paniers.get('I|' + i)) || null;
+  }
+  function attBadgeAttente(p){
+    if (!p) return '';
+    const st = attNorm(p['Statut']) || 'En attente';
+    const date = attNorm(p['Date ajout']);
+    const four = String(p['Fournisseur'] || '').replace(/^\?+/, '').trim();
+    const lib = { 'En attente': 'En attente', 'Sans solution': 'Sans solution', 'Consultation': 'Demande de prix en cours', 'Reponse client': 'Réponse client attendue', 'Réponse client': 'Réponse client attendue', 'Indice B': 'Indice B' }[st] || st;
+    const ico = st === 'Sans solution' ? 'ti-ban' : (st === 'Consultation' ? 'ti-mail' : 'ti-hourglass');
+    const det = [four && st === 'En attente' ? 'panier ' + four : '', date].filter(Boolean).join(' · ');
+    const col = st === 'Sans solution' ? 'var(--pink)' : 'var(--amber)';
+    return '<span class="att-badge-attente" style="display:inline-block; margin-left:6px; font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:20px; white-space:nowrap; color:' + col + '; background:rgba(234,182,118,0.14); border:1px solid ' + col + ';" title="Cette ligne est dans les Paniers en attente (statut « ' + attEsc(st) + ' ») : elle ne part PAS avec le panier de ce SO. Elle sera reprise automatiquement quand un panier ' + attEsc(four || 'de ce fournisseur') + ' atteint le franco, ou commande-la depuis l\'onglet En attente."><i class="ti ' + ico + '" aria-hidden="true"></i> ' + attEsc(lib) + (det ? ' <span style="font-weight:400; opacity:.8;">(' + attEsc(det) + ')</span>' : '') + '</span>';
   }
   /* 15.17 : la regle de REPRISE vit ici, et nulle part ailleurs — le panneau et
      le badge s en servent tous les deux.
