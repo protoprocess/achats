@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.27">
+<link rel="stylesheet" href="css/app.css?v=15.28">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,9 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.27";
+const APP_VERSION = "15.28";
+/* 15.28 (20/10/2026) : « J'ai commandé » envoie les lignes Inventory depuis la feuille complète (elles sont masquées à l'écran,
+   donc jamais envoyées avant) ; alerte si aucune ligne cochée ; cases du panier blindées (TypeError Safari). */
 /* 15.27 (20/10/2026) : « Changer fournisseur / réf » envoie bobine:true/false à la Résolution (v1.7) pour viser la ligne BOBINE
    ou la ligne carte quand les deux portent la même IPN (sinon « ligne_ambigue »). */
 /* 15.26 (20/10/2026, correctif SO2610-998) : la ligne BOBINE est ajoutée SANS MPN ni Approved parts (ce n'est pas la réf de la bande).
@@ -4799,7 +4801,10 @@ async function sendChat() {
   }
   /* 15.20 : lignes Inventory de CE SO (pièces prises sur le stock), pour « carte complète » côté réception */
   function attLignesInventory(){
-    return (attSheetActives || []).filter(l => String(l['Supplier'] || '').trim().toLowerCase() === 'inventory').map(l => Object.assign({
+    /* 15.28 : lire la FEUILLE complete (attSheetData.lignes), pas la liste affichee : les lignes Inventory y sont masquees
+       (constat SO2610-998, 20/10 : 0 ligne inventory dans lignes_commandees) */
+    const src = (attSheetData && Array.isArray(attSheetData.lignes)) ? attSheetData.lignes : (attSheetActives || []);
+    return src.filter(l => String(l['Supplier'] || '').trim().toLowerCase() === 'inventory').map(l => Object.assign({
       ipn: (l['Approved internal part number']||'').trim(), mpn: (l['MPN']||'').trim(), qte: (l['Purchase qty']||'').toString().trim()
     }, attDetailLigne(l)));
   }
@@ -5036,7 +5041,7 @@ async function sendChat() {
     if (z) z.innerHTML = '';
     attPanier = null;
   };
-  window.attPanierToggle = function(ix){ if (attPanier) { attPanier.aff[ix].coche = !attPanier.aff[ix].coche; attPanierMemoriser(); attPanierRender(); } };
+  window.attPanierToggle = function(ix){ if (attPanier && attPanier.aff && attPanier.aff[ix]) { attPanier.aff[ix].coche = !attPanier.aff[ix].coche; attPanierMemoriser(); attPanierRender(); } else { attPanierRender(); } };  /* 15.28 : blinde (TypeError vu le 20/10) */
   window.attPanierReprendre = function(){ if (attPanier) { attPanier.reprendre = !attPanier.reprendre; attPanierMemoriser(); attPanierRender(); } };
 
   window.attPanierCopier = function(){
@@ -5090,7 +5095,7 @@ async function sendChat() {
       ? att.filter(l => U(l.so) === U(so)).map(l => ({ ipn: l.ipn, mpn: l.mpn, qte: l.qte, refFour: l.refFour }))
       : P.aff.filter(l => l.coche).map(l => ({ ipn: l.ipn, mpn: l.mpn, qte: l.qte, refFour: l.refFour, fournisseur: l.fournisseur, besoin: l.besoin, rejet: l.rejet, prix_unit: l.prix_unit, designators: l.designators, fabricant: l.fabricant, bobine: !!l.bobine }));
     const lignesInventory = EA ? [] : attLignesInventory();
-    if (!aff.length && !att.length) return;
+    if (!aff.length && !att.length) { alert('Aucune ligne cochée dans ce panier : rien à commander.'); return; }  /* 15.28 : plus de retour muet */
     if (EA && !so) { alert('SO introuvable sur la ligne la plus ancienne : commande impossible depuis ce panier.'); return; }
     const TT = attPanierTotaux(P);
     /* 15.0 (decision Olivier 05/10/2026) : sous le franco, on peut commander -- confirmation des frais de port d abord */
