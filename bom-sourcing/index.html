@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.30">
+<link rel="stylesheet" href="css/app.css?v=15.31">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,9 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.30";
+const APP_VERSION = "15.31";
+/* 15.31 (20/10/2026, retour Olivier) : l'étiquette dit POURQUOI la ligne attend — « Rupture — alerte Luminovo » (fournisseur ?X + alerte),
+   « Rupture (à surveiller) », « Fournisseur à décider » (???), « Sous franco (panier X) », « Question client posée ». */
 /* 15.30 (20/10/2026, demande Olivier) : onglet Achats — une ligne de ce SO présente dans les Paniers en attente (En attente,
    Sans solution, Consultation, Réponse client…) porte un badge avec le statut et la date, est grisée, et n'a plus le bouton
    « question client » si la question est déjà posée. Filtre « attente ». Avant : elle avait l'air commandable alors qu'elle
@@ -4737,12 +4739,19 @@ async function sendChat() {
     if (!p) return '';
     const st = attNorm(p['Statut']) || 'En attente';
     const date = attNorm(p['Date ajout']);
-    const four = String(p['Fournisseur'] || '').replace(/^\?+/, '').trim();
-    const lib = { 'En attente': 'En attente', 'Sans solution': 'Sans solution', 'Consultation': 'Demande de prix en cours', 'Reponse client': 'Réponse client attendue', 'Réponse client': 'Réponse client attendue', 'Indice B': 'Indice B' }[st] || st;
-    const ico = st === 'Sans solution' ? 'ti-ban' : (st === 'Consultation' ? 'ti-mail' : 'ti-hourglass');
-    const det = [four && st === 'En attente' ? 'panier ' + four : '', date].filter(Boolean).join(' · ');
-    const col = st === 'Sans solution' ? 'var(--pink)' : 'var(--amber)';
-    return '<span class="att-badge-attente" style="display:inline-block; margin-left:6px; font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:20px; white-space:nowrap; color:' + col + '; background:rgba(234,182,118,0.14); border:1px solid ' + col + ';" title="Cette ligne est dans les Paniers en attente (statut « ' + attEsc(st) + ' ») : elle ne part PAS avec le panier de ce SO. Elle sera reprise automatiquement quand un panier ' + attEsc(four || 'de ce fournisseur') + ' atteint le franco, ou commande-la depuis l\'onglet En attente."><i class="ti ' + ico + '" aria-hidden="true"></i> ' + attEsc(lib) + (det ? ' <span style="font-weight:400; opacity:.8;">(' + attEsc(det) + ')</span>' : '') + '</span>';
+    const brut = String(p['Fournisseur'] || '').trim();
+    const four = brut.replace(/^\?+/, '').trim();
+    const douteux = brut.charAt(0) === '?';                 /* ?Mouser USA = rupture chez ce fournisseur ; ??? = personne */
+    const alerte = /alerte/i.test(String(p['Commentaire'] || ''));
+    /* 15.31 (retour Olivier 20/10) : « En attente » ne veut pas dire la même chose selon le fournisseur */
+    let lib, ico, col = 'var(--amber)', det = date;
+    if (st === 'Sans solution' || st === 'Reponse client' || st === 'Réponse client') { lib = st === 'Sans solution' ? 'Question client posée' : 'Réponse client attendue'; ico = 'ti-ban'; col = 'var(--pink)'; }
+    else if (st === 'Consultation') { lib = 'Demande de prix en cours'; ico = 'ti-mail'; }
+    else if (st !== 'En attente') { lib = st; ico = 'ti-hourglass'; }
+    else if (douteux && !four) { lib = 'Fournisseur à décider'; ico = 'ti-help'; col = 'var(--red)'; }
+    else if (douteux) { lib = alerte ? 'Rupture — alerte Luminovo' : 'Rupture (à surveiller)'; ico = 'ti-alert-triangle'; col = 'var(--red)'; det = [four, date].filter(Boolean).join(' · '); }
+    else { lib = 'Sous franco'; ico = 'ti-hourglass'; det = [four ? 'panier ' + four : '', date].filter(Boolean).join(' · '); }
+    return '<span class="att-badge-attente" style="display:inline-block; margin-left:6px; font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:20px; white-space:nowrap; color:' + col + '; background:rgba(234,182,118,0.14); border:1px solid ' + col + ';" title="' + attEsc('Paniers en attente — statut « ' + st + ' », fournisseur « ' + (brut || '—') + ' ». ' + (douteux ? (four ? 'Rupture : pas de stock chez ' + four + (alerte ? ', alerte Luminovo posee (mail quand la piece revient).' : ', pas d alerte Luminovo posee.') : 'Aucun fournisseur choisi : a trancher dans l onglet En attente (Changer fournisseur).') : 'Reprise automatique quand un panier ' + (four || 'de ce fournisseur') + ' atteint le franco, ou commande depuis l onglet En attente.') + (p['Commentaire'] ? ' Commentaire : ' + p['Commentaire'] : '')) + '"><i class="ti ' + ico + '" aria-hidden="true"></i> ' + attEsc(lib) + (det ? ' <span style="font-weight:400; opacity:.8;">(' + attEsc(det) + ')</span>' : '') + '</span>';
   }
   /* 15.17 : la regle de REPRISE vit ici, et nulle part ailleurs — le panneau et
      le badge s en servent tous les deux.
