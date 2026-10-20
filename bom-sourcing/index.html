@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.25">
+<link rel="stylesheet" href="css/app.css?v=15.26">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,9 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.25";
+const APP_VERSION = "15.26";
+/* 15.26 (20/10/2026, correctif SO2610-998) : la ligne BOBINE est ajoutée SANS MPN ni Approved parts (ce n'est pas la réf de la bande).
+   Avec le même MPN, la résolution trouvait deux lignes et ne passait pas la carte en Inventory (« ligne ambiguë »). */
 /* 15.25 (20/10/2026, demande Olivier) : onglet Achats — la recherche filtre aussi sur le fabricant (Approved parts) et le mot
    « bobine » (ou le bouton Bobines) ne garde que les lignes du stock permanent. */
 /* 15.24 (20/10/2026, Olivier) : « + bobine » = un seul geste : bobine ajoutée ET ligne carte passée en Inventory (on ne commande
@@ -4756,7 +4758,7 @@ async function sendChat() {
     const base = (writerUrl || 'https://protoprocess.app.n8n.cloud/webhook/x').replace(/\/[^\/]*$/, '');
     try {
       const r = await fetch(base + '/achats-ajouter-ligne', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ so, ligne: { supplier: fournBob, ref: '', ipn: ipn, agg: String(sp.bobine), scrap: '0', moq: String(sp.bobine), package: String(l['Package'] || sp.boitier || ''), unit_price: '', purchase_qty: String(sp.bobine), purchase_price: '', mpn: String(l['MPN'] || ''), designator: '', approved_parts: String(l['Approved parts'] || ''), mounting: String(l['Mounting'] || ''), notes: '', manufacturer_free: '', vigilance: vig, marque: STOCK_PERMANENT_MARQUE } }) });
+        body: JSON.stringify({ so, ligne: { supplier: fournBob, ref: '', ipn: ipn, agg: String(sp.bobine), scrap: '0', moq: String(sp.bobine), package: String(l['Package'] || sp.boitier || ''), unit_price: '', purchase_qty: String(sp.bobine), purchase_price: '', mpn: '', designator: '', approved_parts: '', mounting: String(l['Mounting'] || ''), notes: '', manufacturer_free: '', vigilance: vig, marque: STOCK_PERMANENT_MARQUE } }) });
       const res = await r.json().catch(() => ({}));
       if (!r.ok || !res.success) { alert('Rien n’a été ajouté : ' + (res.message || res.error || ('HTTP ' + r.status))); return; }
     } catch(e) { alert('Erreur réseau : ' + e.message); return; }
