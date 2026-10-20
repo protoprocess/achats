@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP — v15.6 — 06/10/2026</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.26">
+<link rel="stylesheet" href="css/app.css?v=15.27">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -459,7 +459,9 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.26";
+const APP_VERSION = "15.27";
+/* 15.27 (20/10/2026) : « Changer fournisseur / réf » envoie bobine:true/false à la Résolution (v1.7) pour viser la ligne BOBINE
+   ou la ligne carte quand les deux portent la même IPN (sinon « ligne_ambigue »). */
 /* 15.26 (20/10/2026, correctif SO2610-998) : la ligne BOBINE est ajoutée SANS MPN ni Approved parts (ce n'est pas la réf de la bande).
    Avec le même MPN, la résolution trouvait deux lignes et ne passait pas la carte en Inventory (« ligne ambiguë »). */
 /* 15.25 (20/10/2026, demande Olivier) : onglet Achats — la recherche filtre aussi sur le fabricant (Approved parts) et le mot
@@ -4765,7 +4767,7 @@ async function sendChat() {
     let inv = false, motif = '';
     try {
       const rr = await fetch(ATT_RESOL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ so, mpn: String(l['MPN'] || '').trim(), ipn, fournisseur: 'Inventory', ref_fournisseur: '', panier: 'skip', vert: false }) });
+        body: JSON.stringify({ so, mpn: String(l['MPN'] || '').trim(), ipn, fournisseur: 'Inventory', ref_fournisseur: '', panier: 'skip', vert: false, bobine: false }) });
       const dr = await rr.json().catch(() => ({}));
       inv = !!dr.success; motif = dr.reason || '';
     } catch(e) { motif = 'erreur réseau (' + e.message + ')'; }
@@ -5178,7 +5180,9 @@ async function sendChat() {
     attPanierFermer();
     PPChangerFourn.ouvrir({
       lignes: [{ so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
-                 fournisseur: attFournPourPopup(l), ref: (l['Supplier part number']||'').trim() }],
+                 fournisseur: attFournPourPopup(l), ref: (l['Supplier part number']||'').trim(),
+                 /* 15.27 : la Resolution doit savoir si on vise la ligne BOBINE ou la ligne carte (meme IPN) */
+                 bobine: String(l['Vigilance'] || '').indexOf(STOCK_PERMANENT_MARQUE) >= 0 }],
       refInfoUrl: ATT_REFINFO_URL,
       stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
       appliquer: attBasculerAppliquer,
@@ -5255,7 +5259,8 @@ async function sendChat() {
   async function attBasculerAppliquer(ligne, v, msg){
     msg(v.dejaCommande ? 'Écriture feuille achat + marquage commandé…' : 'Écriture feuille achat…');
     const corps = { so: ligne.so, mpn: ligne.mpn, ipn: ligne.ipn, fournisseur: v.fournisseur, ref_fournisseur: v.ref || '',
-                    nouveau_mpn: v.nouveauMpn || '', nouveau_ipn: v.nouvelIpn || '' };
+                    nouveau_mpn: v.nouveauMpn || '', nouveau_ipn: v.nouvelIpn || '',
+                    bobine: ligne.bobine === true };
     /* déjà commandé = même chemin que « Cmdé X » (Paniers marqué Commandé) ; sinon la ligne rejoint le panier du fournisseur */
     if (!v.dejaCommande) { corps.panier = 'skip'; corps.vert = false; }
     const r = await fetch(ATT_RESOL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
