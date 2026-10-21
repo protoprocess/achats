@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PO Odoo — v1.0</title>
+<title>PO Odoo — v1.4</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -199,6 +199,15 @@ td.num input{text-align:right}
           <input type="text" id="fSo" placeholder="SO2607-410 + SO2607-412">
           <div class="hint">Reporté dans « Document d'origine ». Séparez par « + ».</div>
         </div>
+        <div class="field">
+          <label for="fDevise">Devise de la commande</label>
+          <select id="fDevise" style="width:100%">
+            <option value="EUR">EUR — euro (€)</option>
+            <option value="USD">USD — dollar américain ($)</option>
+            <option value="GBP">GBP — livre sterling (£)</option>
+          </select>
+          <div class="hint" id="hDevise">Pré-remplie avec la devise lue sur le devis. Aucun taux à saisir : Odoo applique le sien.</div>
+        </div>
       </div>
       <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <button class="btn-p" id="bCreer" disabled>Créer le PO dans Odoo</button>
@@ -213,7 +222,7 @@ td.num input{text-align:right}
 
 <script>
 "use strict";
-const APP_VERSION = "1.3", APP_DATE = "29/09/2026";
+const APP_VERSION = "1.4", APP_DATE = "21/10/2026";
 const BASE = "https://protoprocess.app.n8n.cloud";
 const MODE_TEST = new URLSearchParams(location.search).get("test") === "1";
 const PREFIX = MODE_TEST ? "/webhook-test/" : "/webhook/";
@@ -229,7 +238,28 @@ if (MODE_TEST) vb.classList.add("test");
 
 const $ = id => document.getElementById(id);
 const vide = el => { while (el.firstChild) el.removeChild(el.firstChild); };
-const eur = n => (n === null || n === undefined || !isFinite(n)) ? "—" : n.toLocaleString("fr-FR", {minimumFractionDigits:2, maximumFractionDigits:4}) + " €";
+/* ---------- devise ---------- */
+/* Odoo ne porte que trois devises actives et cotées : EUR, USD, GBP (relevé le
+   21/10/2026). On s'y tient volontairement — une devise sans taux donnerait un PO
+   faux sans prévenir. Aucun taux n'est saisi ici : Odoo applique le sien. */
+const DEVISES = { EUR: "€", USD: "$", GBP: "£" };
+let devise = "EUR";
+
+/* Devise lue sur le devis → code à trois lettres, ou null si rien n'est reconnu.
+   On préfère dire « non reconnue » que laisser croire à un euro par défaut. */
+function deviseLue(v) {
+  const x = String(v === null || v === undefined ? "" : v).toUpperCase();
+  if (!x) return null;
+  if (x.indexOf("EUR") >= 0 || x.indexOf("€") >= 0) return "EUR";
+  if (x.indexOf("GBP") >= 0 || x.indexOf("STERLING") >= 0 || x.indexOf("£") >= 0) return "GBP";
+  if (x.indexOf("USD") >= 0 || x.indexOf("DOLLAR") >= 0 || x.indexOf("$") >= 0) return "USD";
+  return null;
+}
+
+/* Montant dans la devise courante, ou dans celle qu'on lui passe. */
+const mt = (n, d) => (n === null || n === undefined || !isFinite(n)) ? "—"
+  : n.toLocaleString("fr-FR", {minimumFractionDigits:2, maximumFractionDigits:4})
+    + " " + (DEVISES[d || devise] || (d || devise));
 
 let fichiers = [];      // {nom, media_type, donnees_base64}  ou  {nom, texte}
 let lecture = null;     // réponse de la brique 1
@@ -390,12 +420,22 @@ function afficher() {
   [["Émetteur", em.nom || "non identifié"],
    ["Devis", (lecture.numeros_devis || []).join(" + ") || "—"],
    ["Lignes", String(lecture.nb_lignes)],
-   ["Devise", lecture.devise || "—"]].forEach(([k, v]) => {
+   ["Devise", deviseLue(lecture.devise) || (lecture.devise ? lecture.devise + " (non reconnue)" : "—")]].forEach(([k, v]) => {
     const s = document.createElement("span");
     const b = document.createElement("b"); b.textContent = v;
     s.append(document.createTextNode(k + " : "), b);
     res.appendChild(s);
   });
+
+  // La devise du devis pilote celle du PO. Si la lecture n'a rien reconnu, on
+  // retombe sur l'euro mais on le dit : un PO dans la mauvaise devise ne se
+  // corrige pas, il s'annule et se refait.
+  const dLue = deviseLue(lecture.devise);
+  devise = dLue || "EUR";
+  $("fDevise").value = devise;
+  $("hDevise").textContent = dLue
+    ? "Devise lue sur le devis : " + dLue + ". Aucun taux à saisir, Odoo applique le sien."
+    : "Aucune devise reconnue sur le devis : EUR par défaut. Vérifiez avant de créer le PO.";
 
   listePuces($("anomalies"), lecture.anomalies || [], "a");
   listePuces($("avertissements"), lecture.avertissements || [], "w");
@@ -459,7 +499,7 @@ function dessinerLignes() {
     tdP.appendChild(ip);
 
     const tdT = document.createElement("td"); tdT.className = "num mono"; tdT.id = "tl" + i;
-    tdT.style.paddingTop = "12px"; tdT.textContent = eur(totalLigne(l));
+    tdT.style.paddingTop = "12px"; tdT.textContent = mt(totalLigne(l));
 
     const tdS = document.createElement("td");
     const sp = document.createElement("div"); sp.className = "src"; sp.textContent = l.extrait_source || "—";
@@ -483,7 +523,7 @@ function totaux() {
   let somme = 0, incomplete = false;
   lignesUI.forEach((l, i) => {
     const t = totalLigne(l);
-    const c = $("tl" + i); if (c) c.textContent = eur(t);
+    const c = $("tl" + i); if (c) c.textContent = mt(t);
     if (!l.retenue) return;
     if (t === null) incomplete = true; else somme += t;
   });
@@ -500,7 +540,7 @@ function totaux() {
     txt = "Aucun total imprimé sur le devis : le recoupement automatique est impossible. Vérifiez chaque prix à la main.";
   } else if (!toutes) {
     cls = "na";
-    txt = "Lignes exclues de la commande : le total ne peut plus être comparé au devis (" + eur(annonce) + ").";
+    txt = "Lignes exclues de la commande : le total ne peut plus être comparé au devis (" + mt(annonce) + ").";
   } else {
     const ecart = Math.round((somme - annonce) * 100) / 100;
     if (Math.abs(ecart) <= 0.02) {
@@ -508,11 +548,11 @@ function totaux() {
       txt = "Le total des lignes correspond au montant imprimé sur le devis.";
     } else {
       cls = "ko";
-      txt = "Écart de " + eur(ecart) + " avec le total imprimé sur le devis (" + eur(annonce) + "). Une ligne est probablement mal lue — ou le devis exclut le port de son total. Vérifiez avant de créer le PO.";
+      txt = "Écart de " + mt(ecart) + " avec le total imprimé sur le devis (" + mt(annonce) + "). Une ligne est probablement mal lue — ou le devis exclut le port de son total. Vérifiez avant de créer le PO.";
     }
   }
   d.className = "tot " + cls;
-  const gros = document.createElement("b"); gros.textContent = eur(somme);
+  const gros = document.createElement("b"); gros.textContent = mt(somme);
   const lbl = document.createElement("span"); lbl.className = "muted";
   lbl.textContent = "total des lignes, hors port et frais";
   const msg = document.createElement("span"); msg.style.marginLeft = "auto"; msg.style.textAlign = "right";
@@ -660,12 +700,19 @@ function preCheck() {
   $("bCreer").disabled = creationFaite || manque.length > 0;
 }
 
+/* ---------- devise de la commande ---------- */
+$("fDevise").onchange = () => {
+  devise = $("fDevise").value;
+  if (lecture) totaux();   // les montants affichés changent d'unité, pas de valeur
+};
+
 /* ---------- création du PO ---------- */
 function corpsCommande(forcer) {
   return {
     partner_id: choisi.id,
     partner_ref: $("fRef").value.trim() || null,
     so: $("fSo").value.split("+").map(s => s.trim()).filter(Boolean),
+    devise: devise,
     forcer: forcer === true,
     lignes: lignesUI.filter(l => l.retenue).map(l => ({
       reference: l.reference,
@@ -722,8 +769,9 @@ function succes(d) {
   const n = document.createElement("div"); n.className = "n";
   n.textContent = d.po_name + " créé en brouillon";
   const m = document.createElement("div"); m.className = "m";
+  const dv = d.devise || "EUR";
   m.textContent = d.fournisseur + " · " + d.nb_lignes + " lignes · " +
-    eur(d.montant_ht) + " HT · " + eur(d.montant_ttc) + " TTC · " + d.taxe_motif;
+    mt(d.montant_ht, dv) + " HT · " + mt(d.montant_ttc, dv) + " TTC · " + d.taxe_motif;
   w.append(n, m); c.appendChild(w); box.appendChild(c);
 
   if (d.alertes && d.alertes.length) {
