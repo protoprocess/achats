@@ -264,6 +264,7 @@
           <button class="filter-btn f-mpn" onclick="setFilter('mpn',this)"><i class="ti ti-lock" aria-hidden="true"></i> MPN strict <span class="filter-count" id="fc-mpn">0</span></button>
           <button class="filter-btn f-fuzzystock" onclick="setFilter('fuzzy-stock',this)"><i class="ti ti-replace" aria-hidden="true"></i> Équivalent en stock <span class="filter-count" id="fc-fuzzystock">0</span></button>
           <button class="filter-btn f-partialstock" onclick="setFilter('partial-stock',this)"><i class="ti ti-split" aria-hidden="true"></i> Stock partiel <span class="filter-count" id="fc-partialstock">0</span></button>
+          <button class="filter-btn f-scrap" onclick="setFilter('scrap-modifie',this)"><i class="ti ti-pencil" aria-hidden="true"></i> Scrap modifié <span class="filter-count" id="fc-scrap">0</span></button>
           <div class="filter-sep"></div>
           <button class="filter-btn f-sensor" onclick="setFilter('sensor',this)"><i class="ti ti-radar" aria-hidden="true"></i> Capteurs <span class="filter-count" id="fc-sensor">0</span></button>
           <button class="filter-btn f-battery" onclick="setFilter('battery',this)"><i class="ti ti-battery" aria-hidden="true"></i> Batteries <span class="filter-count" id="fc-battery">0</span></button>
@@ -459,7 +460,17 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.35";
+const APP_VERSION = "15.36";
+/* 15.36 (21/10/2026, retours Olivier sur la BOM IP2I Ricochet Synchro R2).
+   (1) BLOC « IPN · LUMINOVO » LISIBLE — « pas facile à lire avec tous ces repères ». Une ligne par IPN avec le MPN,
+   le nombre de repères et trois repères en exemple, au lieu de déverser les 60 désignateurs d'un même composant ;
+   la liste entière reste au survol.
+   (2) SCRAP REPRIS À LA MAIN : pastille « scrap modifié » dans les alertes et filtre dédié. C'est une décision
+   humaine qui change la quantité achetée — elle doit se relire avant d'écrire la feuille.
+   Côté moteur, deux décisions anciennes enfin appliquées jusqu'au bout (« pas d'intérêt à créer des IPN = MPN,
+   je pensais qu'on avait déjà vu ça ?! ») : le service ne pose plus d'IPN identique au MPN sur la voie
+   « passif sans specs » (v1.11), et « Achats - fondation » v3.2 ne recopie plus le MPN dans l'IPN quand le service
+   a répondu sans IPN. Le repli reste intact quand le service ne répond pas. */
 /* 15.35 (21/10/2026, trouve au test de la 15.34) : LA REPONSE AU « MAIS COMMENT ? » POUR LES IPN A CREER.
    Le service de codification renvoie lui-meme l'adresse de l'IPN manager de Luminovo et la liste des IPN a
    creer au format qu'il attend (« IPN,MPN » par ligne). La 15.34 pointait sur une adresse devinee, qui
@@ -2420,6 +2431,12 @@ function buildBomRow(row, meta, idx) {
     if (e === 'sans_piece') return `<span class="badge b-ratt-rien" style="margin-bottom:2px" title="${mot}"><i class="ti ti-link-off" aria-hidden="true"></i> rien à lier</span>`;
     return `<span class="badge b-ratt-ko" style="margin-bottom:2px" title="${mot}"><i class="ti ti-unlink" aria-hidden="true"></i> NON rattachée</span>`;
   })();
+  /* 15.36 (demande Olivier) : un scrap repris a la main doit se voir dans les
+     alertes, pas seulement par la bordure bleue du champ. C'est une decision
+     humaine qui change la quantite achetee : elle se relit avant d'ecrire. */
+  const scrapBadge = meta.scrapManuel
+    ? `<span class="badge b-scrap" style="margin-bottom:2px" title="${attr('Scrap repris a la main : ' + (meta.scrapLuminovo != null ? meta.scrapLuminovo : '?') + ' chez Luminovo, ' + (getColValue(row, 'Scrap qty') || '0') + ' ici. La quantite d achat a suivi.')}"><i class="ti ti-pencil" aria-hidden="true"></i> scrap modifié</span>`
+    : '';
   const creerBadge = meta.cas === 'ipn_neuve'
     ? `<span class="badge b-ipn-creer" style="margin-bottom:2px" title="Cette IPN n existe pas encore dans Luminovo : elle est a creer a la main. Le service ne cree jamais d IPN."><i class="ti ti-plus" aria-hidden="true"></i> IPN à créer</span>`
     : '';
@@ -2456,7 +2473,7 @@ function buildBomRow(row, meta, idx) {
       </span>
     </td>
     <td>${renderStockCell(si, idx, purchaseQty)}</td>
-    <td style="vertical-align:top">${statusBadge}${missingBadge}${mpnBadge}${creerBadge}${rattBadge}${warnBadges}</td>
+    <td style="vertical-align:top">${statusBadge}${missingBadge}${mpnBadge}${creerBadge}${rattBadge}${scrapBadge}${warnBadges}</td>
     <td style="font-size:12px">${notes}${(meta.qc_issues&&meta.qc_issues.length)?`<br><span style="color:var(--amber);font-size:11px">${meta.qc_issues.map(q=>'• '+q).join('<br>')}</span>`:''}${meta.stockNote?`<br><span style="color:var(--blue);font-size:11px">• ${meta.stockNote}</span>`:''}</td>`;
   return { tr, si };
 }
@@ -2662,6 +2679,10 @@ function applyFilter() {
     else if (currentFilter === 'mpn') show = meta.mpnWarn;
     else if (currentFilter === 'fuzzy-stock') show = !!meta.hasFuzzy;
     else if (currentFilter === 'partial-stock') show = !!meta.hasPartialStock;
+    /* 15.36 : scrap repris a la main. Ce que Luminovo a calcule et ce qu'un
+       humain a decide ne sont pas la meme chose : on doit pouvoir retrouver
+       les secondes avant d'ecrire la feuille achat. */
+    else if (currentFilter === 'scrap-modifie') show = !!meta.scrapManuel;
     else show = meta.warnings && meta.warnings.includes(currentFilter);
     tr.style.display = show ? '' : 'none';
     if (show) visible++;
@@ -2682,7 +2703,7 @@ function applyFilter() {
 }
 
 function updateFilterCounts() {
-  const counts = { all:0, error:0, warn:0, mpn:0, sensor:0, battery:0, 'not-sealed':0, 'msl4+':0, 'fuzzy-stock':0, 'partial-stock':0 };
+  const counts = { all:0, error:0, warn:0, mpn:0, sensor:0, battery:0, 'not-sealed':0, 'msl4+':0, 'fuzzy-stock':0, 'partial-stock':0, 'scrap-modifie':0 };
   rowMeta.forEach(m => {
     counts.all++;
     if (m.status === 'error') counts.error++;
@@ -2690,6 +2711,7 @@ function updateFilterCounts() {
     if (m.mpnWarn) counts.mpn++;
     if (m.hasFuzzy) counts['fuzzy-stock']++;
     if (m.hasPartialStock) counts['partial-stock']++;
+    if (m.scrapManuel) counts['scrap-modifie']++;
     if (m.warnings) m.warnings.forEach(w => { if (counts[w] !== undefined) counts[w]++; });
   });
   document.getElementById('fc-all').textContent = counts.all;
@@ -2702,9 +2724,10 @@ function updateFilterCounts() {
   document.getElementById('fc-msl').textContent = counts['msl4+'];
   document.getElementById('fc-fuzzystock').textContent = counts['fuzzy-stock'];
   document.getElementById('fc-partialstock').textContent = counts['partial-stock'];
+  document.getElementById('fc-scrap').textContent = counts['scrap-modifie'];
 
   // Hide filter buttons with 0 results (except "Tous" et filtres actifs)
-  const filterMap = {'error':'.f-err','warn':'.f-warn','mpn':'.f-mpn','sensor':'.f-sensor','battery':'.f-battery','not-sealed':'.f-sealed','msl4+':'.f-msl','fuzzy-stock':'.f-fuzzystock','partial-stock':'.f-partialstock'};
+  const filterMap = {'error':'.f-err','warn':'.f-warn','mpn':'.f-mpn','sensor':'.f-sensor','battery':'.f-battery','not-sealed':'.f-sealed','msl4+':'.f-msl','fuzzy-stock':'.f-fuzzystock','partial-stock':'.f-partialstock','scrap-modifie':'.f-scrap'};
   Object.entries(counts).forEach(([k,v]) => {
     if (k === 'all') return;
     const btn = document.querySelector('.filter-btn' + (filterMap[k]||''));
@@ -3471,7 +3494,21 @@ function renderIpnLuminovoBox() {
   const P = ipnPointsOuverts();
   if (!P.creer.length && !P.nonRatt.length && !P.ecrits && !P.dejaLies && !P.sansPiece) return '';
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const refs = l => l.map(o => esc(o.ref + ' (' + (o.ipn || '?') + ')')).join(', ');
+  /* 15.36 (retour Olivier « pas facile a lire avec tous ces reperes ») : une ligne
+     par IPN, pas un deversement de designateurs. Un seul composant peut porter
+     60 reperes (L6 a L71 sur la BOM IP2I) : la liste complete noyait l'information
+     utile, qui est l'IPN et le MPN. On montre le compte et trois reperes ; la
+     liste entiere reste au survol, pour qui en a besoin. */
+  const item = o => {
+    const reps = String(o.ref || '').split(/\s*,\s*/).filter(Boolean);
+    const apercu = reps.slice(0, 3).join(', ') + (reps.length > 3 ? ' +' + (reps.length - 3) : '');
+    return `<div class="ipn-item" title="${esc(reps.join(', '))}">`
+      + `<span class="ipn-code">${esc(o.ipn || '?')}</span>`
+      + `<span class="ipn-mpn">${esc(o.mpn || 'sans MPN')}</span>`
+      + `<span class="ipn-rep">${reps.length} repère${reps.length > 1 ? 's' : ''} · ${esc(apercu)}</span>`
+      + (o.motif ? `<span class="ipn-motif">${esc(o.motif)}</span>` : '')
+      + `</div>`;
+  };
   const lignes = [];
 
   if (P.ecrits || P.dejaLies) {
@@ -3486,14 +3523,14 @@ function renderIpnLuminovoBox() {
   }
   if (P.nonRatt.length) {
     lignes.push(`<div class="ipn-l ko"><i class="ti ti-unlink" aria-hidden="true"></i><div>`
-      + `<strong>${P.nonRatt.length} MPN NON rattaché(s)</strong> — à lier à la main dans Luminovo si le rattrapage échoue.<br>`
-      + `<span class="ipn-refs">${P.nonRatt.map(o => esc(o.ref + ' : ' + (o.mpn || '?') + ' → ' + (o.ipn || '?') + (o.motif ? ' — ' + o.motif : ''))).join('<br>')}</span>`
+      + `<strong>${P.nonRatt.length} MPN NON rattaché(s)</strong> — à lier à la main dans Luminovo si le rattrapage échoue.`
+      + `<div class="ipn-liste">${P.nonRatt.map(item).join('')}</div>`
       + `</div></div>`);
   }
   if (P.creer.length) {
     lignes.push(`<div class="ipn-l creer"><i class="ti ti-plus" aria-hidden="true"></i><div>`
-      + `<strong>${P.creer.length} IPN à créer dans Luminovo</strong> — geste manuel : créer une IPN, c'est trancher une codification, le service ne le fait jamais.<br>`
-      + `<span class="ipn-refs">${refs(P.creer)}</span></div></div>`);
+      + `<strong>${P.creer.length} IPN à créer dans Luminovo</strong> — geste manuel : créer une IPN, c'est trancher une codification, le service ne le fait jamais.`
+      + `<div class="ipn-liste">${P.creer.map(item).join('')}</div></div></div>`);
   }
 
   /* Le rattrapage est propose des qu'il y a quelque chose a rattacher OU des que
