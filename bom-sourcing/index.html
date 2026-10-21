@@ -460,7 +460,12 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.37";
+const APP_VERSION = "15.38";
+/* 15.38 (21/10/2026, repéré par Olivier sur sa capture) : LA PASTILLE DE CONFIANCE DISAIT L'INVERSE DE LA VÉRITÉ.
+   La voie codification envoyait la confiance en nombre (1 / 0.7 / 0.5 / 0), l'autre voie en chaîne, et l'écran
+   n'acceptait que 'high' / 'medium' / 'low'. Rien ne correspondait : une ligne à la confiance MAXIMALE tombait
+   dans le cas par défaut et s'affichait en ROUGE avec le texte « 1 ». Le workflow est corrigé (fondation v3.4) ;
+   l'écran accepte désormais les deux formes, pour que les analyses déjà en consigne (72 h) s'affichent juste. */
 /* 15.37 (21/10/2026, demande Olivier après un onglet tué par le navigateur) : REPRENDRE LA DERNIÈRE ANALYSE.
    Un onglet qui tombe emportait tout — l'analyse (40 s et une exécution n8n), les scrap repris à la main, les
    équivalents choisis, les résolutions de stock. L'analyse est bien consignée en base sous son ticket, mais elle
@@ -2467,6 +2472,20 @@ function buildBomRow(row, meta, idx) {
     ?`<span class="badge b-ok"><i class="ti ti-check" aria-hidden="true"></i></span>`
     :status==='error'?`<span class="badge b-err"><i class="ti ti-x" aria-hidden="true"></i></span>`:'';
   const rowClass=status==='error'?'row-err':mpnMissing?'row-mpnmissing':si.mpnWarn?'row-mpnwarn':warns.length?'row-warn':'';
+  /* 15.38 (21/10/2026, repere par Olivier sur sa capture) : la voie codification
+     envoyait la confiance en NOMBRE (1 / 0.7 / 0.5 / 0), l'autre voie en chaine.
+     L'ecran n'attendait que des chaines : une ligne a la confiance MAXIMALE (1)
+     tombait donc dans le cas par defaut et s'affichait en ROUGE avec le texte
+     « 1 ». Le workflow est corrige (fondation v3.4), mais les analyses deja en
+     consigne portent encore des nombres pendant 72 h : on accepte les deux. */
+  const niveauConf = (function (c) {
+    if (c === 'high' || c === 'medium' || c === 'low') return c;
+    const n = Number(c);
+    if (c !== null && c !== undefined && c !== '' && !isNaN(n)) {
+      return n >= 0.9 ? 'high' : n >= 0.5 ? 'medium' : 'low';
+    }
+    return 'low';
+  })(meta.confidence);
   const tr=document.createElement('tr');
   tr.className=rowClass;
   tr.innerHTML=`
@@ -2477,8 +2496,8 @@ function buildBomRow(row, meta, idx) {
     <td>
       <input class="editable-ipn" value="${ipn}" data-idx="${idx}" onchange="updateIPN(this)"/>
       ${meta.ipnInfo && ipn !== '—' ? `<span class="ipn-info" title="Client MPN strict : IPN pour information (prod / réception). On achète le MPN, rien ne va dans Luminovo, pas de stock ni d'équivalent sur cet IPN."><i class="ti ti-lock" aria-hidden="true"></i> info</span>` : ''}
-      <span class="${meta.confidence==='high'?'conf-high':meta.confidence==='medium'?'conf-med':'conf-low'}" title="Confiance IA">
-        ${meta.confidence==='high'?'🟢':meta.confidence==='medium'?'🟡':'🔴'} ${meta.confidence||'?'}
+      <span class="${niveauConf==='high'?'conf-high':niveauConf==='medium'?'conf-med':'conf-low'}" title="Confiance de la codification">
+        ${niveauConf==='high'?'🟢':niveauConf==='medium'?'🟡':'🔴'} ${niveauConf}
       </span>
     </td>
     <td>${renderStockCell(si, idx, purchaseQty)}</td>
