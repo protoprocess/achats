@@ -605,229 +605,54 @@ tr:hover td { background: var(--surface2); }
 #sig-boite .btn-env{padding:6px 13px;background:var(--blue,#F07B1F);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
 
 /* ===== bloc 3 : modules ===== */
-.chat-fab {
-  position: fixed;
-  bottom: 28px;
-  right: 28px;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--blue);
-  color: white;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
-  z-index: 1000;
-  transition: transform 0.15s, opacity 0.15s;
-}
-.chat-fab:hover { transform: scale(1.08); }
-.chat-fab .badge-notif {
-  position: absolute;
-  top: -2px; right: -2px;
-  width: 14px; height: 14px;
-  background: var(--pink-badge);
-  border-radius: 50%;
-  border: 2px solid white;
-  display: none;
-}
-.chat-fab .badge-notif.visible { display: block; }
+/* v15.34 (21/10/2026, demande Olivier) : l assistant chat a ete retire.
+   Il recouvrait le bouton Signaler (meme coin bas-droit) et ne servait a rien ;
+   l aide utile est le bouton « Demander de l aide a Claude », calque sur le
+   deroule devis. 223 lignes de styles chat supprimees ici. */
 
-.chat-panel {
-  position: fixed;
-  bottom: 90px;
-  right: 28px;
-  width: 380px;
-  max-width: calc(100vw - 40px);
-  height: 520px;
-  max-height: calc(100vh - 120px);
+/* ===== v15.34 (21/10/2026) : aide Claude + bloc IPN / Luminovo ===== */
+
+/* Le bouton d'aide se place AU-DESSUS du bouton Signaler, pas par-dessus :
+   c'est exactement le defaut du chat retire ici (meme coin, meme z-index). */
+#aide-claude-btn {
+  position: fixed; right: 18px; bottom: 62px; z-index: 60;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 14px; border-radius: 22px;
+  background: var(--surface); color: var(--blue);
+  border: 1px solid var(--blue);
+  box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  cursor: pointer; font-size: 12px; font-family: inherit; font-weight: 500;
+}
+#aide-claude-btn:hover { background: var(--blue); color: #fff; }
+
+/* Pastilles de ligne : l'etat REEL du rattachement, pas une intention. */
+.b-ratt-ok   { background:var(--green-bg); color:var(--green-badge); }
+.b-ratt-deja { background:transparent; color:var(--text2); border:1px solid var(--border2); }
+.b-ratt-rien { background:transparent; color:var(--text3); border:1px solid var(--border); }
+.b-ratt-ko   { background:var(--amber-bg); color:var(--amber-badge); }
+.b-ipn-creer { background:var(--blue-bg); color:var(--blue); border:1px solid var(--blue); }
+
+/* Bloc regroupe, en tete des resultats : ce qui a ete fait dans Luminovo et ce
+   qui reste a faire a la main. Lisere bleu PP = information et geste a faire,
+   pas une alerte qualite (le lisere ambre est reserve aux composants sensibles). */
+.ipn-box {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--pp-blue);
   border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.14);
-  z-index: 999;
-  display: none;
-  flex-direction: column;
-  overflow: hidden;
+  padding: 1rem 1.25rem;
+  margin-bottom: 12px;
 }
-.chat-panel.open { display: flex; }
-
-.chat-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface2);
-  flex-shrink: 0;
-}
-.chat-header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 13px;
-}
-.chat-header-title i { color: var(--text2); }
-.chat-context-badge {
-  font-size: 10px;
-  padding: 2px 7px;
-  border-radius: 20px;
-  background: var(--green-bg);
-  color: var(--green-badge);
-  font-weight: 500;
-}
-.chat-context-badge.empty {
-  background: var(--surface2);
-  color: var(--text3);
-}
-.chat-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text2);
-  font-size: 16px;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-}
-.chat-close:hover { color: var(--text); }
-
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.chat-msg {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-width: 88%;
-}
-.chat-msg.user { align-self: flex-end; }
-.chat-msg.assistant { align-self: flex-start; }
-
-.chat-bubble {
-  padding: 9px 12px;
-  border-radius: 12px;
-  font-size: 13px;
-  line-height: 1.6;
-  word-break: break-word;
-}
-.chat-msg.user .chat-bubble {
-  background: var(--blue);
-  color: white;
-  border-bottom-right-radius: 4px;
-}
-.chat-msg.assistant .chat-bubble {
-  background: var(--surface2);
-  color: var(--text);
-  border-bottom-left-radius: 4px;
-  border: 1px solid var(--border);
-}
-.chat-msg-time {
-  font-size: 10px;
-  color: var(--text3);
-  padding: 0 4px;
-}
-.chat-msg.user .chat-msg-time { text-align: right; }
-
-.chat-typing {
-  align-self: flex-start;
-  padding: 9px 14px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  border-bottom-left-radius: 4px;
-  display: none;
-  gap: 4px;
-  align-items: center;
-}
-.chat-typing.visible { display: flex; }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); animation: bounce 1.2s infinite; }
-.dot:nth-child(2) { animation-delay: 0.2s; }
-.dot:nth-child(3) { animation-delay: 0.4s; }
-@keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-5px)} }
-
-.chat-source {
-  font-size: 10px;
-  color: var(--blue);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  margin-top: 3px;
-  padding: 0 4px;
-}
-
-.chat-footer {
-  padding: 10px 12px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-  flex-shrink: 0;
-  background: var(--surface);
-}
-.chat-input {
-  flex: 1;
-  padding: 8px 11px;
-  font-size: 13px;
-  font-family: var(--sans);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  resize: none;
-  max-height: 100px;
-  min-height: 36px;
-  line-height: 1.5;
-  outline: none;
-}
-.chat-input:focus { border-color: var(--blue); }
-.chat-send {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius);
-  background: var(--blue);
-  color: white;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  flex-shrink: 0;
-  transition: opacity 0.15s;
-}
-.chat-send:hover { opacity: 0.8; }
-.chat-send:disabled { opacity: 0.3; cursor: default; }
-
-.chat-suggestions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px 0;
-  flex-shrink: 0;
-}
-.chat-suggestion {
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  cursor: pointer;
-  font-family: var(--sans);
-  white-space: nowrap;
-}
-.chat-suggestion:hover { background: var(--border); color: var(--text); }
+.ipn-l { display:flex; gap:10px; align-items:flex-start; font-size:12.5px; line-height:1.45; padding:5px 0; color:var(--text); }
+.ipn-l + .ipn-l { border-top:1px solid var(--border); }
+.ipn-l i { flex:0 0 auto; margin-top:2px; }
+.ipn-l.ok i    { color: var(--green-badge); }
+.ipn-l.info i  { color: var(--text3); }
+.ipn-l.ko i    { color: var(--amber-badge); }
+.ipn-l.creer i { color: var(--blue); }
+.ipn-refs { font-size:11.5px; color:var(--text2); font-family:var(--mono); }
+.ipn-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.ipn-actions .btn { text-decoration:none; }
 
 /* ===== v14.0 (29/09/2026) : barre d actions de l onglet Achats — bleu pastel PP (accent secondaire, charte §2) ===== */
 .btn.att-action { background: rgba(91,196,216,0.14); color: #8FD8E6; border-color: rgba(91,196,216,0.55); font-weight: 500; }

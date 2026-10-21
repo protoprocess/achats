@@ -41,7 +41,7 @@
     </div>
 
     <div class="card" style="margin-bottom:16px; border:1.5px solid var(--blue); background:var(--blue-bg);">
-      <div class="setup-card-title" style="margin-bottom:10px"><i class="ti ti-key" aria-hidden="true" style="color:var(--blue)"></i> <span style="color:var(--blue)">Clé API Anthropic</span> <span class="fixed-tag">requis pour l'onglet Codification &amp; Chat</span></div>
+      <div class="setup-card-title" style="margin-bottom:10px"><i class="ti ti-key" aria-hidden="true" style="color:var(--blue)"></i> <span style="color:var(--blue)">Clé API Anthropic</span> <span class="fixed-tag">requis pour l'onglet Codification IPN</span></div>
       <label>Clé API (commence par sk-ant-…)</label>
       <input type="text" id="setup-api-key" placeholder="sk-ant-api03-…" autocomplete="off" />
       <p class="hint">Obtenir sur <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--blue)">console.anthropic.com</a> → API Keys. Stockée uniquement dans cette page. La codification BOM principale passe désormais par le webhook N8N ci-dessous, pas par cette clé.</p>
@@ -62,10 +62,10 @@
     </div>
 
     <div class="card" style="margin-bottom:16px;">
-      <div class="setup-card-title" style="margin-bottom:10px"><i class="ti ti-shopping-cart" aria-hidden="true"></i> URL Proxy (Chat / Codification isolée) <span class="fixed-tag">optionnel</span></div>
+      <div class="setup-card-title" style="margin-bottom:10px"><i class="ti ti-shopping-cart" aria-hidden="true"></i> URL Proxy (Codification isolée) <span class="fixed-tag">optionnel</span></div>
       <label>URL Proxy Apps Script (Mouser + Farnell)</label>
       <input type="text" id="setup-proxy-url" value="https://writerjs.olivier-comet.workers.dev" />
-      <p class="hint">Utilisée uniquement par l'onglet "Codification IPN" (MPN isolé) et l'assistant chat, pas par l'analyse BOM principale (gérée par N8N).</p>
+      <p class="hint">Utilisée uniquement par l'onglet "Codification IPN" (MPN isolé), pas par l'analyse BOM principale (gérée par N8N).</p>
     </div>
 
     <div class="setup-grid">
@@ -342,7 +342,7 @@
 
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; gap:8px;">
         <div>
-          <p style="font-size:13px; color:var(--text2)">Modifiez les règles pour affiner la codification. Partagées avec BOM Client. La codification BOM effective est pilotée par N8N (mêmes règles, lues côté workflow) ; l'onglet Codification IPN isolé et le chat utilisent la copie locale ci-dessous.</p>
+          <p style="font-size:13px; color:var(--text2)">Modifiez les règles pour affiner la codification. Partagées avec BOM Client. La codification BOM effective est pilotée par N8N (mêmes règles, lues côté workflow) ; l'onglet Codification IPN isolé utilise la copie locale ci-dessous.</p>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
           <span id="rules-save-indicator" style="font-size:11px; color:var(--green); display:none"><i class="ti ti-check" aria-hidden="true"></i> Sauvegardé</span>
@@ -459,7 +459,22 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.33";
+const APP_VERSION = "15.34";
+/* 15.34 (21/10/2026, retours Olivier « le chat mange le bouton signaler… de toute façon le chat sert à rien par contre
+   ce qu'on a fait dans le déroulé devis "faire appel à claude" ça oui c'est super » et « ok ipn à rattacher ou à créer
+   c'est cool de signaler mais comment ? »).
+   (1) LE CHAT EST RETIRÉ (208 lignes ici, 223 de styles). Il recouvrait le bouton Signaler, même coin bas-droit.
+   (2) BOUTON « DEMANDER DE L'AIDE À CLAUDE », présent sur tous les onglets, mécanique identique au déroulé devis :
+   un résumé de l'écran copié dans le presse-papier, le clic journalisé, le projet Claude ouvert. Aucune IA embarquée.
+   (3) L'IPN À RATTACHER EST RATTACHÉE, PLUS SEULEMENT SIGNALÉE. « Achats - fondation » v3.1 envoie rattacher:true sur
+   les deux voies : le service écrit lui-même le MPN sous l'IPN existante dans Luminovo, comme au devis depuis le 18/10.
+   L'écran dit l'état réel (pastilles « rattachée » / « déjà liée » / « rien à lier » / « NON rattachée » + motif) au lieu
+   de la phrase « ce MPN n'est pas encore rattaché », qui était un constat sans suite : vrai indéfiniment, puisque rien
+   derrière ne faisait le geste. Bloc « IPN · Luminovo » en tête des résultats, avec le rattrapage manuel des BOM
+   analysées avant aujourd'hui (bouton « Rattacher maintenant », par paquets de 60) et les IPN à créer regroupées.
+   Créer une IPN reste manuel : c'est trancher une codification, le service ne le fait jamais.
+   (4) Correctif : ipn_info était perdu depuis la 15.21 — la pastille « info » du client MPN strict ne s'affichait jamais,
+   parce que la recopie de la réponse du webhook ne transmettait pas ce champ. */
 /* 15.31 (20/10/2026, retour Olivier) : l'étiquette dit POURQUOI la ligne attend — « Rupture — alerte Luminovo » (fournisseur ?X + alerte),
    « Rupture (à surveiller) », « Fournisseur à décider » (???), « Sous franco (panier X) », « Question client posée ». */
 /* 15.30 (20/10/2026, demande Olivier) : onglet Achats — une ligne de ce SO présente dans les Paniers en attente (En attente,
@@ -2140,13 +2155,21 @@ function appliquerEtAfficher(rows, webhookResults) {
     const ref = findCol(row,['designator','reference','ref']);
     const r = byDesignator[ref];
     if (!r) return { idx:i, ipn:'—', status:'error', confidence:'low', warnings:[], qc_issues:['Aucune réponse du service de codification pour cette ligne.'] };
+    /* 15.34 : ipn_info, cas et rattachement remontent jusqu'ici. ipn_info était
+       perdu depuis la 15.21 — la pastille « info » du client MPN strict ne s'est
+       donc jamais affichée : renderBOMTable la lisait sur un champ que cette
+       recopie ne transmettait pas. */
     return {
       idx: i,
       ipn: r['Approved internal part number'] || '—',
+      ipn_info: r.ipn_info === true,
       status: r.status || 'ok',
       confidence: r.confidence || 'medium',
       warnings: r.warnings || [],
-      qc_issues: r.qc_issues || []
+      qc_issues: r.qc_issues || [],
+      cas: r.cas || null,
+      rattachement: r.rattachement || null,
+      rattachement_motif: r.rattachement_motif || ''
     };
   });
 
@@ -2372,7 +2395,29 @@ function buildBomRow(row, meta, idx) {
 
   const icons={sensor:'ti-radar',battery:'ti-battery','not-sealed':'ti-droplet-off','msl4+':'ti-moisture'};
   const labels={sensor:'Capteur',battery:'Batterie','not-sealed':'Non étanche','msl4+':'MSL≥4'};
-  const warnBadges=warns.map(w=>`<span class="badge b-warn" style="margin-bottom:2px"><i class="ti ${icons[w]||'ti-alert-triangle'}" aria-hidden="true"></i> ${labels[w]||w}</span>`).join(' ');
+  /* 15.34 : l'IPN et son rattachement ont desormais leurs propres pastilles,
+     lisibles d'un coup d'oeil et colorees selon ce qui s'est reellement passe.
+     Les phrases equivalentes envoyees par le workflow sont donc retirees des
+     pastilles generiques : sinon la meme chose serait dite deux fois. */
+  const warnsAff = warns.filter(w => {
+    const s = String(w || '');
+    return s !== 'IPN a creer dans Luminovo' && s.indexOf('IPN NON rattachee') !== 0;
+  });
+  const warnBadges=warnsAff.map(w=>`<span class="badge b-warn" style="margin-bottom:2px"><i class="ti ${icons[w]||'ti-alert-triangle'}" aria-hidden="true"></i> ${labels[w]||w}</span>`).join(' ');
+  const attr = s => String(s || '').replace(/"/g, '&quot;');
+  /* Le rattachement du MPN sous l'IPN existante est FAIT par le service depuis
+     la 15.34 (fondation v3.1) : la pastille dit l'etat reel, plus une intention. */
+  const rattBadge = (function () {
+    const e = meta.rattachement, mot = attr(meta.rattachementMotif);
+    if (!e) return '';
+    if (e === 'ecrit') return `<span class="badge b-ratt-ok" style="margin-bottom:2px" title="${mot}"><i class="ti ti-link" aria-hidden="true"></i> rattachée</span>`;
+    if (e === 'deja_lie') return `<span class="badge b-ratt-deja" style="margin-bottom:2px" title="${mot}"><i class="ti ti-link" aria-hidden="true"></i> déjà liée</span>`;
+    if (e === 'sans_piece') return `<span class="badge b-ratt-rien" style="margin-bottom:2px" title="${mot}"><i class="ti ti-link-off" aria-hidden="true"></i> rien à lier</span>`;
+    return `<span class="badge b-ratt-ko" style="margin-bottom:2px" title="${mot}"><i class="ti ti-unlink" aria-hidden="true"></i> NON rattachée</span>`;
+  })();
+  const creerBadge = meta.cas === 'ipn_neuve'
+    ? `<span class="badge b-ipn-creer" style="margin-bottom:2px" title="Cette IPN n existe pas encore dans Luminovo : elle est a creer a la main. Le service ne cree jamais d IPN."><i class="ti ti-plus" aria-hidden="true"></i> IPN à créer</span>`
+    : '';
   const isFreeRow = (mfrFree||'').toLowerCase().trim() === 'yes';
   // v12.0 (18/09/2026, decision Olivier) : client MPN strict + ligne SANS reference
   // fabricant = trou a faire combler par le client. L'IPN du devis reste affiche a
@@ -2406,7 +2451,7 @@ function buildBomRow(row, meta, idx) {
       </span>
     </td>
     <td>${renderStockCell(si, idx, purchaseQty)}</td>
-    <td style="vertical-align:top">${statusBadge}${missingBadge}${mpnBadge}${warnBadges}</td>
+    <td style="vertical-align:top">${statusBadge}${missingBadge}${mpnBadge}${creerBadge}${rattBadge}${warnBadges}</td>
     <td style="font-size:12px">${notes}${(meta.qc_issues&&meta.qc_issues.length)?`<br><span style="color:var(--amber);font-size:11px">${meta.qc_issues.map(q=>'• '+q).join('<br>')}</span>`:''}${meta.stockNote?`<br><span style="color:var(--blue);font-size:11px">• ${meta.stockNote}</span>`:''}</td>`;
   return { tr, si };
 }
@@ -2455,7 +2500,7 @@ function rerenderBomTable(resetFilter) {
 
   MPN_MISSING = mpnMissingList;
   const warnItems=Object.entries(warnSummary).filter(([,v])=>v.length);
-  document.getElementById('bom-warnings-section').innerHTML=(mpnMissingList.length?renderMpnMissingBox(mpnMissingList):'')+(warnItems.length?`<div class="warn-box">
+  document.getElementById('bom-warnings-section').innerHTML=renderIpnLuminovoBox()+(mpnMissingList.length?renderMpnMissingBox(mpnMissingList):'')+(warnItems.length?`<div class="warn-box">
     <div class="section-label" style="margin-top:0">Composants sensibles détectés</div>
     ${warnItems.map(([k,v])=>`<div class="warn-item"><i class="ti ${icons[k]}" aria-hidden="true"></i><div><strong>${wlabels[k]}</strong><br><span style="font-size:12px;color:var(--text2)">${v.join(', ')}</span></div></div>`).join('')}
   </div>`:'');
@@ -2527,7 +2572,12 @@ function renderBOMTable(rows,results) {
       qc_issues: res.qc_issues || [],
       confidence: res.confidence || 'medium',
       ipn: res.ipn || '—',
-      ipnInfo: res.ipn_info === true   /* 15.21 : client MPN strict, IPN pour information (prod / réception), achat sur le MPN */
+      ipnInfo: res.ipn_info === true,  /* 15.21 : client MPN strict, IPN pour information (prod / réception), achat sur le MPN */
+      /* 15.34 : ce que le service a decide sur l'IPN, et ce qu'il a REELLEMENT
+         fait du rattachement du MPN sous cette IPN dans Luminovo. */
+      cas: res.cas || null,
+      rattachement: res.rattachement || null,
+      rattachementMotif: res.rattachement_motif || ''
     };
   });
   /* 15.20 : règle « stock permanent » appliquée une fois la codification connue */
@@ -3317,212 +3367,285 @@ function clearBOM() {
 }
 </script>
 
-<!-- CHAT WIDGET -->
-
-<!-- FAB button -->
-<button class="chat-fab" onclick="toggleChat()" title="Assistant IA">
-  <i class="ti ti-message-circle" id="chat-fab-icon" aria-hidden="true"></i>
-  <span class="badge-notif" id="chat-notif"></span>
-</button>
-
-<!-- Chat panel -->
-<div class="chat-panel" id="chat-panel">
-  <div class="chat-header">
-    <div class="chat-header-title">
-      <i class="ti ti-sparkles" aria-hidden="true"></i>
-      Assistant BOM
-      <span class="chat-context-badge empty" id="chat-ctx-badge">Aucune BOM</span>
-    </div>
-    <button class="chat-close" onclick="toggleChat()"><i class="ti ti-x" aria-hidden="true"></i></button>
-  </div>
-
-  <div class="chat-suggestions" id="chat-suggestions">
-    <button class="chat-suggestion" onclick="sendSuggestion(this)">Composants critiques en stock ?</button>
-    <button class="chat-suggestion" onclick="sendSuggestion(this)">Composants sensibles détectés ?</button>
-    <button class="chat-suggestion" onclick="sendSuggestion(this)">Vérifier les IPN condensateurs</button>
-    <button class="chat-suggestion" onclick="sendSuggestion(this)">Alternatives pour un composant ?</button>
-  </div>
-
-  <div class="chat-messages" id="chat-messages">
-    <div class="chat-msg assistant">
-      <div class="chat-bubble">Bonjour ! Je suis votre assistant BOM. Je peux analyser les composants chargés, rechercher des datasheets, trouver des alternatives, ou répondre à toute question technique. Chargez une BOM pour commencer.</div>
-      <div class="chat-msg-time">Maintenant</div>
-    </div>
-  </div>
-
-  <div class="chat-typing" id="chat-typing">
-    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-  </div>
-
-  <div class="chat-footer">
-    <textarea class="chat-input" id="chat-input" placeholder="Posez une question sur votre BOM…" rows="1"
-      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"
-      oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
-    <button class="chat-send" id="chat-send-btn" onclick="sendChat()"><i class="ti ti-send" aria-hidden="true"></i></button>
-  </div>
-</div>
+<!-- AIDE CLAUDE - v15.34 (21/10/2026, demande Olivier) -->
+<!-- Remplace l'assistant chat, retire ici en v15.34. Deux raisons : il recouvrait le
+     bouton Signaler (meme coin bas-droit, cas signale par Olivier le 21/10) et il ne
+     servait pas, alors que le « faire appel a Claude » du deroule devis, lui, marche.
+     Meme mecanique exactement (devis-client / DD.aideClaude, deroule v1.22 et v1.57) :
+       1. on fabrique un resume TEXTE de ce qui est a l'ecran
+       2. on le copie AVANT d'ouvrir l'onglet (sinon le presse-papier est perdu)
+       3. on journalise le clic en fond - un clic ici = un endroit ou l'ecran n'a pas suffi
+       4. on ouvre le projet Claude, on colle, on pose sa question
+     Aucune IA embarquee, aucune cle API : c'est un raccourci vers une vraie
+     conversation, pas un chatbot. Present sur tous les onglets (demande Olivier). -->
+<button id="aide-claude-btn" onclick="aideClaude()" title="Copie un resume de l'ecran et ouvre le projet Claude">
+  <i class="ti ti-message-question" aria-hidden="true"></i> Demander de l'aide a Claude</button>
 
 <script>
-let chatHistory = [];
-let chatOpen = false;
+const CLAUDE_PROJET = 'https://claude.ai/project/019f6f80-4cd1-76bb-9d15-a5163b498d26';
+const RATT_ECHECS = ['echec', 'indisponible', 'non_demande', 'a_la_main'];
 
-function toggleChat() {
-  chatOpen = !chatOpen;
-  const panel = document.getElementById('chat-panel');
-  const icon = document.getElementById('chat-fab-icon');
-  panel.classList.toggle('open', chatOpen);
-  icon.className = chatOpen ? 'ti ti-x' : 'ti ti-message-circle';
-  document.getElementById('chat-notif').classList.remove('visible');
-  if (chatOpen) {
-    updateChatContext();
-    document.getElementById('chat-input').focus();
-  }
+function aideQui() { try { return localStorage.getItem('pp_signaleur') || ''; } catch (e) { return ''; } }
+
+function aideOnglet() {
+  const t = document.querySelector('.tabs .tab.active');
+  return t ? (t.dataset.tab || t.textContent.trim()) : '';
 }
 
-function updateChatContext() {
-  const badge = document.getElementById('chat-ctx-badge');
-  if (bomData && bomData.length > 0) {
-    badge.textContent = bomData.length + ' composants';
-    badge.className = 'chat-context-badge';
-    // Hide suggestions after first real interaction
-    if (chatHistory.length === 0) {
-      document.getElementById('chat-suggestions').style.display = 'flex';
+/* Les points ouverts de la BOM a l'ecran, dans le vocabulaire du metier.
+   Sert au resume d'aide Claude ET au bloc « IPN - Luminovo » du tableau :
+   un seul endroit qui decide ce qui est un point ouvert. */
+function ipnPointsOuverts() {
+  const r = { creer: [], nonRatt: [], ecrits: 0, dejaLies: 0, sansPiece: 0, err: [], mpnManquant: [] };
+  if (!Array.isArray(bomData) || !bomData.length) return r;
+  bomData.forEach(function (row, i) {
+    const m = (typeof rowMeta !== 'undefined' && rowMeta[i]) ? rowMeta[i] : {};
+    const ref = findCol(row, ['designator', 'reference', 'ref']) || '?';
+    const mpn = findCol(row, ['mpn', 'manufacturer part', 'part number']) || '';
+    const o = { ref: ref, mpn: mpn, ipn: m.ipn || '', motif: m.rattachementMotif || '' };
+    if (m.cas === 'ipn_neuve') r.creer.push(o);
+    if (m.rattachement === 'ecrit') r.ecrits++;
+    else if (m.rattachement === 'deja_lie') r.dejaLies++;
+    else if (m.rattachement === 'sans_piece') r.sansPiece++;
+    else if (RATT_ECHECS.indexOf(m.rattachement) !== -1) r.nonRatt.push(o);
+    if (m.status === 'error') r.err.push(o);
+    if (m.mpnMissing) r.mpnManquant.push(ref);
+  });
+  return r;
+}
+
+/* BLOC « IPN - LUMINOVO » - v15.34 (21/10/2026, demande Olivier
+   « ok ipn a rattacher ou a creer c est cool de signaler mais mais comment ? »)
+   Jusqu'ici l'ecran disait « ce MPN n est pas encore rattache » et s'arretait la :
+   un constat sans suite, qui restait vrai indefiniment. Deux cas, deux reponses :
+     - IPN EXISTANTE, MPN pas encore lie : le service le fait maintenant tout seul
+       (fondation v3.1). Ce bloc dit ce qui a ete fait, et offre le rattrapage
+       manuel pour les BOM analysees AVANT aujourd'hui.
+     - IPN NEUVE : rien a automatiser. Creer une IPN, c'est trancher une
+       codification ; ca reste un geste humain. On regroupe et on donne le lien. */
+function renderIpnLuminovoBox() {
+  if (!Array.isArray(bomData) || !bomData.length) return '';
+  const P = ipnPointsOuverts();
+  if (!P.creer.length && !P.nonRatt.length && !P.ecrits && !P.dejaLies && !P.sansPiece) return '';
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const refs = l => l.map(o => esc(o.ref + ' (' + (o.ipn || '?') + ')')).join(', ');
+  const lignes = [];
+
+  if (P.ecrits || P.dejaLies) {
+    lignes.push(`<div class="ipn-l ok"><i class="ti ti-link" aria-hidden="true"></i><div>`
+      + (P.ecrits ? `<strong>${P.ecrits} MPN rattaché(s) à leur IPN dans Luminovo</strong> par le service, à l'instant. ` : '')
+      + (P.dejaLies ? `${P.dejaLies} déjà lié(s) auparavant.` : '')
+      + `</div></div>`);
+  }
+  if (P.sansPiece) {
+    lignes.push(`<div class="ipn-l info"><i class="ti ti-link-off" aria-hidden="true"></i><div>`
+      + `${P.sansPiece} MPN sans fiche Luminovo : rien à lier, l'IPN est déjà couverte par ses variantes.</div></div>`);
+  }
+  if (P.nonRatt.length) {
+    lignes.push(`<div class="ipn-l ko"><i class="ti ti-unlink" aria-hidden="true"></i><div>`
+      + `<strong>${P.nonRatt.length} MPN NON rattaché(s)</strong> — à lier à la main dans Luminovo si le rattrapage échoue.<br>`
+      + `<span class="ipn-refs">${P.nonRatt.map(o => esc(o.ref + ' : ' + (o.mpn || '?') + ' → ' + (o.ipn || '?') + (o.motif ? ' — ' + o.motif : ''))).join('<br>')}</span>`
+      + `</div></div>`);
+  }
+  if (P.creer.length) {
+    lignes.push(`<div class="ipn-l creer"><i class="ti ti-plus" aria-hidden="true"></i><div>`
+      + `<strong>${P.creer.length} IPN à créer dans Luminovo</strong> — geste manuel : créer une IPN, c'est trancher une codification, le service ne le fait jamais.<br>`
+      + `<span class="ipn-refs">${refs(P.creer)}</span></div></div>`);
+  }
+
+  /* Le rattrapage est propose des qu'il y a quelque chose a rattacher OU des que
+     des lignes ont deja ete traitees : il sert aussi a relancer apres un echec. */
+  const boutons = [
+    `<button class="btn att-action" onclick="rattacherMaintenant(this)" title="Envoie a Luminovo tous les couples IPN / MPN de cette BOM qui peuvent etre lies. Aucune IPN creee, aucune liste raccourcie."><i class="ti ti-link" aria-hidden="true"></i> Rattacher maintenant</button>`,
+    P.creer.length ? `<a class="btn" href="https://proto-process.luminovo.com/parts/internal" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Ouvrir Luminovo (IPN)</a>` : '',
+    `<button class="btn" style="color:var(--blue);border-color:var(--blue)" onclick="aideClaude('ipn')"><i class="ti ti-message-question" aria-hidden="true"></i> Demander de l'aide à Claude</button>`
+  ].filter(Boolean).join(' ');
+
+  return `<div class="ipn-box">
+    <div class="section-label" style="margin-top:0">IPN · Luminovo</div>
+    ${lignes.join('')}
+    <div class="ipn-actions">${boutons}</div>
+  </div>`;
+}
+
+/* RATTRAPAGE MANUEL - v15.34 (demande Olivier « bouton rattacher oui on a plein de
+   bom a rattraper et ca passera par la »).
+   Envoie TOUT ce qui peut l'etre, pas seulement les echecs du jour : c'est l'outil
+   de rattrapage des BOM analysees avant la v3.1. Sans risque par construction, et
+   c'est la brique « PP - Rattacher IPN » qui le garantit, pas cette page :
+     - elle ne cree JAMAIS une IPN (une IPN inconnue revient « ipn_inexistante ») ;
+     - elle ne raccourcit JAMAIS une liste de pieces (verrou d'union) ;
+     - elle relit cote piece apres ecriture avant de conclure.
+   Appels par paquets de 60 couples : la brique fait une recherche de pieces et un
+   PATCH par IPN, et doit tenir dans les 180 s de son webhook. */
+async function rattacherMaintenant(btn) {
+  const u = (typeof webhookUrl === 'string' && webhookUrl) ? webhookUrl.replace(/\/[^\/]*$/, '') : '';
+  if (!u) { alert('Webhook n8n non configuré : relance la configuration.'); return; }
+  if (!Array.isArray(bomData) || !bomData.length) { alert('Aucune BOM chargée.'); return; }
+
+  const vus = {}, dem = [], parCle = {};
+  bomData.forEach(function (row, i) {
+    const m = rowMeta[i] || {};
+    const ipn = String(m.ipn || '').trim();
+    const mpn = String(findCol(row, ['mpn', 'manufacturer part', 'part number']) || '').trim();
+    const fab = String(findCol(row, ['manufacturer', 'fabricant', 'mfr']) || '').trim();
+    if (!ipn || ipn === '—' || !mpn) return;
+    if (mpn.indexOf(',') !== -1) return;      // plusieurs MPN sur la ligne : geste humain
+    if (m.ipnInfo) return;                    // client MPN strict : rien ne va dans Luminovo
+    if (m.cas === 'ipn_neuve') return;        // l'IPN n'existe pas encore : rien a lier
+    const cle = ipn + '|' + mpn;
+    if (!parCle[cle]) parCle[cle] = [];
+    parCle[cle].push(i);
+    if (vus[cle]) return;
+    vus[cle] = 1;
+    dem.push({ ipn: ipn, mpn: mpn, fabricant: fab });
+  });
+
+  if (!dem.length) {
+    alert('Rien à rattacher : aucune ligne ne porte à la fois une IPN existante et un MPN unique.');
+    return;
+  }
+  if (!confirm('Rattacher ' + dem.length + ' couple(s) IPN / MPN dans Luminovo ?\n\n'
+    + 'Aucune IPN ne sera créée et aucune liste de pièces ne sera raccourcie.')) return;
+
+  const libelle = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2"></i> Rattachement…'; }
+
+  const totaux = {};
+  const etats = {};
+  let paquets = 0, erreur = '';
+  try {
+    for (let i = 0; i < dem.length; i += 60) {
+      const lot = dem.slice(i, i + 60);
+      paquets++;
+      if (btn) btn.innerHTML = '<i class="ti ti-loader-2"></i> Rattachement… ' + Math.min(i + 60, dem.length) + '/' + dem.length;
+      const r = await fetch(u + '/rattacher-ipn', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origine: 'Achats PP v' + APP_VERSION + ' - rattrapage manuel', demandes: lot })
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      (j.resultats || []).forEach(function (x) {
+        totaux[x.statut] = (totaux[x.statut] || 0) + 1;
+        const faites = (x.ajoutees || []).map(a => String(a).replace(' (journal)', ''));
+        (x.demandes || []).forEach(function (m) {
+          const cle = String(x.ipn) + '|' + String(m);
+          if ((x.introuvables || []).indexOf(m) !== -1) etats[cle] = { e: 'sans_piece', mot: 'MPN sans fiche Luminovo : rien à lier' };
+          else if (faites.indexOf(m) !== -1) etats[cle] = { e: 'ecrit', mot: 'rattaché à l\'IPN dans Luminovo' };
+          else if (x.statut === 'ok' || x.statut === 'ok_partiel' || x.statut === 'rien_a_faire') etats[cle] = { e: 'deja_lie', mot: 'déjà rattaché à cette IPN' };
+          else etats[cle] = { e: 'echec', mot: x.motif || x.statut };
+        });
+      });
+    }
+  } catch (e) { erreur = e.message || String(e); }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = libelle; }
+
+  /* L'ecran est remis a jour sur place, a partir de ce que Luminovo a confirme :
+     on n'affiche pas un resultat suppose. */
+  Object.keys(etats).forEach(function (cle) {
+    (parCle[cle] || []).forEach(function (i) {
+      const m = rowMeta[i]; if (!m) return;
+      m.rattachement = etats[cle].e;
+      m.rattachementMotif = etats[cle].mot;
+      m.warnings = (m.warnings || []).filter(w => String(w).indexOf('IPN NON rattachee') !== 0);
+      if (etats[cle].e === 'echec') m.warnings.push('IPN NON rattachee : ' + etats[cle].mot);
+    });
+  });
+  rerenderBomTable(false);
+
+  const detail = Object.keys(totaux).map(k => k + ' : ' + totaux[k]).join('\n');
+  alert((erreur ? '⚠ Interrompu après ' + paquets + ' envoi(s) : ' + erreur + '\n\n' : '✔ Rattachement terminé.\n\n')
+    + (detail || 'aucun résultat renvoyé')
+    + '\n\nok / ok_partiel / rien_a_faire = c\'est bon. ipn_inexistante = l\'IPN n\'existe pas dans Luminovo, elle est à créer.');
+}
+
+function aideClaude(mode) {
+  const L = [];
+  const onglet = aideOnglet();
+  const so = ((document.getElementById('so-reference') || {}).value || '').trim();
+  const fich = (document.getElementById('bom-file-input') || {}).files;
+
+  /* Journalise le clic, comme au devis (deroule v1.57, decision Olivier du 08/10) :
+     on veut savoir OU l'ecran ne suffit pas, pas en discuter. Jete en fond, jamais
+     bloquant : une mesure perdue ne doit pas gener un achat. */
+  try {
+    const u = (typeof webhookUrl === 'string' && webhookUrl) ? webhookUrl.replace(/\/[^\/]*$/, '') : '';
+    if (u) fetch(u + '/recette-deroule-mesure', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ appli: 'achats', evenement: 'aide_claude',
+        etape: String(mode || onglet || ''), dossier: so, personne: aideQui() })
+    }).catch(function () {});
+  } catch (e) {}
+
+  L.push('Achats PP v' + APP_VERSION + ' - onglet « ' + onglet + ' »'
+    + (so ? ' - ' + so : '')
+    + ((typeof activeClient !== 'undefined' && activeClient && activeClient.nom !== 'Standard')
+        ? ' - client ' + activeClient.nom + (activeClient.mpn_strict ? ' (MPN strict)' : '') : ''));
+  if (fich && fich[0]) {
+    L.push('BOM : ' + fich[0].name + (dernierTicket ? ' - ticket ' + dernierTicket : ''));
+  }
+
+  if (Array.isArray(bomData) && bomData.length) {
+    const P = ipnPointsOuverts();
+    L.push('Lignes : ' + bomData.length
+      + ' | IPN a creer : ' + P.creer.length
+      + ' | non rattachees : ' + P.nonRatt.length
+      + ' | rattachees a l instant : ' + P.ecrits
+      + ' | deja liees : ' + P.dejaLies
+      + ' | en erreur : ' + P.err.length);
+    const ligne = function (o) {
+      return o.ref + ' : ' + (o.mpn || 'sans MPN') + ' -> IPN ' + (o.ipn || '?')
+        + (o.motif ? ' - ' + o.motif : '');
+    };
+    const bloc = function (titre, liste) {
+      if (!liste.length) return;
+      L.push('', titre);
+      liste.slice(0, 40).forEach(function (o) { L.push('  - ' + ligne(o)); });
+      if (liste.length > 40) L.push('  ... et ' + (liste.length - 40) + ' autres');
+    };
+    bloc('IPN A CREER dans Luminovo (geste manuel) :', P.creer);
+    bloc('IPN NON RATTACHEES (le service n a pas pu lier le MPN) :', P.nonRatt);
+    bloc('LIGNES EN ERREUR de codification :', P.err);
+    if (P.mpnManquant.length) {
+      L.push('', 'MPN a obtenir du client (client MPN strict) : ' + P.mpnManquant.join(', '));
     }
   } else {
-    badge.textContent = 'Aucune BOM';
-    badge.className = 'chat-context-badge empty';
+    L.push('Aucune BOM chargee a cet instant.');
   }
-}
 
-function sendSuggestion(btn) {
-  document.getElementById('chat-input').value = btn.textContent;
-  document.getElementById('chat-suggestions').style.display = 'none';
-  sendChat();
-}
+  if (mode === 'ipn') {
+    L.push('', 'Ma demande : aide-moi sur la codification IPN de cette BOM.',
+      '1. IPN a creer : confirme ou corrige la codification proposee, et dis-moi laquelle creer dans Luminovo.',
+      '2. IPN non rattachees : dis-moi pourquoi, et ce qu il faut faire.',
+      'Ne modifie rien dans Luminovo sans mon go.');
+  } else {
+    L.push('', 'Ma question : ');
+  }
 
-function getBOMContext() {
-  if (!bomData || !bomData.length) return "Aucune BOM chargée.";
-  const rows = bomData.map(r => {
-    const qty   = findCol(r,['aggregated qty','qty','quantity','qté']);
-    const ref   = findCol(r,['designator','reference','ref']);
-    const mpn   = findCol(r,['mpn','manufacturer part','part number']);
-    const ipn   = findCol(r,['approved internal part number','approved internal','ipn','internal part']);
-    const notes = findCol(r,['approved parts','notes','note','description']);
-    const stock = findCol(r,['reçus','recus','stock']);
-    return `${ref} | QTY:${qty} | MPN:${mpn} | IPN:${ipn} | Stock:${stock} | Notes:${notes}`;
-  }).join('\n');
-
-  const clientInfo = activeClient ? `Client: ${activeClient.nom} (MPN strict: ${activeClient.mpn_strict?'oui':'non'})` : '';
-  const stockInfo  = (Object.keys(stockByIPN).length > 0)
-    ? `Fichier stock chargé: ${Object.keys(stockByIPN).length} IPN, ${Object.keys(stockByMPN).length} MPN`
-    : 'Fichier stock non chargé';
-
-  return `${clientInfo}\n${stockInfo}\n\nBOM (${bomData.length} composants):\nRef | Qty | MPN | IPN | Stock | Notes\n${rows}`;
-}
-
-function addMessage(role, text, source) {
-  const div = document.createElement('div');
-  div.className = 'chat-msg ' + role;
-  const now = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
-  const bubble = text.replace(/\n/g,'<br>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-  div.innerHTML = '<div class="chat-bubble">' + bubble + '</div>' +
-    (source ? '<div class="chat-source"><i class="ti ti-world" aria-hidden="true"></i> ' + source + '</div>' : '') +
-    '<div class="chat-msg-time">' + now + '</div>';
-  const msgs = document.getElementById('chat-messages');
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-  return div;
-}
-
-async function sendChat() {
-  const input = document.getElementById('chat-input');
-  const text = input.value.trim();
-  if (!text) return;
-  if (!apiKey) { addMessage('assistant', '⚠️ Clé API non configurée. Veuillez relancer la configuration.'); return; }
-
-  input.value = '';
-  input.style.height = 'auto';
-  document.getElementById('chat-send-btn').disabled = true;
-  document.getElementById('chat-suggestions').style.display = 'none';
-
-  addMessage('user', text);
-  chatHistory.push({ role:'user', content: text });
-
-  document.getElementById('chat-typing').classList.add('visible');
-  const msgs = document.getElementById('chat-messages');
-  msgs.scrollTop = msgs.scrollHeight;
-
-  const systemPrompt = "Tu es un assistant expert en electronique et gestion de composants BOM.\n" +
-    "Tu as acces au contexte complet de la BOM chargee et tu peux faire des recherches web.\n\n" +
-    "CONTEXTE BOM ACTUEL:\n" + getBOMContext() + "\n\n" +
-    getRulesPrompt() + "\n\n" +
-    "Reponds en francais, de maniere concise et technique. Pour les recherches, utilise web_search.";
-
+  const txt = L.join('\n');
+  /* La confirmation doit etre VUE (devis v13.28.1) : bandeau bien visible, et
+     l'onglet Claude ne s'ouvre qu'apres 1,2 s pour laisser le temps de la lire. */
+  const ok = function () {
+    const m = document.createElement('div');
+    m.innerHTML = '<b>&#10004; Resume copie.</b> Dans Claude, ouvre un nouveau fil et colle (Ctrl+V).';
+    m.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--blue);color:#fff;border-radius:8px;padding:12px 20px;z-index:99999;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.5)';
+    document.body.appendChild(m);
+    setTimeout(function () { m.remove(); }, 5000);
+  };
+  const ouvrir = function () { setTimeout(function () { window.open(CLAUDE_PROJET, '_blank'); }, 1200); };
+  let copie = false;
   try {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1024,
-        system: systemPrompt,
-        tools: [{
-          type: "web_search_20250305",
-          name: "web_search"
-        }],
-        messages: chatHistory
-      })
-    });
-
-    const data = await resp.json();
-    document.getElementById('chat-typing').classList.remove('visible');
-
-    if (data.error) {
-      addMessage('assistant', '⚠️ Erreur API : ' + data.error.message);
-      chatHistory.pop();
-    } else {
-      // Extract text and search sources from response
-      let fullText = '';
-      let sources = [];
-      data.content.forEach(block => {
-        if (block.type === 'text') fullText += block.text;
-        if (block.type === 'tool_result') {
-          try {
-            const res = JSON.parse(block.content);
-            if (res.results) sources = res.results.slice(0,2).map(r => r.url || r.title).filter(Boolean);
-          } catch(e) {}
-        }
-      });
-
-      // Also check for web search results in tool_use blocks
-      data.content.forEach(block => {
-        if (block.type === 'tool_use' && block.name === 'web_search') {
-          sources.push('Recherche: ' + (block.input.query || ''));
-        }
-      });
-
-      const sourceText = sources.length ? sources.join(' · ') : '';
-      addMessage('assistant', fullText || '(Pas de réponse)', sourceText);
-      chatHistory.push({ role:'assistant', content: data.content });
-
-      // Notify if panel closed
-      if (!chatOpen) {
-        document.getElementById('chat-notif').classList.add('visible');
-      }
-    }
-  } catch(e) {
-    document.getElementById('chat-typing').classList.remove('visible');
-    addMessage('assistant', '⚠️ Erreur de connexion : ' + e.message);
-    chatHistory.pop();
-  }
-
-  document.getElementById('chat-send-btn').disabled = false;
-  input.focus();
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    copie = document.execCommand('copy'); ta.remove();
+  } catch (e) {}
+  if (copie) { ok(); ouvrir(); }
+  else if (navigator.clipboard) navigator.clipboard.writeText(txt).then(
+    function () { ok(); ouvrir(); },
+    function () { prompt('Copie ce resume (Ctrl+C) puis colle-le dans Claude :', txt); ouvrir(); });
+  else { prompt('Copie ce resume (Ctrl+C) puis colle-le dans Claude :', txt); ouvrir(); }
 }
 </script>
 
