@@ -459,7 +459,12 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.34";
+const APP_VERSION = "15.35";
+/* 15.35 (21/10/2026, trouve au test de la 15.34) : LA REPONSE AU « MAIS COMMENT ? » POUR LES IPN A CREER.
+   Le service de codification renvoie lui-meme l'adresse de l'IPN manager de Luminovo et la liste des IPN a
+   creer au format qu'il attend (« IPN,MPN » par ligne). La 15.34 pointait sur une adresse devinee, qui
+   n'etait pas la bonne page, et ne proposait pas la liste. Desormais : un bouton copie les lignes, un autre
+   ouvre la bonne page — copier, ouvrir, coller. */
 /* 15.34 (21/10/2026, retours Olivier « le chat mange le bouton signaler… de toute façon le chat sert à rien par contre
    ce qu'on a fait dans le déroulé devis "faire appel à claude" ça oui c'est super » et « ok ipn à rattacher ou à créer
    c'est cool de signaler mais comment ? »).
@@ -3384,6 +3389,44 @@ function clearBOM() {
 <script>
 const CLAUDE_PROJET = 'https://claude.ai/project/019f6f80-4cd1-76bb-9d15-a5163b498d26';
 const RATT_ECHECS = ['echec', 'indisponible', 'non_demande', 'a_la_main'];
+/* 15.35 : l'adresse vient du service lui-meme (champ lien_ipn_manager de la reponse
+   de « PP - Codification IPN », releve le 21/10). La 15.34 pointait sur une adresse
+   devinee, /parts/internal, qui n'est pas la bonne page. */
+const LIEN_IPN_MANAGER = 'https://proto-process.luminovo.com/apps/ipn-manager';
+
+/* COPIER LES IPN A CREER - v15.35 (21/10/2026)
+   Reponse concrete au « c est cool de signaler mais comment ? » : l IPN manager de
+   Luminovo attend des lignes « IPN,MPN ». Le service produit deja exactement ce
+   format (champ a_coller_creations) ; on le reconstruit ici a l identique a partir
+   de ce qui est a l ecran, pour que le geste soit copier / ouvrir / coller. */
+function copierIpnACreer(btn) {
+  const P = ipnPointsOuverts();
+  if (!P.creer.length) { alert('Aucune IPN a creer sur cette BOM.'); return; }
+  const txt = P.creer.map(function (o) { return (o.ipn || '') + ',' + (o.mpn || ''); }).join('\n');
+  const fini = function (ok) {
+    if (!btn) return;
+    const av = btn.innerHTML;
+    btn.innerHTML = ok
+      ? '<i class="ti ti-check" aria-hidden="true"></i> ' + P.creer.length + ' ligne(s) copiée(s)'
+      : '<i class="ti ti-x" aria-hidden="true"></i> copie refusée';
+    setTimeout(function () { btn.innerHTML = av; }, 3000);
+  };
+  let copie = false;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    copie = document.execCommand('copy'); ta.remove();
+  } catch (e) {}
+  if (copie) { fini(true); return; }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(txt).then(function () { fini(true); },
+      function () { prompt('Copie ces lignes (Ctrl+C) puis colle-les dans l IPN manager :', txt); fini(false); });
+  } else {
+    prompt('Copie ces lignes (Ctrl+C) puis colle-les dans l IPN manager :', txt);
+    fini(false);
+  }
+}
 
 function aideQui() { try { return localStorage.getItem('pp_signaleur') || ''; } catch (e) { return ''; } }
 
@@ -3457,7 +3500,8 @@ function renderIpnLuminovoBox() {
      des lignes ont deja ete traitees : il sert aussi a relancer apres un echec. */
   const boutons = [
     `<button class="btn att-action" onclick="rattacherMaintenant(this)" title="Envoie a Luminovo tous les couples IPN / MPN de cette BOM qui peuvent etre lies. Aucune IPN creee, aucune liste raccourcie."><i class="ti ti-link" aria-hidden="true"></i> Rattacher maintenant</button>`,
-    P.creer.length ? `<a class="btn" href="https://proto-process.luminovo.com/parts/internal" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Ouvrir Luminovo (IPN)</a>` : '',
+    P.creer.length ? `<button class="btn att-action" onclick="copierIpnACreer(this)" title="Copie la liste « IPN,MPN » au format attendu par l IPN manager de Luminovo, prete a coller."><i class="ti ti-copy" aria-hidden="true"></i> Copier les ${P.creer.length} IPN à créer</button>` : '',
+    P.creer.length ? `<a class="btn" href="${LIEN_IPN_MANAGER}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Ouvrir l'IPN manager</a>` : '',
     `<button class="btn" style="color:var(--blue);border-color:var(--blue)" onclick="aideClaude('ipn')"><i class="ti ti-message-question" aria-hidden="true"></i> Demander de l'aide à Claude</button>`
   ].filter(Boolean).join(' ');
 
