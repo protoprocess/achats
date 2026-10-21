@@ -460,7 +460,16 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.36";
+const APP_VERSION = "15.37";
+/* 15.37 (21/10/2026, demande Olivier après un onglet tué par le navigateur) : REPRENDRE LA DERNIÈRE ANALYSE.
+   Un onglet qui tombe emportait tout — l'analyse (40 s et une exécution n8n), les scrap repris à la main, les
+   équivalents choisis, les résolutions de stock. L'analyse est bien consignée en base sous son ticket, mais elle
+   ne contient que la codification : ni la BOM, ni les décisions humaines. L'état de travail est désormais gardé
+   dans le navigateur, sur le poste, au même endroit que le code d'accès et les règles de codification — rien ne
+   part sur le réseau, rien ne passe par n8n. Au chargement, un bandeau PROPOSE la reprise (jamais imposée) ;
+   la sauvegarde expire au bout de 24 h et « Effacer » l'oublie aussi. Pas de bouton d'effacement manuel : décision
+   d'Olivier, « un bouton que les gens ne sauront pas utiliser encombre pour pas grand chose ». Quota plein, mode
+   privé ou BOM énorme : on abandonne la sauvegarde en silence, elle ne doit jamais empêcher une analyse. */
 /* 15.36 (21/10/2026, retours Olivier sur la BOM IP2I Ricochet Synchro R2).
    (1) BLOC « IPN · LUMINOVO » LISIBLE — « pas facile à lire avec tous ces repères ». Une ligne par IPN avec le MPN,
    le nombre de repères et trois repères en exemple, au lieu de déverser les 60 désignateurs d'un même composant ;
@@ -2521,6 +2530,10 @@ function rerenderBomTable(resetFilter) {
   applyFilter();
 
   MPN_MISSING = mpnMissingList;
+  /* 15.37 : toute modification de l'analyse finit par redessiner le tableau.
+     C'est donc le seul endroit ou accrocher la sauvegarde : un point de passage
+     unique, plutot qu'un appel a semer dans chaque fonction qui touche l'etat. */
+  try { sauvegardeDifferee(); } catch (e) {}
   const warnItems=Object.entries(warnSummary).filter(([,v])=>v.length);
   document.getElementById('bom-warnings-section').innerHTML=renderIpnLuminovoBox()+(mpnMissingList.length?renderMpnMissingBox(mpnMissingList):'')+(warnItems.length?`<div class="warn-box">
     <div class="section-label" style="margin-top:0">Composants sensibles détectés</div>
@@ -3392,6 +3405,9 @@ function clearBOM() {
   bomData=[];
   viderChoixStock(); // 13.6
   expandImportZone();
+  /* 15.37 : « Effacer » est un abandon volontaire. Reproposer au prochain
+     chargement ce que l'utilisateur vient de jeter serait agacant. */
+  try { oublierReprise(); } catch (e) {}
 }
 </script>
 
@@ -3410,6 +3426,176 @@ function clearBOM() {
   <i class="ti ti-message-question" aria-hidden="true"></i> Demander de l'aide a Claude</button>
 
 <script>
+/* ============================================================================
+   REPRENDRE LA DERNIERE ANALYSE - v15.37 (21/10/2026, demande Olivier)
+   ----------------------------------------------------------------------------
+   Pourquoi. Un onglet qui tombe emportait TOUT : l'analyse (40 s et une
+   execution n8n), les scrap repris a la main, les equivalents choisis, les
+   resolutions de stock. L'analyse est bien consignee en base sous son ticket,
+   mais elle ne contient que la codification -- ni la BOM, ni les decisions
+   humaines. Rien ne permettait de reprendre. Cas reel du 21/10 : onglet tue
+   par le navigateur quelques minutes apres une analyse de 152 lignes.
+
+   Ou ca vit. Dans le navigateur, sur le poste, au meme endroit que le code
+   d'acces, la cle API, les regles de codification et la liste des clients :
+   ce n'est pas un mecanisme nouveau. Rien ne part sur le reseau, rien ne passe
+   par n8n (le plafond d'executions ne bouge pas), rien ne dort sur un serveur.
+   Contrepartie assumee : la sauvegarde ne suit pas d'un poste a l'autre ni
+   d'un navigateur a l'autre. Pour un filet de secours, l'incident et la
+   reprise se passent sur la meme machine a quelques minutes d'intervalle.
+
+   Decisions d'Olivier (21/10) : on PROPOSE, on n'impose pas ; duree de vie
+   24 h puis effacement sans rien demander ; AUCUN bouton d'effacement manuel
+   -- "un bouton que les gens ne sauront pas utiliser encombre pour pas
+   grand chose".
+
+   Regle d'or : la sauvegarde ne doit JAMAIS empecher une analyse de se faire.
+   Quota plein, mode prive, BOM enorme : on abandonne en silence.
+   ========================================================================== */
+const REPRISE_CLE = 'pp_analyse_reprise';
+const REPRISE_DUREE = 24 * 60 * 60 * 1000;   /* 24 h */
+const REPRISE_MAX = 4 * 1024 * 1024;         /* au-dela, on renonce : le quota
+                                                navigateur tourne autour de 5 Mo
+                                                et l'appli y range deja autre chose */
+let _repriseMinuteur = null;
+
+/* Ecriture differee : une saisie de scrap redessine le tableau a chaque
+   frappe. On attend que ca se calme plutot que d'ecrire cinquante fois. */
+function sauvegardeDifferee() {
+  if (_repriseMinuteur) clearTimeout(_repriseMinuteur);
+  _repriseMinuteur = setTimeout(sauvegarderAnalyse, 800);
+}
+
+function sauvegarderAnalyse() {
+  try {
+    if (!Array.isArray(bomData) || !bomData.length) return;
+    /* On ne sauvegarde qu'une analyse TERMINEE : le bloc de resultats est
+       affiche. Une analyse interrompue en plein milieu ne vaut pas d'etre
+       reproposee. */
+    const res = document.getElementById('bom-result');
+    if (!res || res.style.display === 'none') return;
+
+    const fich = (document.getElementById('bom-file-input') || {}).files;
+    const etat = {
+      v: 1,
+      le: Date.now(),
+      so: ((document.getElementById('so-reference') || {}).value || '').trim(),
+      client: (typeof activeClient !== 'undefined' && activeClient) ? activeClient : null,
+      fichier: (fich && fich[0]) ? fich[0].name : '',
+      ticket: (typeof dernierTicket === 'string') ? dernierTicket : '',
+      bomData: bomData,
+      rowMeta: (typeof rowMeta !== 'undefined') ? rowMeta : [],
+      stockOverrides: (typeof stockOverrides !== 'undefined') ? stockOverrides : {}
+    };
+    const txt = JSON.stringify(etat);
+    if (txt.length > REPRISE_MAX) { oublierReprise(); return; }
+    localStorage.setItem(REPRISE_CLE, txt);
+  } catch (e) {
+    /* Quota plein, mode prive, stockage bloque : tant pis. On nettoie ce qui
+       traine pour laisser de la place au reste de l'appli, et on se tait. */
+    try { localStorage.removeItem(REPRISE_CLE); } catch (e2) {}
+  }
+}
+
+function oublierReprise() {
+  try { localStorage.removeItem(REPRISE_CLE); } catch (e) {}
+  const b = document.getElementById('reprise-bandeau');
+  if (b) b.remove();
+}
+
+function lireReprise() {
+  try {
+    const txt = localStorage.getItem(REPRISE_CLE);
+    if (!txt) return null;
+    const etat = JSON.parse(txt);
+    if (!etat || etat.v !== 1 || !Array.isArray(etat.bomData) || !etat.bomData.length) return null;
+    if (!etat.le || (Date.now() - etat.le) > REPRISE_DUREE) { oublierReprise(); return null; }
+    return etat;
+  } catch (e) { oublierReprise(); return null; }
+}
+
+function ilYA(ms) {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'à l\'instant';
+  if (m < 60) return 'il y a ' + m + ' min';
+  const h = Math.round(m / 60);
+  return 'il y a ' + h + ' h';
+}
+
+/* Le bandeau est construit en JS et pose en tete du panneau qui porte les
+   resultats : aucun HTML a maintenir, et il disparait avec lui. */
+function proposerReprise() {
+  const etat = lireReprise();
+  if (!etat) return;
+  const res = document.getElementById('bom-result');
+  const panneau = res ? res.closest('.panel') : null;
+  if (!panneau) return;
+
+  const quoi = [
+    etat.so || null,
+    etat.fichier || null,
+    etat.bomData.length + ' ligne' + (etat.bomData.length > 1 ? 's' : '')
+  ].filter(Boolean).join(' · ');
+
+  const d = document.createElement('div');
+  d.id = 'reprise-bandeau';
+  d.className = 'reprise-bandeau';
+  d.innerHTML = '<i class="ti ti-history" aria-hidden="true"></i>'
+    + '<div><strong>Analyse retrouvée</strong> — ' + String(quoi).replace(/</g, '&lt;')
+    + ' <span class="reprise-quand">· ' + ilYA(Date.now() - etat.le) + '</span>'
+    + '<br><span class="reprise-aide">Elle a été gardée sur ce poste après la dernière modification. '
+    + 'Reprendre restitue la BOM, les IPN, les scrap et les choix de stock.</span></div>'
+    + '<div class="reprise-boutons">'
+    +   '<button class="btn att-action" onclick="reprendreAnalyse()"><i class="ti ti-rotate-clockwise" aria-hidden="true"></i> Reprendre</button>'
+    +   '<button class="btn" onclick="oublierReprise()">Repartir de zéro</button>'
+    + '</div>';
+  panneau.insertBefore(d, panneau.firstChild);
+}
+
+function reprendreAnalyse() {
+  const etat = lireReprise();
+  if (!etat) { oublierReprise(); return; }
+  try {
+    bomData = etat.bomData;
+    rowMeta = Array.isArray(etat.rowMeta) ? etat.rowMeta : [];
+    stockOverrides = etat.stockOverrides || {};
+    if (etat.client) activeClient = etat.client;
+    if (typeof dernierTicket === 'string') dernierTicket = etat.ticket || '';
+
+    const so = document.getElementById('so-reference');
+    if (so && etat.so) so.value = etat.so;
+
+    document.getElementById('bom-result').style.display = 'block';
+    const charge = document.getElementById('bom-loading');
+    if (charge) charge.style.display = 'none';
+
+    /* Meme mise en page qu'a la fin d'une vraie analyse : zone d'import repliee
+       avec son resume, barre d'ecriture GSheet si elle est configuree. */
+    try { showGSheetBar(etat.fichier || ''); } catch (e) {}
+    const cl = (activeClient && activeClient.nom !== 'Standard')
+      ? activeClient.nom : 'Standard (pas de contrainte MPN)';
+    try {
+      collapseImportZone((etat.fichier || 'BOM reprise') + ' — ' + bomData.length
+        + ' composant(s) — client : ' + cl + ' — reprise');
+    } catch (e) {}
+
+    rerenderBomTable(true);
+    const b = document.getElementById('reprise-bandeau');
+    if (b) b.remove();
+    document.getElementById('bom-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    alert('Reprise impossible : ' + (e && e.message ? e.message : e)
+      + '\nRelance l\'analyse depuis le fichier.');
+    oublierReprise();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  /* Apres le reste du demarrage : la liste des clients et les regles se
+     chargent d'abord, le bandeau n'a pas a courir devant. */
+  setTimeout(function () { try { proposerReprise(); } catch (e) {} }, 700);
+});
+
 const CLAUDE_PROJET = 'https://claude.ai/project/019f6f80-4cd1-76bb-9d15-a5163b498d26';
 const RATT_ECHECS = ['echec', 'indisponible', 'non_demande', 'a_la_main'];
 /* 15.35 : l'adresse vient du service lui-meme (champ lien_ipn_manager de la reponse
