@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Achats PP — v15.6 — 06/10/2026</title>
+<title>Achats PP</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <link rel="stylesheet" href="css/app.css?v=15.31">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -459,7 +459,7 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.31";
+const APP_VERSION = "15.32";
 /* 15.31 (20/10/2026, retour Olivier) : l'étiquette dit POURQUOI la ligne attend — « Rupture — alerte Luminovo » (fournisseur ?X + alerte),
    « Rupture (à surveiller) », « Fournisseur à décider » (???), « Sous franco (panier X) », « Question client posée ». */
 /* 15.30 (20/10/2026, demande Olivier) : onglet Achats — une ligne de ce SO présente dans les Paniers en attente (En attente,
@@ -613,7 +613,7 @@ const APP_VERSION = "15.31";
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "19/10/2026";
+const APP_DATE = "21/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -5165,14 +5165,53 @@ async function sendChat() {
       + (conclues.length ? '• ' + conclues.length + ' consultation(s) conclue(s) : leur ligne des Paniers en attente passe en Commandé\n' : '')
       + (aff.filter(l => l.bobine).length ? '• ' + aff.filter(l => l.bobine).length + ' bobine(s) « stock permanent » : marquée(s) en commande, la réception les entrera au stock\n' : '')
       + '• Planning : les SO encore « AF » passent en « EC », réception prévue J+7';
-    if (!confirm(txt)) return;
+
+    /* 15.32 (21/10/2026, garde-fou bobine — decision Olivier) : une bobine deja en commande et pas
+       encore recue ne doit pas creer une 2e ligne dans lignes_commandees. Cas vecu le 20/10 sur
+       SO2610-998 / C100N-0402-25V : commande RS a 10h51 puis DigiKey a 11h40 = DEUX lignes de
+       10 000 pcs, parce que la cle d unicite de la table contient le fournisseur -- changer de
+       fournisseur et re-valider ne met pas a jour, ca insere. On demande donc a l utilisateur :
+         REMPLACER  -> l ancienne ligne passe en « annulee », celle-ci la remplace
+         2e BOBINE  -> les deux commandes sont conservees (cas legitime : on veut vraiment 2 bobines)
+       Detection cote appli, sur une lecture FRAICHE de stock_permanent (la page peut etre ouverte
+       depuis des heures). Si la relecture echoue, on retombe sur les donnees en memoire.
+       Le cas « 2 SO differents » n arrive pas ici : quand commande_le est pose, appliquerStockPermanent()
+       ne propose plus de bobine, il met la carte en Inventory. */
+    let remplacerBobines = [];
+    const bobsCochees = aff.filter(l => l.bobine && l.ipn);
+    if (bobsCochees.length) {
+      let frais = null;
+      try {
+        if (webhookUrl) {
+          const base = webhookUrl.replace(/\/[^\/]*$/, '');
+          const rr = await ppFetchDelai(base + '/achats-stock-permanent');
+          const dd = await rr.json();
+          if (dd && Array.isArray(dd.refs)) { frais = {}; dd.refs.forEach(x => { if (x && x.ipn) frais[String(x.ipn).trim().toUpperCase()] = x; }); }
+        }
+      } catch(e) { frais = null; }
+      const voir = ipn => frais ? (frais[String(ipn || '').trim().toUpperCase()] || null) : refStockPermanent(ipn);
+      const deja = bobsCochees.filter(l => { const sp = voir(l.ipn); return !!(sp && sp.commande_le); });
+      if (deja.length) {
+        const liste = deja.map(l => { const sp = voir(l.ipn) || {}; return '• ' + l.ipn + ' — commandée le ' + dateCourte(sp.commande_le) + (sp.commande_via ? ' via ' + sp.commande_via : ''); }).join('\n');
+        if (confirm('⚠ Bobine(s) déjà en commande et pas encore reçue(s) :\n' + liste
+          + '\n\nOK = REMPLACER : l ancienne commande passe en « annulée », celle-ci la remplace.'
+          + '\nAnnuler = 2e BOBINE : les deux commandes sont conservées.')) {
+          remplacerBobines = deja.map(l => String(l.ipn).trim().toUpperCase());
+        }
+      }
+    }
+    const txtBob = remplacerBobines.length
+      ? '\n• ' + remplacerBobines.length + ' bobine(s) REMPLACÉE(S) : ' + remplacerBobines.join(', ') + ' — l ancienne commande passe en « annulée »'
+      : '';
+
+    if (!confirm(txt + txtBob)) return;
     const m = document.getElementById('att-panier-msg');
     if (m) m.textContent = 'Validation en cours…';
     try {
       const rq = await fetch(ATT_PANIER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'valider', fournisseur: fmt.titre, so: so, so_commandeur: so, carte: EA ? '' : attSheetData.fileName, lignes_affaire: aff, lignes_inventory: lignesInventory, lignes: att.map(l => ({ so: l.so, fournisseur: l.fournisseur, refFour: l.refFour, ipn: l.ipn, mpn: l.mpn, qte: l.qte, montant: l.montant })).concat(conclues) })
+        body: JSON.stringify({ action: 'valider', fournisseur: fmt.titre, so: so, so_commandeur: so, carte: EA ? '' : attSheetData.fileName, remplacer_bobines: remplacerBobines, lignes_affaire: aff, lignes_inventory: lignesInventory, lignes: att.map(l => ({ so: l.so, fournisseur: l.fournisseur, refFour: l.refFour, ipn: l.ipn, mpn: l.mpn, qte: l.qte, montant: l.montant })).concat(conclues) })
       });
       const res = await rq.json();
       alert((res.success ? '✅ ' : '⚠ ') + (res.message || res.reason || 'Réponse inattendue'));
