@@ -460,7 +460,7 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.38";
+const APP_VERSION = "15.39"; /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
 /* 15.38 (21/10/2026, repéré par Olivier sur sa capture) : LA PASTILLE DE CONFIANCE DISAIT L'INVERSE DE LA VÉRITÉ.
    La voie codification envoyait la confiance en nombre (1 / 0.7 / 0.5 / 0), l'autre voie en chaîne, et l'écran
    n'acceptait que 'high' / 'medium' / 'low'. Rien ne correspondait : une ligne à la confiance MAXIMALE tombait
@@ -2173,6 +2173,30 @@ async function analyzeBOM() {
   }
 
   appliquerEtAfficher(rows, webhookResults);
+  /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LA BOM LUMINOVO.
+     Achats PP rattachait les MPN a leur IPN dans la bibliotheque, mais rien ne redescendait
+     sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout.
+     On appelle ici la brique « PP - Poser les IPN sur la BOM » v1.1, qui retrouve le RfQ
+     par le numero de commande puis par le nom de carte lu dans le nom du fichier (ambigu ou
+     introuvable -> elle ne pose RIEN). En tache de fond : l'analyse est deja affichee,
+     rien n'attend ce retour et un echec ne se voit pas a l'ecran. */
+  poserIpnSurBomLuminovo(nomFichier);
+}
+
+/* Rattrapage silencieux. Jamais d'await cote appelant : ni la latence ni une panne
+   Luminovo ne doivent toucher l'analyse, qui est deja a l'ecran quand on arrive ici. */
+function poserIpnSurBomLuminovo(nomFichier) {
+  try {
+    const u = (typeof webhookUrl === 'string' && webhookUrl) ? webhookUrl.replace(/\/[^\/]*$/, '') : '';
+    if (!u) return;
+    const so = (typeof detecterSO === 'function') ? detecterSO(nomFichier, []) : null;
+    if (!so && !nomFichier) return;
+    fetch(u + '/poser-ipn-bom', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origine: 'achats-pp', so: so || null, fichier: nomFichier || null }) })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j) console.log('[Achats PP] IPN posees sur la BOM Luminovo :', j.statut, j.posees != null ? j.posees + ' ligne(s)' : (j.motif || '')); })
+      .catch(e => { console.log('[Achats PP] pose des IPN non faite :', e && e.message); });
+  } catch (e) { /* jamais bloquant */ }
 }
 
 // Applique un jeu de resultats (venu du webhook OU de la consigne) sur une BOM
