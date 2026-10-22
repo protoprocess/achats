@@ -460,7 +460,7 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.39"; /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
+const APP_VERSION = "15.40"; /* 15.40 (22/10/2026, constate par Olivier sur SO2609-521) : LE TIRET « — » ETAIT PRIS POUR UNE IPN. Quand le service ne rend pas d'IPN, la case de l'onglet Analyse BOM affiche « — » : un symbole d'affichage, pas une donnee. Mais au moment d'ecrire la feuille achat, « Sync edited IPNs » recopiait la case telle quelle : le « — » devenait une vraie valeur en colonne C, puis partait dans les Paniers en attente via le bouton « Non dispo ». L'onglet Achats rapproche feuille et panier par MPN OU IPN : « — » == « — », donc les 2 vraies questions client posees le 22/10 (AHM250PS24, Si1012CR-T1-GE3) badgeaient TOUTES les lignes sans IPN du SO — grisees, bouton « question posee » a la place du vrai bouton, et surtout EXCLUES du panier a commander. Corrige aux deux bouts : (1) la fuite — une case qui vaut un tiret est ecrite vide ; (2) le blindage — un seul helper refIndexable() decide ce qui fait cle, et les 6 fonctions de rapprochement l'utilisent, ce qui protege aussi toutes les feuilles DEJA ecrites avec des « — ». Le tiret reste affiche a l'ecran (decision Olivier). */ /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
 /* 15.38 (21/10/2026, repéré par Olivier sur sa capture) : LA PASTILLE DE CONFIANCE DISAIT L'INVERSE DE LA VÉRITÉ.
    La voie codification envoyait la confiance en nombre (1 / 0.7 / 0.5 / 0), l'autre voie en chaîne, et l'écran
    n'acceptait que 'high' / 'medium' / 'low'. Rien ne correspondait : une ligne à la confiance MAXIMALE tombait
@@ -2427,6 +2427,22 @@ function getColValue(row, colName) {
   return found ? row[found] : '';
 }
 
+/* 15.40 (22/10/2026, SO2609-521) : CE QUI FAIT CLE, ET CE QUI N'EN FAIT PAS.
+   Une case IPN vide s'affiche « — » dans l'onglet Analyse BOM. C'est un symbole, pas une donnee :
+   le jour ou il est ecrit dans la feuille achat puis dans les Paniers en attente, toutes les lignes
+   sans IPN d'un meme SO se ressemblent, et un rapprochement par IPN les confond toutes.
+   Toute valeur qui ne designe RIEN (vide, tiret sous ses trois formes, N/A) doit donc etre refusee
+   AVANT de servir de cle ou de partir vers n8n. Une seule fonction le decide, pour que la regle ne
+   puisse pas diverger d'un endroit a l'autre (meme travers que les regles en double corrigees en 15.16).
+   Rend la valeur normalisee (MAJUSCULES, sans espaces) si elle est utilisable, sinon ''. */
+function refIndexable(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  if (/^[-–—_.\s]+$/.test(s)) return '';            /* - – — ___ … : des tirets, pas une reference */
+  if (/^(n\/?a|na|none|null|nc|vide|aucun|aucune)$/i.test(s)) return '';
+  return s.toUpperCase();
+}
+
 // Construit une seule ligne <tr> du tableau BOM à partir de la donnée brute (row) et des
 // métadonnées de codification (meta: status/warnings/qc_issues/confidence/ipn). Partagé entre
 // le rendu initial et le re-rendu après scission de stock partiel ou adoption d'un match flou —
@@ -3117,10 +3133,14 @@ async function writeToGSheet() {
   statusEl.innerHTML = '<div class="spinner" style="width:13px;height:13px;border-width:2px;display:inline-block;vertical-align:middle"></div> Recherche de la GSheet dans Drive…';
 
   // Sync edited IPNs
+  /* 15.40 : LE POINT DE FUITE DU « — ». La case affiche « — » quand il n'y a pas d'IPN (c'est voulu,
+     c'est lisible) — mais ce tiret ne doit JAMAIS descendre dans la feuille achat : il y devient une
+     valeur, et tout ce qui rapproche des lignes par IPN confond ensuite toutes les lignes sans IPN
+     du SO (SO2609-521, 22/10). On ecrit donc la case vide. L'ecran, lui, garde son tiret. */
   champsIPN().forEach(([inp,i]) => {
     if (bomData[i]) {
       const key = Object.keys(bomData[i]).find(k=>k.toLowerCase().includes('ipn')||k.toLowerCase().includes('internal'))||'IPN';
-      bomData[i][key] = inp.value;
+      bomData[i][key] = refIndexable(inp.value) ? String(inp.value).trim() : '';
     }
   });
 
@@ -4956,9 +4976,9 @@ function aideClaude(mode) {
     const lignes = cochees.map(i => {
       const l = attSheetActives[i];
       return {
-        ref: (l['MPN']||'').trim() || (l['Approved internal part number']||'').trim() || (l['Approved parts']||'').trim(),
+        ref: (l['MPN']||'').trim() || attIpnLigne(l) || (l['Approved parts']||'').trim(),
         mpn: (l['MPN']||'').trim(),
-        ipn: (l['Approved internal part number']||'').trim(),
+        ipn: attIpnLigne(l),
         fabricant: attFabricantLigne(l),
         qte: (l['Purchase qty']||'').toString().trim()
       };
@@ -5008,7 +5028,7 @@ function aideClaude(mode) {
       if (!fournisseur) return;
     }
     const mpn = (l['MPN']||'').trim();
-    const ipn = (l['Approved internal part number']||'').trim();
+    const ipn = attIpnLigne(l);
     if (!confirm('Marquer commandé chez ' + fournisseur + ' ?\n' + d.so + ' — ' + (mpn || ipn))) return;
     try {
       const refAuto = await attRefAuto(mpn, fournisseur);
@@ -5034,7 +5054,7 @@ function aideClaude(mode) {
     const l = attSheetActives[i];
     if (!l) return;
     const mpn = (l['MPN']||'').trim();
-    const ipn = (l['Approved internal part number']||'').trim();
+    const ipn = attIpnLigne(l);
     const qte = (l['Purchase qty']||'').toString().trim();
     if (!confirm('Non dispo : ' + (mpn || ipn) + '\n\n- Le fournisseur passera en "?' + (l['Supplier']||'').trim() + '" dans la sheet achat, la ligne rejoint les Paniers en attente\n- FabStory s\'ouvre ensuite dans un nouvel onglet pour poser la question au client (MPN et repère déjà remplis)')) return;
     const onglet = window.open('about:blank', '_blank');   /* ouvert tout de suite : sinon le navigateur bloque l'onglet après l'attente */
@@ -5126,8 +5146,9 @@ function aideClaude(mode) {
       const st = attNorm(p['Statut']);
       if (st === 'Commandé' || st === 'Clos') return;   /* sorti du circuit */
       if (U(p['SO']) !== S) return;
-      if (U(p['MPN'])) cles.add('M|' + U(p['MPN']));
-      if (U(p['IPN'])) cles.add('I|' + U(p['IPN']));
+      /* 15.40 : refIndexable écarte « — » / « N/A » — sinon toutes les lignes sans IPN se confondent */
+      if (refIndexable(p['MPN'])) cles.add('M|' + refIndexable(p['MPN']));
+      if (refIndexable(p['IPN'])) cles.add('I|' + refIndexable(p['IPN']));
     });
     return cles;
   }
@@ -5138,8 +5159,8 @@ function aideClaude(mode) {
     (attData.panier || []).forEach(function(p){
       if (attNorm(p['Statut']) !== 'Consultation') return;
       if (U(p['SO']) !== S) return;
-      if (U(p['MPN'])) m.set('M|' + U(p['MPN']), p);
-      if (U(p['IPN'])) m.set('I|' + U(p['IPN']), p);
+      if (refIndexable(p['MPN'])) m.set('M|' + refIndexable(p['MPN']), p);   /* 15.40 */
+      if (refIndexable(p['IPN'])) m.set('I|' + refIndexable(p['IPN']), p);
     });
     return m;
   }
@@ -5150,12 +5171,18 @@ function aideClaude(mode) {
     const U = x => String(x || '').trim().toUpperCase();
     const sup = U(l['Supplier']);
     if (!sup || sup === 'CONSULTATION' || sup[0] === '?' || !attPanierCle(l['Supplier'])) return null;
-    const m = U(l['MPN']), i = U(l['Approved internal part number']);
+    const m = refIndexable(l['MPN']), i = refIndexable(l['Approved internal part number']);   /* 15.40 */
     return (m && consults.get('M|' + m)) || (i && consults.get('I|' + i)) || null;
   }
+  /* 15.40 : l'IPN telle qu'on peut la TRANSMETTRE (n8n, Luminovo, Paniers en attente). Les feuilles
+     achat ecrites avant la 15.40 portent « — » en colonne C quand il n'y a pas d'IPN : on ne le
+     renvoie jamais, sinon le tiret repart faire des degats ailleurs. */
+  function attIpnLigne(l){
+    const v = String((l && l['Approved internal part number']) || '').trim();
+    return refIndexable(v) ? v : '';
+  }
   function attLigneEnAttente(l, cles){
-    const U = x => String(x || '').trim().toUpperCase();
-    const m = U(l['MPN']), i = U(l['Approved internal part number']);
+    const m = refIndexable(l['MPN']), i = refIndexable(l['Approved internal part number']);   /* 15.40 */
     return (!!m && cles.has('M|' + m)) || (!!i && cles.has('I|' + i));
   }
   /* 15.30 (20/10/2026, demande Olivier) : la ligne des Paniers en attente de CE SO pour une ligne de feuille
@@ -5168,15 +5195,17 @@ function aideClaude(mode) {
       const st = attNorm(p['Statut']);
       if (st === 'Commandé' || st === 'Clos') return;
       if (U(p['SO']) !== S) return;
-      if (U(p['MPN']) && !m.has('M|' + U(p['MPN']))) m.set('M|' + U(p['MPN']), p);
-      if (U(p['IPN']) && !m.has('I|' + U(p['IPN']))) m.set('I|' + U(p['IPN']), p);
+      /* 15.40 (SO2609-521) : sans refIndexable, une ligne de panier dont l'IPN vaut « — » posait la clé
+         « I|— », et TOUTES les lignes sans IPN de la feuille tombaient dessus : badge « Question client
+         posée » partout, bouton remplacé, et lignes sorties du panier à commander. */
+      if (refIndexable(p['MPN']) && !m.has('M|' + refIndexable(p['MPN']))) m.set('M|' + refIndexable(p['MPN']), p);
+      if (refIndexable(p['IPN']) && !m.has('I|' + refIndexable(p['IPN']))) m.set('I|' + refIndexable(p['IPN']), p);
     });
     return m;
   }
   function attPanierDeLigne(l, paniers){
     if (!paniers || !paniers.size) return null;
-    const U = x => String(x || '').trim().toUpperCase();
-    const m = U(l['MPN']), i = U(l['Approved internal part number']);
+    const m = refIndexable(l['MPN']), i = refIndexable(l['Approved internal part number']);   /* 15.40 */
     return (m && paniers.get('M|' + m)) || (i && paniers.get('I|' + i)) || null;
   }
   function attBadgeAttente(p){
@@ -5304,7 +5333,7 @@ function aideClaude(mode) {
        (constat SO2610-998, 20/10 : 0 ligne inventory dans lignes_commandees) */
     const src = (attSheetData && Array.isArray(attSheetData.lignes)) ? attSheetData.lignes : (attSheetActives || []);
     return src.filter(l => String(l['Supplier'] || '').trim().toLowerCase() === 'inventory').map(l => Object.assign({
-      ipn: (l['Approved internal part number']||'').trim(), mpn: (l['MPN']||'').trim(), qte: (l['Purchase qty']||'').toString().trim()
+      ipn: attIpnLigne(l), mpn: (l['MPN']||'').trim(), qte: (l['Purchase qty']||'').toString().trim()
     }, attDetailLigne(l)));
   }
 
@@ -5329,7 +5358,7 @@ function aideClaude(mode) {
         i, coche: true, conclue: !!conclue,
         fournisseur: (l['Supplier']||'').trim(),
         refFour: (l['Supplier part number']||'').trim(),
-        ipn: (l['Approved internal part number']||'').trim(),
+        ipn: attIpnLigne(l),
         mpn: (l['MPN']||'').trim(),
         qte: (l['Purchase qty']||'').toString().trim(),
         montant: num(l['Purchase price'])
@@ -5728,7 +5757,7 @@ function aideClaude(mode) {
     if (!l || !attSheetData) return;
     attPanierFermer();
     PPChangerFourn.ouvrir({
-      lignes: [{ so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
+      lignes: [{ so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: attIpnLigne(l),
                  fournisseur: attFournPourPopup(l), ref: (l['Supplier part number']||'').trim(),
                  /* 15.27 : la Resolution doit savoir si on vise la ligne BOBINE ou la ligne carte (meme IPN) */
                  bobine: String(l['Vigilance'] || '').indexOf(STOCK_PERMANENT_MARQUE) >= 0 }],
@@ -5746,7 +5775,7 @@ function aideClaude(mode) {
     if (!idx.length) return;
     attPanierFermer();
     PPChangerFourn.ouvrir({
-      lignes: idx.map(i => { const l = attSheetActives[i]; return { so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: (l['Approved internal part number']||'').trim(),
+      lignes: idx.map(i => { const l = attSheetActives[i]; return { so: attSheetData.so, mpn: (l['MPN']||'').trim(), ipn: attIpnLigne(l),
         fournisseur: attFournPourPopup(l), ref: (l['Supplier part number']||'').trim() }; }),
       refInfoUrl: ATT_REFINFO_URL,
       stock: (typeof stockByIPN === 'object') ? stockByIPN : null,
@@ -5766,12 +5795,12 @@ function aideClaude(mode) {
     idx.forEach(i => {
       const l = attSheetActives[i];
       const cle = attPanierCle(l['Supplier']);
-      const nom = (l['MPN']||'').trim() || (l['Approved internal part number']||'').trim();
+      const nom = (l['MPN']||'').trim() || attIpnLigne(l);
       if (!cle) { exclues.push(nom + ' (' + ((l['Supplier']||'').trim() || 'sans fournisseur') + ')'); return; }
       (groupes[cle] = groupes[cle] || []).push({
         i, fournisseur: (l['Supplier']||'').trim(),
         refFour: (l['Supplier part number']||'').trim(),
-        ipn: (l['Approved internal part number']||'').trim(),
+        ipn: attIpnLigne(l),
         mpn: (l['MPN']||'').trim(),
         qte: (l['Purchase qty']||'').toString().trim(),
         montant: attPrixNum(l['Purchase price'])
