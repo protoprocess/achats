@@ -460,7 +460,7 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.40"; /* 15.40 (22/10/2026, constate par Olivier sur SO2609-521) : LE TIRET « — » ETAIT PRIS POUR UNE IPN. Quand le service ne rend pas d'IPN, la case de l'onglet Analyse BOM affiche « — » : un symbole d'affichage, pas une donnee. Mais au moment d'ecrire la feuille achat, « Sync edited IPNs » recopiait la case telle quelle : le « — » devenait une vraie valeur en colonne C, puis partait dans les Paniers en attente via le bouton « Non dispo ». L'onglet Achats rapproche feuille et panier par MPN OU IPN : « — » == « — », donc les 2 vraies questions client posees le 22/10 (AHM250PS24, Si1012CR-T1-GE3) badgeaient TOUTES les lignes sans IPN du SO — grisees, bouton « question posee » a la place du vrai bouton, et surtout EXCLUES du panier a commander. Corrige aux deux bouts : (1) la fuite — une case qui vaut un tiret est ecrite vide ; (2) le blindage — un seul helper refIndexable() decide ce qui fait cle, et les 6 fonctions de rapprochement l'utilisent, ce qui protege aussi toutes les feuilles DEJA ecrites avec des « — ». Le tiret reste affiche a l'ecran (decision Olivier). */ /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
+const APP_VERSION = "15.41"; /* 15.41 (22/10/2026, demande Olivier) : L IPN TAPEE A LA MAIN SE VOIT, ET NE PART PLUS DANS LUMINOVO. L ecran affichait l IPN courante sans jamais dire d ou elle venait : machine ou frappe humaine, meme colonne, meme bloc d aide. Le 22/10 sur SO2609-521 (QUOBLY), trois IPN saisies a la main ont ete prises pour des propositions du service, et on a cherche un bug la ou il n y en avait pas. Desormais : pastille "saisie" dans la colonne IPN et dans le bloc IPN - Luminovo, mention "SAISIE A LA MAIN" dans le bloc d aide Claude avec ce que le service avait propose (conserve a la premiere saisie), et surtout le bouton de rattachement ECARTE ces lignes. C etait le seul chemin par lequel une frappe pouvait ecrire dans la bibliotheque Luminovo sans relecture : la brique refuse une IPN inexistante, mais une faute de frappe tombant sur une IPN EXISTANTE passait (cf. le condensateur CL10C331JB8NNNC rattache sous l IPN de resistance R20K5-0603 le 22/10). */ /* 15.40 (22/10/2026, constate par Olivier sur SO2609-521) : LE TIRET « — » ETAIT PRIS POUR UNE IPN. Quand le service ne rend pas d'IPN, la case de l'onglet Analyse BOM affiche « — » : un symbole d'affichage, pas une donnee. Mais au moment d'ecrire la feuille achat, « Sync edited IPNs » recopiait la case telle quelle : le « — » devenait une vraie valeur en colonne C, puis partait dans les Paniers en attente via le bouton « Non dispo ». L'onglet Achats rapproche feuille et panier par MPN OU IPN : « — » == « — », donc les 2 vraies questions client posees le 22/10 (AHM250PS24, Si1012CR-T1-GE3) badgeaient TOUTES les lignes sans IPN du SO — grisees, bouton « question posee » a la place du vrai bouton, et surtout EXCLUES du panier a commander. Corrige aux deux bouts : (1) la fuite — une case qui vaut un tiret est ecrite vide ; (2) le blindage — un seul helper refIndexable() decide ce qui fait cle, et les 6 fonctions de rapprochement l'utilisent, ce qui protege aussi toutes les feuilles DEJA ecrites avec des « — ». Le tiret reste affiche a l'ecran (decision Olivier). */ /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
 /* 15.38 (21/10/2026, repéré par Olivier sur sa capture) : LA PASTILLE DE CONFIANCE DISAIT L'INVERSE DE LA VÉRITÉ.
    La voie codification envoyait la confiance en nombre (1 / 0.7 / 0.5 / 0), l'autre voie en chaîne, et l'écran
    n'acceptait que 'high' / 'medium' / 'low'. Rien ne correspondait : une ligne à la confiance MAXIMALE tombait
@@ -2536,6 +2536,7 @@ function buildBomRow(row, meta, idx) {
     <td>
       <input class="editable-ipn" value="${ipn}" data-idx="${idx}" onchange="updateIPN(this)"/>
       ${meta.ipnInfo && ipn !== '—' ? `<span class="ipn-info" title="Client MPN strict : IPN pour information (prod / réception). On achète le MPN, rien ne va dans Luminovo, pas de stock ni d'équivalent sur cet IPN."><i class="ti ti-lock" aria-hidden="true"></i> info</span>` : ''}
+      ${meta.ipnManuel && ipn !== '—' ? `<span class="ipn-saisie" style="font-size:10px;color:var(--amber);white-space:nowrap" title="IPN saisie à la main${meta.ipnService && meta.ipnService !== '—' ? ` — le service proposait ${meta.ipnService}` : ''}. Elle n'est pas envoyée au rattachement Luminovo."><i class="ti ti-pencil" aria-hidden="true"></i> saisie</span>` : ''}
       <span class="${niveauConf==='high'?'conf-high':niveauConf==='medium'?'conf-med':'conf-low'}" title="Confiance de la codification">
         ${niveauConf==='high'?'🟢':niveauConf==='medium'?'🟡':'🔴'} ${niveauConf}
       </span>
@@ -2825,6 +2826,11 @@ function updateIPN(input) {
     bomData[idx][key]=val;
   }
   if(rowMeta[idx]){
+    /* 15.40 (22/10/2026) : on garde ce que le service avait propose, UNE SEULE FOIS
+       (la premiere saisie), pour pouvoir comparer plus tard. Sans ca, l'ecran affiche
+       une IPN sans dire d'ou elle vient : le 22/10, trois IPN tapees a la main ont ete
+       prises pour des propositions du service, et on a cherche un bug qui n'existait pas. */
+    if (rowMeta[idx].ipnService === undefined) rowMeta[idx].ipnService = rowMeta[idx].ipn || '—';
     rowMeta[idx].ipn = val || '—';
     rowMeta[idx].ipnManuel = true;
   }
@@ -3711,13 +3717,17 @@ function aideOnglet() {
    Sert au resume d'aide Claude ET au bloc « IPN - Luminovo » du tableau :
    un seul endroit qui decide ce qui est un point ouvert. */
 function ipnPointsOuverts() {
-  const r = { creer: [], nonRatt: [], ecrits: 0, dejaLies: 0, sansPiece: 0, err: [], mpnManquant: [] };
+  const r = { creer: [], nonRatt: [], ecrits: 0, dejaLies: 0, sansPiece: 0, err: [], mpnManquant: [], manuels: 0 };
   if (!Array.isArray(bomData) || !bomData.length) return r;
   bomData.forEach(function (row, i) {
     const m = (typeof rowMeta !== 'undefined' && rowMeta[i]) ? rowMeta[i] : {};
     const ref = findCol(row, ['designator', 'reference', 'ref']) || '?';
     const mpn = findCol(row, ['mpn', 'manufacturer part', 'part number']) || '';
-    const o = { ref: ref, mpn: mpn, ipn: m.ipn || '', motif: m.rattachementMotif || '' };
+    /* 15.40 : l'origine de l'IPN voyage avec elle. Une IPN tapee a la main et une IPN
+       proposee par le service ne se discutent pas de la meme facon. */
+    const o = { ref: ref, mpn: mpn, ipn: m.ipn || '', motif: m.rattachementMotif || '',
+                manuel: !!m.ipnManuel, ipnService: m.ipnService || '' };
+    if (m.ipnManuel) r.manuels++;
     if (m.cas === 'ipn_neuve') r.creer.push(o);
     if (m.rattachement === 'ecrit') r.ecrits++;
     else if (m.rattachement === 'deja_lie') r.dejaLies++;
@@ -3741,7 +3751,7 @@ function ipnPointsOuverts() {
 function renderIpnLuminovoBox() {
   if (!Array.isArray(bomData) || !bomData.length) return '';
   const P = ipnPointsOuverts();
-  if (!P.creer.length && !P.nonRatt.length && !P.ecrits && !P.dejaLies && !P.sansPiece) return '';
+  if (!P.creer.length && !P.nonRatt.length && !P.ecrits && !P.dejaLies && !P.sansPiece && !P.manuels) return '';
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   /* 15.36 (retour Olivier « pas facile a lire avec tous ces reperes ») : une ligne
      par IPN, pas un deversement de designateurs. Un seul composant peut porter
@@ -3755,6 +3765,7 @@ function renderIpnLuminovoBox() {
       + `<span class="ipn-code">${esc(o.ipn || '?')}</span>`
       + `<span class="ipn-mpn">${esc(o.mpn || 'sans MPN')}</span>`
       + `<span class="ipn-rep">${reps.length} repère${reps.length > 1 ? 's' : ''} · ${esc(apercu)}</span>`
+      + (o.manuel ? `<span class="ipn-motif" style="color:var(--amber)">saisie à la main${o.ipnService && o.ipnService !== '—' ? ' — le service proposait ' + esc(o.ipnService) : ''}</span>` : '')
       + (o.motif ? `<span class="ipn-motif">${esc(o.motif)}</span>` : '')
       + `</div>`;
   };
@@ -3765,6 +3776,12 @@ function renderIpnLuminovoBox() {
       + (P.ecrits ? `<strong>${P.ecrits} MPN rattaché(s) à leur IPN dans Luminovo</strong> par le service, à l'instant. ` : '')
       + (P.dejaLies ? `${P.dejaLies} déjà lié(s) auparavant.` : '')
       + `</div></div>`);
+  }
+  /* 15.40 : les IPN tapees a la main sont dites, et elles sont hors du rattachement. */
+  if (P.manuels) {
+    lignes.push(`<div class="ipn-l info"><i class="ti ti-pencil" aria-hidden="true"></i><div>`
+      + `<strong>${P.manuels} IPN saisie(s) à la main</strong> — elles ne partent pas dans Luminovo.`
+      + ` À lier à la main si elles sont justes.</div></div>`);
   }
   if (P.sansPiece) {
     lignes.push(`<div class="ipn-l info"><i class="ti ti-link-off" aria-hidden="true"></i><div>`
@@ -3813,7 +3830,7 @@ async function rattacherMaintenant(btn) {
   if (!u) { alert('Webhook n8n non configuré : relance la configuration.'); return; }
   if (!Array.isArray(bomData) || !bomData.length) { alert('Aucune BOM chargée.'); return; }
 
-  const vus = {}, dem = [], parCle = {};
+  const vus = {}, dem = [], parCle = {}, manuelles = [];
   bomData.forEach(function (row, i) {
     const m = rowMeta[i] || {};
     const ipn = String(m.ipn || '').trim();
@@ -3823,6 +3840,12 @@ async function rattacherMaintenant(btn) {
     if (mpn.indexOf(',') !== -1) return;      // plusieurs MPN sur la ligne : geste humain
     if (m.ipnInfo) return;                    // client MPN strict : rien ne va dans Luminovo
     if (m.cas === 'ipn_neuve') return;        // l'IPN n'existe pas encore : rien a lier
+    /* 15.40 : une IPN tapee a la main ne part JAMAIS dans la bibliotheque Luminovo.
+       C'etait le seul chemin par lequel une frappe pouvait ecrire chez Luminovo sans
+       relecture : la brique refuse une IPN inexistante, mais une faute de frappe qui
+       tombe sur une IPN EXISTANTE passait (cf. le condensateur rattache sous une IPN
+       de resistance le 22/10). Le rattrapage reste disponible pour tout le reste. */
+    if (m.ipnManuel) { manuelles.push(ipn + '  <-  ' + mpn); return; }
     const cle = ipn + '|' + mpn;
     if (!parCle[cle]) parCle[cle] = [];
     parCle[cle].push(i);
@@ -3831,12 +3854,19 @@ async function rattacherMaintenant(btn) {
     dem.push({ ipn: ipn, mpn: mpn, fabricant: fab });
   });
 
+  const noteManuelles = manuelles.length
+    ? '\n\n' + manuelles.length + ' ligne(s) écartée(s) : IPN saisie à la main, elle ne part pas dans Luminovo.\n'
+      + '  ' + manuelles.slice(0, 10).join('\n  ')
+      + (manuelles.length > 10 ? '\n  … et ' + (manuelles.length - 10) + ' autre(s)' : '')
+      + '\nÀ lier à la main dans Luminovo si elles sont justes.'
+    : '';
+
   if (!dem.length) {
-    alert('Rien à rattacher : aucune ligne ne porte à la fois une IPN existante et un MPN unique.');
+    alert('Rien à rattacher : aucune ligne ne porte à la fois une IPN existante et un MPN unique.' + noteManuelles);
     return;
   }
   if (!confirm('Rattacher ' + dem.length + ' couple(s) IPN / MPN dans Luminovo ?\n\n'
-    + 'Aucune IPN ne sera créée et aucune liste de pièces ne sera raccourcie.')) return;
+    + 'Aucune IPN ne sera créée et aucune liste de pièces ne sera raccourcie.' + noteManuelles)) return;
 
   const libelle = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2"></i> Rattachement…'; }
@@ -3923,9 +3953,15 @@ function aideClaude(mode) {
       + ' | non rattachees : ' + P.nonRatt.length
       + ' | rattachees a l instant : ' + P.ecrits
       + ' | deja liees : ' + P.dejaLies
-      + ' | en erreur : ' + P.err.length);
+      + ' | en erreur : ' + P.err.length
+      + ' | IPN saisies a la main : ' + P.manuels);
+    /* 15.40 : dire d'ou vient l'IPN. Sans ca, une IPN tapee a la main est indiscernable
+       d'une proposition du service, pour le lecteur comme pour Claude. */
     const ligne = function (o) {
       return o.ref + ' : ' + (o.mpn || 'sans MPN') + ' -> IPN ' + (o.ipn || '?')
+        + (o.manuel ? ' [SAISIE A LA MAIN'
+            + (o.ipnService && o.ipnService !== '—' ? ', le service proposait ' + o.ipnService : '')
+            + ']' : '')
         + (o.motif ? ' - ' + o.motif : '');
     };
     const bloc = function (titre, liste) {
