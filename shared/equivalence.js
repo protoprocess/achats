@@ -2,6 +2,21 @@
    PP_EQUIV — règle d'équivalence « le candidat COUVRE la demande »
    v1.1 — 18/10/2026 (décision Olivier 18/10/2026)
 
+   v1.2 — 23/10/2026 (constat Olivier sur HORIBA SO2610-544, DARWIN TRIGGER)
+   La v1.1 a relâché TOUS les champs non demandés, alors que son motif ne valait
+   que pour les défauts PP. Conséquence non vue à l'époque : on pouvait proposer
+   une pièce qui ne TIENT PAS — une 1 W remplacée par une 0,1 W, un X7R par un
+   Y5V. La tension avait reçu un plancher ce jour-là ; la puissance et le
+   diélectrique, non. On distingue donc deux natures :
+     PRÉCISION (ppm, tolérance)  le client ne l'a pas demandé → on peut descendre
+     TENUE (puissance, tension,  jamais en dessous : une pièce qui ne tient pas,
+            diélectrique)         le client ne l'écrit pas parce que ça ne se
+                                  demande pas
+   La puissance n'est JAMAIS un défaut PP : le moteur ne la code que lorsqu'elle
+   dépasse le standard du boîtier. Si elle est dans l'IPN, elle est réelle.
+   Le diélectrique, lui, EST un défaut PP (X7R par défaut) : il reste relâché,
+   mais avec un plancher, exactement comme la tension.
+
    v1.1 : ce que le client n'a PAS précisé n'est pas une contrainte. L'IPN
    porte des défauts PP (50V, X7R, 10 %…) qui ne viennent pas du client ;
    on lit donc ce que le client a réellement écrit (Remarques PP / Notes
@@ -28,8 +43,13 @@
    ============================================================ */
 (function (global) {
   'use strict';
-  var VERSION = 'v1.1 - 18/10/2026';
+  var VERSION = 'v1.2 - 23/10/2026';
   var TENSION_PLANCHER = 16;   // V, quand le client n'a pas donne de tension
+  /* v1.2 : plancher dielectrique, quand le client n'a pas donne de dielectrique.
+     X5R passe, X6S passe, Y5V / Z5U / X7U sont refuses : leur derive en
+     temperature n'est pas une question de precision, c'est une question de tenue. */
+  var DIEL_PLANCHER = 'X5R';
+  var DIEL_PLANCHER_RANG = 2;
 
   var DIEL_RANG = { 'C0G': 7, 'NP0': 7, 'NPO': 7, 'U2J': 7, 'X8R': 6, 'X7R': 5, 'X7S': 4, 'X7T': 4, 'X6S': 3, 'X5R': 2, 'Y5V': 1, 'Z5U': 1, 'X7U': 1 };
 
@@ -119,8 +139,12 @@
     }
     var ok = true;
     if (a.famille === 'R') {
-      if (demande('puissance')) ok = sup('puissance', a.puissance, b.puissance, ' W') && ok;
-      else if (a.puissance !== null && b.puissance !== a.puissance) raisons.push('puissance non demandee par le client');
+      /* v1.2 : la puissance est contrainte MEME si le client ne l'a pas ecrite.
+         Elle n'est jamais un defaut PP (le moteur ne la code que lorsqu'elle
+         depasse le standard du boitier), et une resistance sous-dimensionnee
+         chauffe et lache. */
+      ok = sup('puissance', a.puissance, b.puissance, ' W') && ok;
+      if (!demande('puissance') && a.puissance !== null && b.puissance !== null && b.puissance > a.puissance) raisons.push('puissance non demandee par le client (candidat superieur, accepte)');
       if (demande('ppm')) ok = inf('ppm', a.ppm, b.ppm, ' ppm') && ok;
       else if (a.ppm !== null && b.ppm !== a.ppm) raisons.push('ppm non demande par le client');
     }
@@ -141,9 +165,17 @@
         if (rb === undefined) { motifs.push('dielectrique inconnu chez le candidat'); ok = false; }
         else if (ra !== undefined && rb < ra) { motifs.push('dielectrique ' + b.diel + ' < ' + a.diel); ok = false; }
         else if (ra !== undefined && rb > ra) ecart += 0.1 * (rb - ra);
+      } else if (rb === undefined) {
+        /* v1.2 : inconnu = refus, comme partout ailleurs (regle du 02/09/2026,
+           jamais le benefice du doute). */
+        motifs.push('dielectrique inconnu chez le candidat'); ok = false;
+      } else if (rb < DIEL_PLANCHER_RANG) {
+        /* v1.2 : plancher, meme logique que la tension. Un Y5V a la place d'un
+           X7R n'est pas une perte de precision, c'est une piece qui derive. */
+        motifs.push('dielectrique ' + b.diel + ' sous le plancher ' + DIEL_PLANCHER); ok = false;
       } else if (b.diel !== a.diel) {
-        raisons.push('dielectrique non demande par le client (' + (b.diel || '?') + ' accepte)');
-        if (ra !== undefined && rb !== undefined && rb < ra) ecart += 0.1 * (ra - rb);
+        raisons.push('dielectrique non demande par le client (' + b.diel + ' accepte, plancher ' + DIEL_PLANCHER + ')');
+        if (ra !== undefined && rb < ra) ecart += 0.1 * (ra - rb);
       }
     }
     if (a.famille === 'CT') {
@@ -155,5 +187,5 @@
               : { ok: false, motif: motifs.join(', '), ecart: null, raisons: raisons };
   }
 
-  global.PP_EQUIV = { VERSION: VERSION, lireIpn: lireIpn, couvre: couvre, contraintesDepuisRemarque: contraintesDepuisRemarque, DIEL_RANG: DIEL_RANG, TENSION_PLANCHER: TENSION_PLANCHER };
+  global.PP_EQUIV = { VERSION: VERSION, lireIpn: lireIpn, couvre: couvre, contraintesDepuisRemarque: contraintesDepuisRemarque, DIEL_RANG: DIEL_RANG, TENSION_PLANCHER: TENSION_PLANCHER, DIEL_PLANCHER: DIEL_PLANCHER };
 })(typeof window !== 'undefined' ? window : globalThis);
