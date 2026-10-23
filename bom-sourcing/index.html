@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Achats PP</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="css/app.css?v=15.31">
+<link rel="stylesheet" href="css/app.css?v=15.42">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 </head>
@@ -460,7 +460,7 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.41"; /* 15.41 (22/10/2026, demande Olivier) : L IPN TAPEE A LA MAIN SE VOIT, ET NE PART PLUS DANS LUMINOVO. L ecran affichait l IPN courante sans jamais dire d ou elle venait : machine ou frappe humaine, meme colonne, meme bloc d aide. Le 22/10 sur SO2609-521 (QUOBLY), trois IPN saisies a la main ont ete prises pour des propositions du service, et on a cherche un bug la ou il n y en avait pas. Desormais : pastille "saisie" dans la colonne IPN et dans le bloc IPN - Luminovo, mention "SAISIE A LA MAIN" dans le bloc d aide Claude avec ce que le service avait propose (conserve a la premiere saisie), et surtout le bouton de rattachement ECARTE ces lignes. C etait le seul chemin par lequel une frappe pouvait ecrire dans la bibliotheque Luminovo sans relecture : la brique refuse une IPN inexistante, mais une faute de frappe tombant sur une IPN EXISTANTE passait (cf. le condensateur CL10C331JB8NNNC rattache sous l IPN de resistance R20K5-0603 le 22/10). */ /* 15.40 (22/10/2026, constate par Olivier sur SO2609-521) : LE TIRET « — » ETAIT PRIS POUR UNE IPN. Quand le service ne rend pas d'IPN, la case de l'onglet Analyse BOM affiche « — » : un symbole d'affichage, pas une donnee. Mais au moment d'ecrire la feuille achat, « Sync edited IPNs » recopiait la case telle quelle : le « — » devenait une vraie valeur en colonne C, puis partait dans les Paniers en attente via le bouton « Non dispo ». L'onglet Achats rapproche feuille et panier par MPN OU IPN : « — » == « — », donc les 2 vraies questions client posees le 22/10 (AHM250PS24, Si1012CR-T1-GE3) badgeaient TOUTES les lignes sans IPN du SO — grisees, bouton « question posee » a la place du vrai bouton, et surtout EXCLUES du panier a commander. Corrige aux deux bouts : (1) la fuite — une case qui vaut un tiret est ecrite vide ; (2) le blindage — un seul helper refIndexable() decide ce qui fait cle, et les 6 fonctions de rapprochement l'utilisent, ce qui protege aussi toutes les feuilles DEJA ecrites avec des « — ». Le tiret reste affiche a l'ecran (decision Olivier). */ /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
+const APP_VERSION = "15.42"; /* 15.42 (23/10/2026, demande Olivier) : LES TROIS GESTES IPN EN SEQUENCE, ET LE BOUTON POSE ENFIN SUR LA BOM. Les trois boutons du bloc IPN etaient cote a cote sans lien, et l ordre ne se devinait pas : il faut CREER l IPN dans l IPN manager avant de pouvoir la rattacher. Ils sont desormais numerotes et relies par des fleches (1 Copier -> 2 Ouvrir l IPN manager -> 3 Rattacher et poser), et chacun passe au vert quand il est fait (etat garde avec la sauvegarde de reprise, donc il survit a un F5, et remis a zero a chaque nouvelle analyse). Surtout : « Rattacher maintenant » n appelait que rattacher-ipn, donc la BIBLIOTHEQUE Luminovo ; une IPN creee dans l IPN manager APRES l analyse n arrivait jamais sur les LIGNES de la BOM et il fallait relancer une analyse entiere (constate par Olivier le 23/10 sur SO2609-516 et SO2610-565). Le bouton appelle maintenant rattacher-ipn PUIS poser-ipn-bom, meme quand il n y a plus rien a rattacher — c est le cas normal au retour de l IPN manager, qui cree l IPN et lie le MPN dans le meme geste. Le compte rendu dit les deux ecritures separement. */  /* 15.41 (22/10/2026, demande Olivier) : L IPN TAPEE A LA MAIN SE VOIT, ET NE PART PLUS DANS LUMINOVO. L ecran affichait l IPN courante sans jamais dire d ou elle venait : machine ou frappe humaine, meme colonne, meme bloc d aide. Le 22/10 sur SO2609-521 (QUOBLY), trois IPN saisies a la main ont ete prises pour des propositions du service, et on a cherche un bug la ou il n y en avait pas. Desormais : pastille "saisie" dans la colonne IPN et dans le bloc IPN - Luminovo, mention "SAISIE A LA MAIN" dans le bloc d aide Claude avec ce que le service avait propose (conserve a la premiere saisie), et surtout le bouton de rattachement ECARTE ces lignes. C etait le seul chemin par lequel une frappe pouvait ecrire dans la bibliotheque Luminovo sans relecture : la brique refuse une IPN inexistante, mais une faute de frappe tombant sur une IPN EXISTANTE passait (cf. le condensateur CL10C331JB8NNNC rattache sous l IPN de resistance R20K5-0603 le 22/10). */ /* 15.40 (22/10/2026, constate par Olivier sur SO2609-521) : LE TIRET « — » ETAIT PRIS POUR UNE IPN. Quand le service ne rend pas d'IPN, la case de l'onglet Analyse BOM affiche « — » : un symbole d'affichage, pas une donnee. Mais au moment d'ecrire la feuille achat, « Sync edited IPNs » recopiait la case telle quelle : le « — » devenait une vraie valeur en colonne C, puis partait dans les Paniers en attente via le bouton « Non dispo ». L'onglet Achats rapproche feuille et panier par MPN OU IPN : « — » == « — », donc les 2 vraies questions client posees le 22/10 (AHM250PS24, Si1012CR-T1-GE3) badgeaient TOUTES les lignes sans IPN du SO — grisees, bouton « question posee » a la place du vrai bouton, et surtout EXCLUES du panier a commander. Corrige aux deux bouts : (1) la fuite — une case qui vaut un tiret est ecrite vide ; (2) le blindage — un seul helper refIndexable() decide ce qui fait cle, et les 6 fonctions de rapprochement l'utilisent, ce qui protege aussi toutes les feuilles DEJA ecrites avec des « — ». Le tiret reste affiche a l'ecran (decision Olivier). */ /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
 /* 15.38 (21/10/2026, repéré par Olivier sur sa capture) : LA PASTILLE DE CONFIANCE DISAIT L'INVERSE DE LA VÉRITÉ.
    La voie codification envoyait la confiance en nombre (1 / 0.7 / 0.5 / 0), l'autre voie en chaîne, et l'écran
    n'acceptait que 'high' / 'medium' / 'low'. Rien ne correspondait : une ligne à la confiance MAXIMALE tombait
@@ -658,7 +658,7 @@ const APP_VERSION = "15.41"; /* 15.41 (22/10/2026, demande Olivier) : L IPN TAPE
    mais ne crée plus la question en texte fixe (7 posées, 0 réponse) : FabStory s'ouvre préremplie sur « Pourquoi est-il
    indisponible ? » (MPN + repère), modèles M7-M10 avec choix de réponse exploités par « réponse client → achats ».
    Workflow Sans solution v1.6 (question_fabstory = true). Retour : étiquette avant-non-dispo-fabstory-2026-09-29. */
-const APP_DATE = "22/10/2026";
+const APP_DATE = "23/10/2026";
 /* PROD 13.3 — basculee depuis la recette le 25/09/2026 (etiquette de retour : avant-bascule-2026-09-25). Historique recette : base bom-sourcing v12.7. 13.0 : A) la sheet achat est mise en forme a
    l ecriture (tri fournisseur, Manquant, gris Inventory) via mise_en_forme:true ; B) « J ai commande »
    = action valider (vert colonne A, reprise tracee dans les sheets, Paniers Commande, planning AF->EC J+7) ;
@@ -832,6 +832,31 @@ let stockMpnByIPN = {};
 let stockOverrides = {};
 // 13.6 : vide les choix d'equivalent stock — a appeler a CHAQUE nouvelle BOM (ils sont indexes par n de ligne)
 function viderChoixStock() { stockOverrides = {}; }
+
+/* 15.42 (23/10/2026) — AVANCEMENT DES TROIS GESTES IPN.
+   Les trois boutons du bloc « IPN · Luminovo » forment une sequence :
+     1 copier la liste  ->  2 ouvrir l'IPN manager  ->  3 rattacher et poser.
+   On retient ce qui a ete fait pour que le bouton passe au vert. L'etat suit
+   l'analyse (sauvegarde de reprise 15.37), il survit donc a un F5 et il est
+   remis a zero a chaque nouvelle analyse : il decrit CETTE BOM, pas la session. */
+let ipnEtapes = { copie: false, manager: false, pose: null };
+function reinitIpnEtapes() { ipnEtapes = { copie: false, manager: false, pose: null }; }
+/* Nom du fichier d'export de la BOM en cours. Le champ <input type=file> est vide
+   apres une reprise d'analyse : sans cette variable, le rattrapage ne saurait plus
+   retrouver le RfQ chez Luminovo. */
+let dernierFichierBom = '';
+function ipnEtapeFaite(nom) {
+  try {
+    ipnEtapes[nom] = true;
+    if (typeof sauvegardeDifferee === 'function') sauvegardeDifferee();
+    /* Redessin DIFFERE, jamais pendant le clic : l'etape 2 est un <a target="_blank">,
+       et remplacer le lien dans le meme tour de boucle peut annuler l'ouverture de
+       l'onglet. On laisse le navigateur finir, puis on repeint. */
+    setTimeout(function () {
+      if (typeof rerenderBomTable === 'function') rerenderBomTable(false);
+    }, 0);
+  } catch (e) { /* jamais bloquant : c'est de l'affichage */ }
+}
 // 13.6 : garde-fou substitution. IPN passif PP = <R|C><valeur>-<boitier>-... (ex. C2U2-1210-50V-10P-X7R).
 // Si les deux IPN sont des passifs, type + valeur + boitier doivent etre identiques ; sinon refus.
 // Hors passifs (IPN non reconnu), pas de controle : comportement anterieur.
@@ -2133,6 +2158,11 @@ async function analyzeBOM() {
   // l'analyse en consigne si la reponse n'arrive jamais jusqu'ici.
   const ticket = nouveauTicket();
   const nomFichier = document.getElementById('bom-file-input')?.files?.[0]?.name || '';
+  /* 15.42 : nouvelle analyse = nouvelle BOM. Les trois gestes IPN repartent a zero
+     (ils decrivent CETTE BOM) et on retient le nom du fichier, seul moyen de
+     retrouver le RfQ Luminovo plus tard, quand le champ fichier sera vide. */
+  dernierFichierBom = nomFichier;
+  reinitIpnEtapes();
   dernierTicket = ticket;
 
   let webhookResults = [];
@@ -2187,16 +2217,24 @@ async function analyzeBOM() {
    Luminovo ne doivent toucher l'analyse, qui est deja a l'ecran quand on arrive ici. */
 function poserIpnSurBomLuminovo(nomFichier) {
   try {
-    const u = (typeof webhookUrl === 'string' && webhookUrl) ? webhookUrl.replace(/\/[^\/]*$/, '') : '';
-    if (!u) return;
-    const so = (typeof detecterSO === 'function') ? detecterSO(nomFichier, []) : null;
-    if (!so && !nomFichier) return;
-    fetch(u + '/poser-ipn-bom', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ origine: 'achats-pp', so: so || null, fichier: nomFichier || null }) })
-      .then(r => r.ok ? r.json() : null)
+    appelerPoseIpn(nomFichier)
       .then(j => { if (j) console.log('[Achats PP] IPN posees sur la BOM Luminovo :', j.statut, j.posees != null ? j.posees + ' ligne(s)' : (j.motif || '')); })
       .catch(e => { console.log('[Achats PP] pose des IPN non faite :', e && e.message); });
   } catch (e) { /* jamais bloquant */ }
+}
+
+/* 15.42 : meme appel, mais il REND son resultat. Le rattrapage manuel en a besoin
+   pour afficher ce que Luminovo a reellement fait (« M IPN posees ») au lieu de
+   supposer que le clic a suffi. Rend null quand il n'y a pas de quoi appeler. */
+function appelerPoseIpn(nomFichier) {
+  const u = (typeof webhookUrl === 'string' && webhookUrl) ? webhookUrl.replace(/\/[^\/]*$/, '') : '';
+  if (!u) return Promise.resolve(null);
+  const fich = nomFichier || dernierFichierBom || '';
+  const so = (typeof detecterSO === 'function') ? detecterSO(fich, []) : null;
+  if (!so && !fich) return Promise.resolve(null);
+  return fetch(u + '/poser-ipn-bom', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ origine: 'achats-pp', so: so || null, fichier: fich || null }) })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
 }
 
 // Applique un jeu de resultats (venu du webhook OU de la consigne) sur une BOM
@@ -3554,7 +3592,9 @@ function sauvegarderAnalyse() {
       ticket: (typeof dernierTicket === 'string') ? dernierTicket : '',
       bomData: bomData,
       rowMeta: (typeof rowMeta !== 'undefined') ? rowMeta : [],
-      stockOverrides: (typeof stockOverrides !== 'undefined') ? stockOverrides : {}
+      stockOverrides: (typeof stockOverrides !== 'undefined') ? stockOverrides : {},
+      /* 15.42 : avancement des trois gestes IPN, pour que le vert survive a un F5 */
+      ipnEtapes: (typeof ipnEtapes !== 'undefined') ? ipnEtapes : null
     };
     const txt = JSON.stringify(etat);
     if (txt.length > REPRISE_MAX) { oublierReprise(); return; }
@@ -3628,6 +3668,10 @@ function reprendreAnalyse() {
     bomData = etat.bomData;
     rowMeta = Array.isArray(etat.rowMeta) ? etat.rowMeta : [];
     stockOverrides = etat.stockOverrides || {};
+    /* 15.42 : on reprend l'avancement des gestes IPN et le nom du fichier
+       d'export — le champ fichier, lui, est vide apres un rechargement. */
+    ipnEtapes = etat.ipnEtapes || { copie: false, manager: false, pose: null };
+    dernierFichierBom = etat.fichier || '';
     if (etat.client) activeClient = etat.client;
     if (typeof dernierTicket === 'string') dernierTicket = etat.ticket || '';
 
@@ -3682,11 +3726,13 @@ function copierIpnACreer(btn) {
   if (!P.creer.length) { alert('Aucune IPN a creer sur cette BOM.'); return; }
   const txt = P.creer.map(function (o) { return (o.ipn || '') + ',' + (o.mpn || ''); }).join('\n');
   const fini = function (ok) {
+    /* 15.42 : la copie EST l'action de l'etape 1. Reussie, le geste est fait et
+       le bouton passe au vert (ipnEtapeFaite redessine le bloc). Refusee, on ne
+       marque rien : un ecran ne doit jamais affirmer un geste qui n'a pas eu lieu. */
+    if (ok) { ipnEtapeFaite('copie'); return; }
     if (!btn) return;
     const av = btn.innerHTML;
-    btn.innerHTML = ok
-      ? '<i class="ti ti-check" aria-hidden="true"></i> ' + P.creer.length + ' ligne(s) copiée(s)'
-      : '<i class="ti ti-x" aria-hidden="true"></i> copie refusée';
+    btn.innerHTML = '<i class="ti ti-x" aria-hidden="true"></i> copie refusée';
     setTimeout(function () { btn.innerHTML = av; }, 3000);
   };
   let copie = false;
@@ -3799,14 +3845,24 @@ function renderIpnLuminovoBox() {
       + `<div class="ipn-liste">${P.creer.map(item).join('')}</div></div></div>`);
   }
 
-  /* Le rattrapage est propose des qu'il y a quelque chose a rattacher OU des que
-     des lignes ont deja ete traitees : il sert aussi a relancer apres un echec. */
-  const boutons = [
-    `<button class="btn att-action" onclick="rattacherMaintenant(this)" title="Envoie a Luminovo tous les couples IPN / MPN de cette BOM qui peuvent etre lies. Aucune IPN creee, aucune liste raccourcie."><i class="ti ti-link" aria-hidden="true"></i> Rattacher maintenant</button>`,
-    P.creer.length ? `<button class="btn att-action" onclick="copierIpnACreer(this)" title="Copie la liste « IPN,MPN » au format attendu par l IPN manager de Luminovo, prete a coller."><i class="ti ti-copy" aria-hidden="true"></i> Copier les ${P.creer.length} IPN à créer</button>` : '',
-    P.creer.length ? `<a class="btn" href="${LIEN_IPN_MANAGER}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Ouvrir l'IPN manager</a>` : '',
-    `<button class="btn" style="color:var(--blue);border-color:var(--blue)" onclick="aideClaude('ipn')"><i class="ti ti-message-question" aria-hidden="true"></i> Demander de l'aide à Claude</button>`
-  ].filter(Boolean).join(' ');
+  /* LES TROIS GESTES, DANS L'ORDRE - v15.42 (23/10/2026, demande Olivier).
+     Les boutons etaient cote a cote sans lien, et l'ordre ne se devinait pas :
+     il faut CREER l'IPN dans l'IPN manager avant de pouvoir la rattacher et la
+     poser sur la BOM. D'ou la sequence, les numeros et les fleches.
+     Vert = geste fait (decision Olivier : des le clic, y compris sur l'ouverture
+     de l'IPN manager). Le 3e, lui, ne verdit que sur un resultat reel de Luminovo. */
+  const fleche = `<span class="ipn-fleche" aria-hidden="true"><i class="ti ti-arrow-right"></i></span>`;
+  const n = P.creer.length;
+  const poseOk = !!(ipnEtapes.pose && ipnEtapes.pose.ok);
+  const sequence = [];
+  if (n) {
+    sequence.push(`<button class="btn att-action${ipnEtapes.copie ? ' fait' : ''}" onclick="copierIpnACreer(this)" title="Copie la liste « IPN,MPN » au format attendu par l IPN manager de Luminovo, prete a coller."><i class="ti ti-copy" aria-hidden="true"></i> 1 · Copier les ${n} IPN à créer</button>`);
+    sequence.push(`<a class="btn${ipnEtapes.manager ? ' fait' : ''}" href="${LIEN_IPN_MANAGER}" target="_blank" rel="noopener" onclick="ipnEtapeFaite('manager')"><i class="ti ti-external-link" aria-hidden="true"></i> 2 · Ouvrir l'IPN manager</a>`);
+  }
+  sequence.push(`<button class="btn att-action${poseOk ? ' fait' : ''}" onclick="rattacherEtPoser(this)" title="Lie les couples IPN / MPN de cette BOM dans la bibliotheque Luminovo, PUIS pose les IPN sur les lignes de la BOM pour qu une refab n ait plus a recodifier. Aucune IPN creee, aucune liste raccourcie."><i class="ti ti-link" aria-hidden="true"></i> ${n ? '3 · ' : ''}Rattacher et poser les IPN</button>`);
+
+  const boutons = sequence.join(fleche)
+    + ` <button class="btn" style="color:var(--blue);border-color:var(--blue)" onclick="aideClaude('ipn')"><i class="ti ti-message-question" aria-hidden="true"></i> Demander de l'aide à Claude</button>`;
 
   return `<div class="ipn-box">
     <div class="section-label" style="margin-top:0">IPN · Luminovo</div>
@@ -3825,7 +3881,15 @@ function renderIpnLuminovoBox() {
      - elle relit cote piece apres ecriture avant de conclure.
    Appels par paquets de 60 couples : la brique fait une recherche de pieces et un
    PATCH par IPN, et doit tenir dans les 180 s de son webhook. */
-async function rattacherMaintenant(btn) {
+/* 15.42 (23/10/2026) : le bouton fait maintenant LES DEUX gestes, dans l'ordre.
+   Avant, il ne faisait que le rattachement — la bibliotheque Luminovo. Une IPN
+   creee dans l'IPN manager APRES l'analyse n'arrivait donc jamais sur les lignes
+   de la BOM, et il fallait relancer une analyse entiere pour la voir remonter
+   (constate par Olivier le 23/10 sur SO2609-516 et SO2610-565).
+   L'ancien nom reste un alias : d'autres endroits de la page peuvent l'appeler. */
+function rattacherMaintenant(btn) { return rattacherEtPoser(btn); }
+
+async function rattacherEtPoser(btn) {
   const u = (typeof webhookUrl === 'string' && webhookUrl) ? webhookUrl.replace(/\/[^\/]*$/, '') : '';
   if (!u) { alert('Webhook n8n non configuré : relance la configuration.'); return; }
   if (!Array.isArray(bomData) || !bomData.length) { alert('Aucune BOM chargée.'); return; }
@@ -3861,11 +3925,16 @@ async function rattacherMaintenant(btn) {
       + '\nÀ lier à la main dans Luminovo si elles sont justes.'
     : '';
 
+  /* 15.42 : plus de sortie seche quand il n'y a rien a rattacher. C'est meme le
+     cas NORMAL au retour de l'IPN manager : celui-ci cree l'IPN ET lie le MPN
+     dans le meme geste (format « IPN,MPN »), donc il ne reste plus rien a lier —
+     mais il reste tout a poser sur les lignes de la BOM. */
   if (!dem.length) {
-    alert('Rien à rattacher : aucune ligne ne porte à la fois une IPN existante et un MPN unique.' + noteManuelles);
-    return;
-  }
-  if (!confirm('Rattacher ' + dem.length + ' couple(s) IPN / MPN dans Luminovo ?\n\n'
+    if (!confirm('Aucun couple IPN / MPN à rattacher : tout est déjà lié, ou aucune ligne ne porte '
+      + 'à la fois une IPN existante et un MPN unique.' + noteManuelles
+      + '\n\nPoser quand même les IPN sur les lignes de la BOM Luminovo ?')) return;
+  } else if (!confirm('Rattacher ' + dem.length + ' couple(s) IPN / MPN dans Luminovo, '
+    + 'puis poser les IPN sur les lignes de la BOM ?\n\n'
     + 'Aucune IPN ne sera créée et aucune liste de pièces ne sera raccourcie.' + noteManuelles)) return;
 
   const libelle = btn ? btn.innerHTML : '';
@@ -3899,6 +3968,22 @@ async function rattacherMaintenant(btn) {
     }
   } catch (e) { erreur = e.message || String(e); }
 
+  /* DEUXIEME GESTE : poser les IPN sur les LIGNES de la BOM Luminovo.
+     Le rattachement ci-dessus ne touche que la bibliotheque ; sans cet appel,
+     une refab repart du MPN et recodifie tout. On attend le resultat au lieu de
+     l'envoyer en tache de fond : ici l'humain vient de cliquer, il doit savoir
+     ce qui a ete ecrit. Un echec de pose n'annule pas le rattachement deja fait. */
+  let pose = null, posErreur = '';
+  if (!erreur) {
+    if (btn) btn.innerHTML = '<i class="ti ti-loader-2"></i> Pose sur la BOM…';
+    try { pose = await appelerPoseIpn(dernierFichierBom); }
+    catch (e) { posErreur = e.message || String(e); }
+  }
+  ipnEtapes.pose = pose
+    ? { ok: pose.statut === 'ok', posees: pose.posees || 0, statut: pose.statut, le: Date.now() }
+    : { ok: false, posees: 0, statut: posErreur ? 'echec' : 'non_appele', le: Date.now() };
+  try { sauvegardeDifferee(); } catch (e) {}
+
   if (btn) { btn.disabled = false; btn.innerHTML = libelle; }
 
   /* L'ecran est remis a jour sur place, a partir de ce que Luminovo a confirme :
@@ -3915,8 +4000,20 @@ async function rattacherMaintenant(btn) {
   rerenderBomTable(false);
 
   const detail = Object.keys(totaux).map(k => k + ' : ' + totaux[k]).join('\n');
-  alert((erreur ? '⚠ Interrompu après ' + paquets + ' envoi(s) : ' + erreur + '\n\n' : '✔ Rattachement terminé.\n\n')
-    + (detail || 'aucun résultat renvoyé')
+
+  /* Le compte rendu dit les DEUX gestes separement : ce sont deux ecritures
+     differentes chez Luminovo (la bibliotheque, puis les lignes de la BOM), et
+     l'une peut reussir sans l'autre. */
+  let ligneP;
+  if (posErreur) ligneP = '⚠ Pose sur la BOM NON faite : ' + posErreur;
+  else if (!pose) ligneP = '⚠ Pose sur la BOM non tentée (rattachement interrompu, ou fichier d\'export inconnu).';
+  else if (pose.statut !== 'ok') ligneP = '⚠ Pose sur la BOM : ' + (pose.motif || pose.statut) + ' — RfQ non retrouvé, rien n\'a été écrit.';
+  else ligneP = '✔ ' + (pose.posees || 0) + ' IPN posée(s) sur les lignes de la BOM'
+    + (pose.rfq ? '' : '') + (pose.retrouve_par ? ' (RfQ retrouvé par ' + pose.retrouve_par + ')' : '');
+
+  alert((erreur ? '⚠ Rattachement interrompu après ' + paquets + ' envoi(s) : ' + erreur + '\n\n' : '✔ Rattachement terminé.\n\n')
+    + (dem.length ? (detail || 'aucun résultat renvoyé') : 'rien à rattacher')
+    + '\n\n' + ligneP
     + '\n\nok / ok_partiel / rien_a_faire = c\'est bon. ipn_inexistante = l\'IPN n\'existe pas dans Luminovo, elle est à créer.');
 }
 

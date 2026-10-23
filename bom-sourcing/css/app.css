@@ -709,3 +709,13 @@ tr:hover td { background: var(--surface2); }
 
 /* 15.21 — IPN pour information (client MPN strict) */
 .ipn-info { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:600; padding:1px 6px; border-radius:999px; color:var(--pink, #ad1457); border:1px solid var(--pink, #ad1457); cursor:help; margin-left:4px; }
+
+/* 15.42 (23/10/2026, demande Olivier) — LES TROIS GESTES IPN EN SEQUENCE.
+   Copier -> Ouvrir l'IPN manager -> Rattacher et poser : l'ordre compte et
+   ne se devinait pas, les trois boutons etaient cote a cote sans lien.
+   Vert = geste fait. Sur fond sombre c'est --green (clair) qui est lisible,
+   jamais --green-badge, qui est reserve au texte DANS une pastille pastel
+   (charte PP, section 3). */
+.ipn-actions .ipn-fleche { display:inline-flex; align-items:center; color:var(--text3); }
+.ipn-actions .btn.fait { background:rgba(134,197,100,0.14); color:var(--green); border-color:rgba(134,197,100,0.55); }
+.ipn-actions .btn.fait:hover:not(:disabled) { background:rgba(134,197,100,0.26); color:#fff; }
