@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sourdine — v1.0</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#0a0c12; --surface:#1a2030; --surface2:#161b27; --border:#262e42; --border2:#333d55;
+  --text:#e2e8f0; --text2:#94a3b8; --text3:#64748b;
+  --blue:#F07B1F; --blue-bg:#2a1f10;
+  --green:#86c564; --green-bg:#EAF3DE; --green-badge:#3B6D11;
+  --amber:#eab676; --amber-bg:#FAEEDA; --amber-badge:#854F0B;
+  --red:#f09595;   --red-bg:#FCEBEB;   --red-badge:#A32D2D;
+  --radius:6px; --radius-lg:10px;
+  --mono:"SF Mono","Cascadia Code",Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.55}
+header{background:#0f1117;height:52px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--border)}
+.logo-text{display:flex;align-items:center;gap:0;font-size:13px;font-weight:500}
+.logo-text .lt{color:#fff}.logo-text .ls{color:#444;margin:0 3px}.logo-text .lo{color:var(--blue)}
+.vbadge{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text3);border:1px solid var(--border);border-radius:20px;padding:3px 10px}
+main{max-width:520px;margin:0 auto;padding:18px 16px 40px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;margin-bottom:14px}
+.card.lis{border-left:3px solid var(--blue)}
+h1{font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px}
+.muted{color:var(--text2)}.dim{color:var(--text3);font-size:13px}
+.so{font-size:21px;font-weight:600;letter-spacing:-.01em}
+.sep{color:var(--text3);margin:0 7px}
+.quoi{margin-top:12px;padding:11px 13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:13px}
+.quoi .t{color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+/* Choix : pastilles larges, pensees pour le pouce */
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{flex:1 1 auto;min-width:104px;padding:12px 10px;background:var(--surface2);border:1px solid var(--border);
+     border-radius:var(--radius);color:var(--text2);font-size:13px;text-align:center;cursor:pointer;
+     font-family:inherit;transition:.12s}
+.opt:hover{border-color:var(--border2);color:var(--text)}
+.opt.on{background:var(--blue);border-color:transparent;color:#fff;font-weight:500}
+.opt .s{display:block;font-size:11px;opacity:.75;margin-top:2px}
+input[type=date],textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+     border-radius:var(--radius);padding:10px 11px;font-size:14px;font-family:inherit;margin-top:8px}
+textarea{min-height:68px;resize:vertical}
+input:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:1px;border-color:transparent}
+.btn-p{width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);
+     font-size:15px;font-weight:500;cursor:pointer;font-family:inherit}
+.btn-p:disabled{background:var(--surface2);color:var(--text3);cursor:not-allowed}
+.hint{font-size:12px;color:var(--text3);margin-top:10px;text-align:center}
+.etat{text-align:center;padding:46px 20px;color:var(--text2)}
+.etat i{font-size:34px;display:block;margin-bottom:12px}
+.etat.ko i{color:var(--red)}
+.etat.ok i{color:var(--green)}
+.etat h1{color:var(--text)}
+.spin{display:inline-block;width:19px;height:19px;border:2px solid var(--border2);border-top-color:var(--blue);
+     border-radius:50%;animation:r .7s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}
+footer{text-align:center;color:var(--text3);font-size:11px;padding:0 16px 24px;font-family:var(--mono)}
+.hide{display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <img src="../shared/picto-pp.png" alt="Proto Process" width="24" height="24"
+       style="object-fit:contain" onerror="this.style.display='none'">
+  <span class="logo-text"><span class="lt">PROTO PROCESS</span><span class="ls">/</span><span class="lo">Sourdine</span></span>
+  <span class="vbadge" id="vb"></span>
+</header>
+
+<main>
+  <!-- Chargement -->
+  <div id="vueChargement" class="etat"><span class="spin"></span><div style="margin-top:14px">Lecture du lien…</div></div>
+
+  <!-- Lien mort -->
+  <div id="vueKo" class="etat ko hide">
+    <i class="ti ti-link-off"></i>
+    <h1>Ce lien ne fonctionne plus</h1>
+    <p class="muted" id="koTexte">Il a expiré, ou l'alerte n'existe plus.</p>
+    <p class="dim">Les liens de sourdine valent 10 jours. Reprends celui du mail de ce matin.</p>
+  </div>
+
+  <!-- Formulaire -->
+  <div id="vueForm" class="hide">
+    <div class="card lis">
+      <div class="so" id="fSo"></div>
+      <div class="muted" id="fLigne2"></div>
+      <div class="quoi">
+        <div class="t" id="fControle"></div>
+        <div id="fLibelle"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Jusqu'à quand on se tait ?</h2>
+      <div class="opts" id="optsDuree"></div>
+      <input type="date" id="fDate">
+      <div class="hint" id="fDateLisible"></div>
+    </div>
+
+    <div class="card">
+      <h2>Pourquoi ?</h2>
+      <div class="opts" id="optsMotif"></div>
+      <textarea id="fMotif" placeholder="Précise si besoin — c'est ce qui sera relu dans trois semaines."></textarea>
+    </div>
+
+    <button class="btn-p" id="btnPoser" disabled>Mettre en sourdine</button>
+    <div class="hint">L'alerte réapparaîtra d'elle-même à la date choisie. Rien à décocher.</div>
+  </div>
+
+  <!-- Confirmation -->
+  <div id="vueOk" class="etat ok hide">
+    <i class="ti ti-circle-check"></i>
+    <h1>C'est noté</h1>
+    <p class="muted" id="okTexte"></p>
+    <p class="dim">Tu peux fermer cette page.</p>
+  </div>
+</main>
+
+<footer id="pied"></footer>
+
+<script>
+'use strict';
+// Sourdine — page de mise en sourdine atteinte depuis un lien de mail.
+// Le jeton de l'URL est le SEUL secret : cette page n'en detient aucun autre, ne lit rien
+// directement en base et ne peut faire qu'un geste — poser une sourdine sur l'affaire du jeton.
+// Tout est verifie cote n8n/SQL.
+const APP_VERSION = "1.0";
+const APP_DATE    = "27/10/2026";
+const WEBHOOK     = "https://protoprocess.app.n8n.cloud/webhook/pp-sourdine";
+
+const LIB_CONTROLE = {
+  appro:             "Appro — composants a commander ou en attente",
+  dates_coherence:   "Coherence des dates",
+  achats_non_lances: "Achats non lances",
+  pcb_non_lance:     "PCB non lance",
+  devis_en_attente:  "Devis en attente"
+};
+
+const MOTIFS = [
+  "En attente d'une reponse du client",
+  "Commande deja passee, en attente d'AR",
+  "Pas prioritaire pour l'instant"
+];
+
+document.getElementById('vb').textContent = 'v' + APP_VERSION;
+document.getElementById('pied').textContent = 'Sourdine v' + APP_VERSION + ' — ' + APP_DATE;
+document.title = 'Sourdine — v' + APP_VERSION;
+
+const $ = id => document.getElementById(id);
+const montrer = id => {
+  ['vueChargement', 'vueKo', 'vueForm', 'vueOk'].forEach(v => $(v).classList.add('hide'));
+  $(id).classList.remove('hide');
+};
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const fr = s => {
+  if (!s || s.length < 10) return '';
+  return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4);
+};
+const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+
+const jeton = (new URLSearchParams(location.search).get('j') || '').trim().toLowerCase();
+let motifChoisi = '';
+
+async function appeler(corps) {
+  const r = await fetch(WEBHOOK, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ jeton: jeton }, corps))
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return await r.json();
+}
+
+function majBouton() {
+  const d = $('fDate').value;
+  $('btnPoser').disabled = !d;
+  $('fDateLisible').textContent = d ? 'Silence jusqu\'au ' + fr(d) + ', puis l\'alerte revient.' : '';
+}
+
+function construireDurees(propose) {
+  const choix = [];
+  if (propose && propose > iso(new Date())) {
+    choix.push({ lib: 'Jusqu\'au ' + fr(propose).slice(0, 5), sous: 'proposé', val: propose });
+  }
+  choix.push({ lib: '1 semaine', sous: fr(plus(7)).slice(0, 5), val: plus(7) });
+  choix.push({ lib: '2 semaines', sous: fr(plus(14)).slice(0, 5), val: plus(14) });
+  choix.push({ lib: '1 mois', sous: fr(plus(30)).slice(0, 5), val: plus(30) });
+
+  const zone = $('optsDuree');
+  zone.textContent = '';
+  choix.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.className = 'opt' + (i === 0 ? ' on' : '');
+    b.type = 'button';
+    b.innerHTML = '';
+    const t = document.createElement('span');
+    t.textContent = c.lib;
+    const s = document.createElement('span');
+    s.className = 's';
+    s.textContent = c.sous;
+    b.appendChild(t); b.appendChild(s);
+    b.onclick = () => {
+      Array.prototype.forEach.call(zone.children, e => e.classList.remove('on'));
+      b.classList.add('on');
+      $('fDate').value = c.val;
+      majBouton();
+    };
+    zone.appendChild(b);
+  });
+  $('fDate').value = choix[0].val;
+  $('fDate').min = iso(new Date());
+  $('fDate').onchange = () => {
+    Array.prototype.forEach.call(zone.children, e => e.classList.remove('on'));
+    majBouton();
+  };
+  majBouton();
+}
+
+function construireMotifs() {
+  const zone = $('optsMotif');
+  zone.textContent = '';
+  MOTIFS.forEach(m => {
+    const b = document.createElement('button');
+    b.className = 'opt';
+    b.type = 'button';
+    b.textContent = m;
+    b.onclick = () => {
+      const deja = b.classList.contains('on');
+      Array.prototype.forEach.call(zone.children, e => e.classList.remove('on'));
+      if (deja) { motifChoisi = ''; } else { b.classList.add('on'); motifChoisi = m; }
+    };
+    zone.appendChild(b);
+  });
+}
+
+async function demarrer() {
+  if (!/^[0-9a-f]{64}$/.test(jeton)) { montrer('vueKo'); return; }
+  let d;
+  try { d = await appeler({ action: 'lire' }); }
+  catch (e) {
+    $('koTexte').textContent = 'La verification n\'a pas abouti. Reessaie dans un instant.';
+    montrer('vueKo');
+    return;
+  }
+  if (!d || !d.jeton_valide) { montrer('vueKo'); return; }
+
+  $('fSo').textContent = d.so || '';
+  let l2 = '';
+  if (d.client) l2 += d.client;
+  if (d.carte) l2 += (l2 ? ' · ' : '') + d.carte;
+  $('fLigne2').textContent = l2;
+  $('fControle').textContent = LIB_CONTROLE[d.controle] || d.controle || 'Alerte';
+  $('fLibelle').textContent = d.libelle || 'Cette alerte revient chaque matin.';
+
+  construireDurees(d.propose);
+  construireMotifs();
+  montrer('vueForm');
+
+  $('btnPoser').onclick = async () => {
+    const date = $('fDate').value;
+    if (!date) return;
+    const libre = $('fMotif').value.trim();
+    const motif = [motifChoisi, libre].filter(Boolean).join(' — ');
+    $('btnPoser').disabled = true;
+    $('btnPoser').textContent = 'Enregistrement…';
+    let r;
+    try { r = await appeler({ action: 'poser', jusqu_au: date, motif: motif }); }
+    catch (e) {
+      $('btnPoser').disabled = false;
+      $('btnPoser').textContent = 'Mettre en sourdine';
+      $('fDateLisible').textContent = 'Echec de l\'enregistrement. Reessaie.';
+      return;
+    }
+    if (r && r.posee) {
+      $('okTexte').textContent = (r.so || '') + ' — plus d\'alerte ' +
+        (LIB_CONTROLE[r.controle] ? '« ' + LIB_CONTROLE[r.controle].toLowerCase() + ' » ' : '') +
+        'jusqu\'au ' + fr(r.posee_jusqu_au) + '.';
+      montrer('vueOk');
+    } else {
+      $('btnPoser').disabled = false;
+      $('btnPoser').textContent = 'Mettre en sourdine';
+      $('fDateLisible').textContent = 'Refuse : verifie la date (elle doit etre a venir, et a moins de 4 mois).';
+    }
+  };
+}
+
+demarrer();
+</script>
+</body>
+</html>
