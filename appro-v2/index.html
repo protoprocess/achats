@@ -449,7 +449,11 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
    carte passee en Inventory portent le meme IPN et le meme MPN. Le workflow de validation
    (v1.7) separe d'abord les lignes Inventory des lignes fournisseur, puis departage un
    doublon restant par la reference fournisseur — encore faut-il qu'elle lui parvienne. */
-const APP_VERSION = "3.2";
+/* 3.3 (28/10/2026) : l'ecran rend compte de ce que la validation a ecrit — bobine entree
+   dans STK PP, et surtout lignes que le workflow n'a pas pu identifier dans la feuille
+   (rien n'a ete ecrit pour elles). Un colis qui garde des lignes non ecrites reste
+   affiche. Un succes muet est ce qui a fait passer inapercue la boulette du 28/10. */
+const APP_VERSION = "3.3";
 const APP_DATE = "28/10/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
@@ -686,6 +690,10 @@ const WEBHOOK_VALIDER = 'https://protoprocess.app.n8n.cloud/webhook/v2-valider-r
 let RECEPTION_DATA = [];
 const RECEPTION_ETAT = {};
 let ECART_EN_ATTENTE = null;
+// 3.3 : compte rendu de la derniere validation (entrees en stock, lignes non ecrites).
+// Affiche en bandeau tant que l'utilisateur ne l'a pas ferme : une ecriture faite
+// ailleurs (STK PP) ou une ligne non ecrite ne doit pas passer inapercue.
+let RECEPTION_AVIS = '';
 
 function cardKeyReception(c) {
   return (c.so + '_' + c.fournisseur).replace(/[^a-z0-9]/gi, '_');
@@ -893,9 +901,9 @@ function renderReception() {
   recBadge.textContent = retards.length || '';
   recBadge.style.display = retards.length ? 'inline-flex' : 'none';
 
-  banner.innerHTML = retards.length
+  banner.innerHTML = (retards.length
     ? `<div class="alrt"><i class="ti ti-alert-triangle" style="font-size:14px" aria-hidden="true"></i> ${retards.length} colis en retard — J+7 dépassé sans réception confirmée</div>`
-    : '';
+    : '') + RECEPTION_AVIS;
 
   cnt.textContent = colis.length + ' colis en cours de réception';
 
@@ -937,6 +945,37 @@ function confirmerEcart() {
   finaliserReception(cardId, c, lignes, ecarts);
 }
 
+function fermerAvisReception() {
+  RECEPTION_AVIS = '';
+  renderReception();
+}
+
+/* 3.3 : compte rendu de ce que la validation a reellement ecrit.
+   - une bobine entree dans STK PP : ecriture faite ailleurs, invisible ici ;
+   - une ligne non identifiee dans la feuille : RIEN n'a ete ecrit pour elle.
+   Le bandeau reste tant qu'on ne le ferme pas. */
+function construireAvisReception(c, bobines, ignorees) {
+  if (!bobines.length && !ignorees.length) return '';
+  const erreur = ignorees.length > 0;
+  const lignes = [];
+  bobines.forEach(b => {
+    const ou = b.statut === 'ligne creee' ? 'nouvelle ligne' : 'ligne ' + b.ligne;
+    lignes.push(`<div style="margin-top:4px">✓ Stock PP : <strong>${b.ipn || b.mpn}</strong> +${b.qte} — ${b.mpn || '—'} (${ou})</div>`);
+  });
+  ignorees.forEach(i => {
+    lignes.push(`<div style="margin-top:4px">⚠ <strong>${i.ipn || i.mpn}</strong> — ${i.recu} reçu(s) non écrit(s) : ${i.motif}</div>`);
+  });
+  const styleOk = 'background:rgba(59,109,17,.10); border-color:var(--ok-t); color:var(--ok-t);';
+  return `<div class="alrt" style="align-items:flex-start; ${erreur ? '' : styleOk}">
+      <div style="flex:1">
+        <div><strong>${c.so}</strong> — ${erreur ? 'réception enregistrée en partie' : 'réception enregistrée'}</div>
+        ${lignes.join('')}
+        ${erreur ? '<div style="margin-top:6px">À reporter à la main dans la feuille achat. Le colis reste affiché.</div>' : ''}
+      </div>
+      <button class="ab ab-oc" onclick="fermerAvisReception()">Fermer</button>
+    </div>`;
+}
+
 async function finaliserReception(cardId, c, lignes, ecarts) {
   const btn = document.getElementById('vbtn-' + cardId);
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" aria-hidden="true"></i> Enregistrement…'; }
@@ -947,9 +986,25 @@ async function finaliserReception(cardId, c, lignes, ecarts) {
       body: JSON.stringify({ so: c.so, client: c.client, carte: c.carte, lignes, ecarts })
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    RECEPTION_DATA = RECEPTION_DATA.filter(x => cardKeyReception(x) !== cardId);
+
+    // 3.3 : on lit ce que la validation dit avoir fait. Deux choses ne se voient nulle
+    // part ailleurs : l'entree en stock d'une bobine (ecrite dans STK PP) et les lignes
+    // que le workflow n'a pas pu identifier dans la feuille (rien n'a ete ecrit pour
+    // elles). Les annoncer franchement, plutot qu'un « receptionne » muet.
+    let rep = {};
+    try { rep = await res.json(); } catch (e) { rep = {}; }
+    const bobines = Array.isArray(rep.bobines) ? rep.bobines : [];
+    const ignorees = Array.isArray(rep.ignorees) ? rep.ignorees : [];
+
+    RECEPTION_AVIS = construireAvisReception(c, bobines, ignorees);
+
+    // Une ligne non ecrite = le colis n'est pas solde : on garde la carte a l'ecran.
+    if (!ignorees.length) RECEPTION_DATA = RECEPTION_DATA.filter(x => cardKeyReception(x) !== cardId);
     renderReception();
-    toast(ecarts.length > 0 ? `⚠ Réception validée avec ${ecarts.length} écart(s)` : `✓ ${c.so} — ${c.fournisseur} réceptionné`, ecarts.length > 0 ? 'twarn' : 'tok');
+
+    if (ignorees.length) toast(`⚠ ${ignorees.length} ligne(s) non enregistrée(s) — voir le bandeau`, 'twarn');
+    else if (bobines.length) toast(`✓ ${c.so} réceptionné · ${bobines.length} bobine(s) entrée(s) en stock`, 'tok');
+    else toast(ecarts.length > 0 ? `⚠ Réception validée avec ${ecarts.length} écart(s)` : `✓ ${c.so} — ${c.fournisseur} réceptionné`, ecarts.length > 0 ? 'twarn' : 'tok');
   } catch (err) {
     toast('Erreur : ' + err.message, 'terr');
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> Valider la réception'; }
