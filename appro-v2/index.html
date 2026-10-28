@@ -444,8 +444,13 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "3.1";
-const APP_DATE = "21/09/2026";
+/* 3.2 (28/10/2026) : la validation envoie aussi la reference fournisseur de chaque ligne.
+   POURQUOI : sur une feuille avec bobine « stock permanent », la ligne BOBINE et la ligne
+   carte passee en Inventory portent le meme IPN et le meme MPN. Le workflow de validation
+   (v1.7) separe d'abord les lignes Inventory des lignes fournisseur, puis departage un
+   doublon restant par la reference fournisseur — encore faut-il qu'elle lui parvienne. */
+const APP_VERSION = "3.2";
+const APP_DATE = "28/10/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -904,7 +909,9 @@ function renderReception() {
 function validerReceptionClick(cardId) {
   const c = RECEPTION_DATA.find(x => cardKeyReception(x) === cardId);
   if (!c) return;
-  const lignes = c.lignes.map((l, idx) => ({ ipn: l.ipn, mpn: l.mpn, fournisseur: l.fournisseur, attendu: l.attendu, recu: getRecuActuel(cardId, idx, l) }));
+  // 3.2 : fournisseurRef transmise pour que la validation vise la bonne ligne de la feuille
+  // quand deux lignes partagent IPN et MPN (ligne BOBINE et ligne carte en Inventory).
+  const lignes = c.lignes.map((l, idx) => ({ ipn: l.ipn, mpn: l.mpn, fournisseur: l.fournisseur, fournisseurRef: l.fournisseurRef || '', attendu: l.attendu, recu: getRecuActuel(cardId, idx, l) }));
   const ecarts = lignes.filter(l => l.recu < l.attendu);
 
   if (ecarts.length > 0) {
