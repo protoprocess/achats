@@ -127,6 +127,13 @@ section{background:var(--surface);border:1px solid var(--border);border-radius:v
 .detail .refs{font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:3px}
 .detail .acts2{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 
+.lien{font-size:11px;color:var(--text3);text-decoration:none;border-bottom:1px dotted var(--border2);
+  padding-bottom:1px;margin-left:4px}
+.lien:hover{color:var(--ppblue);border-bottom-color:var(--ppblue)}
+.shead{cursor:pointer}
+.shead h2::after{content:" ▾";color:var(--text3);font-size:10px}
+section.replie .shead h2::after{content:" ▸"}
+section.replie .row,section.replie .vide,section.replie .plus{display:none}
 .plus{display:block;width:100%;text-align:center;padding:8px;background:var(--surface2);
   border:none;border-top:1px solid var(--border);color:var(--text2);font-size:11px;
   cursor:pointer;font-weight:600;font-family:var(--sans)}
@@ -189,7 +196,7 @@ section{background:var(--surface);border:1px solid var(--border);border-radius:v
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.2";
+const APP_VERSION = "1.3";
 const APP_DATE    = "29/10/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
@@ -336,7 +343,10 @@ function chip(cl, n, lib) {
 }
 
 function entete(cls, ico, titre, n, rep) {
-  let h = '<div class="shead ' + cls + '"><i class="ti ' + ico + ' ico"></i><h2>' + titre + '</h2>';
+  // L en-tete entier est cliquable : il replie le bloc. Un bloc traite ne doit pas
+  // occuper l ecran de ceux qui restent.
+  let h = '<div class="shead ' + cls + '" onclick="plierBloc(this)" title="Replier ce bloc">';
+  h += '<h2>' + titre + '</h2>';
   if (rep) h += rep;
   h += '<span class="cpt ' + (cls === 't-urg' ? 'c-urg' : cls === 't-crit' ? 'c-crit' : 'c-ok') + '">' + n + '</span></div>';
   return h;
@@ -363,7 +373,7 @@ function blocAffaires(d) {
   if (!aff.length) {
     h += '<div class="vide"><i class="ti ti-circle-check"></i> Rien à faire ici. Tout est à jour.</div>';
   } else {
-    h += aff.map(ligneAffaire).join('');
+    h += aff.map(a => ligneAffaire(a, false)).join('');
   }
   if (calmes.length) {
     h += calmes.map(a => ligneAffaire(a, true)).join('');
@@ -402,8 +412,8 @@ function ligneAffaire(a, calme) {
     h += '<span class="pastille p-' + (b.niveau || niv) + '">' + esc(b.titre || b.libelle) + '</span>';
     const refs = (b.refs_rouges && b.refs_rouges.length ? b.refs_rouges : b.refs) || [];
     if (refs.length) {
-      h += '<div class="refs">' + esc(refs.slice(0,3).join(' · '))
-         + (refs.length > 3 ? ' +' + (refs.length - 3) : '') + '</div>';
+      h += refs.slice(0,3).map(r => '<div class="refs">' + esc(r) + '</div>').join('');
+      if (refs.length > 3) h += '<div class="refs">+ ' + (refs.length - 3) + ' autres</div>';
     }
     if (b.fournisseur) h += '<div class="refs">chez ' + esc(b.fournisseur) + '</div>';
     if (b.jours_au_panier != null) h += '<div class="refs">au panier depuis ' + b.jours_au_panier + ' jours</div>';
@@ -414,7 +424,11 @@ function ligneAffaire(a, calme) {
   }
   h += '<div class="acts2">';
   if (a.jeton) h += '<a class="btn-s" href="' + SOURDINE + '?j=' + esc(a.jeton) + '">C est normal, mettre en sourdine</a>';
-  h += '<a class="btn-s" href="' + RACINE + 'commercial/fabstory/">Voir la fiche de vie</a>';
+  // Les trois endroits ou une affaire se traite reellement. FabStory ouvre LA carte
+  // (?produit=), pas la liste. Luminovo n existe que sur un tiers des affaires.
+  if (a.lien_fabstory) h += '<a class="lien" target="_blank" href="' + esc(a.lien_fabstory) + '">FabStory</a>';
+  if (a.lien_odoo) h += '<a class="lien" target="_blank" href="' + esc(a.lien_odoo) + '">Odoo</a>';
+  if (a.lien_luminovo) h += '<a class="lien" target="_blank" href="' + esc(a.lien_luminovo) + '">Luminovo</a>';
   h += '</div></div></div>';
   return h;
 }
@@ -461,10 +475,13 @@ function outils() {
 }
 
 /* ---------- interactions ---------- */
+function plierBloc(head) {
+  head.closest('section').classList.toggle('replie');
+}
 function plier(btn) {
   const r = btn.closest('.row');
-  r.classList.toggle('ouverte');
-  btn.classList.toggle('ouvert');
+  const ouvert = r.classList.toggle('ouverte');
+  btn.textContent = ouvert ? 'Replier' : 'Détail';
 }
 function deplier(btn) {
   btn.closest('section').querySelectorAll('.sup').forEach(r => r.classList.remove('cache'));
