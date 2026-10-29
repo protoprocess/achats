@@ -194,7 +194,7 @@ section{background:var(--surface);border:1px solid var(--border);border-radius:v
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.0";
+const APP_VERSION = "1.1";
 const APP_DATE    = "29/10/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
@@ -265,6 +265,11 @@ async function charger() {
 function demarrer() {
   const url = new URLSearchParams(location.search);
   const jeton = url.get('j');
+  // ?qui=MM force la personne sans rien memoriser : c est ce qu il faut pour un ecran
+  // d affichage, ou pour regarder la page d un collegue depuis son propre poste sans
+  // ecraser son propre choix.
+  const force = (url.get('qui') || '').toUpperCase();
+  if (force && DONNEES.some(d => d.initiales === force)) { MOI = force; rendre(); return; }
   // Le jeton du mail porte l identité : on cherche à qui il appartient.
   if (jeton) {
     const trouve = DONNEES.find(d => (d.affaires_a_geste || []).concat(d.affaires_calmes || [])
