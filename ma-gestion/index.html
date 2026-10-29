@@ -120,11 +120,6 @@ section{background:var(--surface);border:1px solid var(--border);border-radius:v
   border-radius:var(--radius);font-size:11.5px;cursor:pointer;white-space:nowrap;text-decoration:none;
   display:inline-block;font-family:var(--sans)}
 .btn-s:hover{border-color:var(--border2);color:var(--text)}
-.mini{width:25px;height:25px;border-radius:50%;border:1px solid var(--border);background:var(--surface);
-  color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-  font-size:14px;flex-shrink:0;padding:0}
-.mini:hover{border-color:var(--ppblue);color:var(--ppblue);background:var(--ppblue-bg)}
-.mini.ouvert{transform:rotate(180deg)}
 .detail{display:none;margin-top:9px;padding-top:9px;border-top:1px dashed var(--border);
   font-size:11.5px;color:var(--text2);line-height:1.6}
 .row.ouverte .detail{display:block}
@@ -194,7 +189,7 @@ section{background:var(--surface);border:1px solid var(--border);border-radius:v
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.1";
+const APP_VERSION = "1.2";
 const APP_DATE    = "29/10/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
@@ -208,10 +203,10 @@ const CLE_MOI  = 'pp_ma_gestion_qui';
 /* Les pôles, tels qu'Ariel les a décrits le 20/10/2026. Les adresses et les
    libellés sont repris du hub, pour que personne n'ait à réapprendre un nom. */
 const POLES = {
-  direction:         { nom: 'Direction',           outils: ['devis','fabstory','achats','commande','po','reception','methodes','triage','annexe','paie','tutos'] },
-  commercial_achats: { nom: 'Commercial et achats', outils: ['devis','commande','achats','po','fabstory','reception','triage','annexe','tutos'] },
-  production:        { nom: 'Gestion de production', outils: ['fabstory','reception','methodes','tutos'] },
-  methodes:          { nom: 'Méthodes',            outils: ['methodes','fabstory','tutos'] }
+  direction:         { nom: 'Direction',            outils: ['devis','commande','achats','po','fabstory','methodes','paie'] },
+  commercial_achats: { nom: 'Commercial et achats',  outils: ['devis','commande','achats','po','fabstory'] },
+  production:        { nom: 'Gestion de production', outils: ['fabstory','methodes'] },
+  methodes:          { nom: 'Méthodes',              outils: ['methodes','fabstory'] }
 };
 
 const OUTILS = {
@@ -220,12 +215,8 @@ const OUTILS = {
   achats:    { t: 'Approvisionner',        s: 'Achats PP',                          i: 'ti-shopping-cart',   u: 'achats/bom-sourcing/' },
   po:        { t: "Commande d'achat",      s: 'P.O. fournisseur dans Odoo',         i: 'ti-receipt',         u: 'achats/po-odoo/' },
   fabstory:  { t: 'Suivre une fabrication',s: 'FabStory',                           i: 'ti-timeline',        u: 'commercial/fabstory/' },
-  reception: { t: 'Réceptionner des colis',s: 'Réception marchandise',              i: 'ti-package',         u: 'achats/appro-v2/' },
   methodes:  { t: 'Préparer un dossier',   s: 'MYCenter Prep',                      i: 'ti-settings',        u: 'methodes-production/methodes/' },
-  triage:    { t: 'Triage',                s: 'Boîte commerciale',                  i: 'ti-inbox',           u: 'commercial/triage/' },
-  annexe:    { t: 'Annexe devis',          s: 'Pièces jointes du devis',            i: 'ti-paperclip',       u: 'commercial/annexe-devis/' },
-  paie:      { t: 'Paie',                  s: 'Heures et congés',                   i: 'ti-calendar',        u: 'rh/paie/' },
-  tutos:     { t: 'Tutos',                 s: 'Comment on fait',                    i: 'ti-book',            u: 'tutos/' }
+  paie:      { t: 'Paie',                  s: 'Heures et congés',                   i: 'ti-calendar',        u: 'rh/paie/' }
 };
 
 const POLE_DE = { OC: 'direction', MM: 'commercial_achats', DG: 'commercial_achats',
@@ -386,7 +377,10 @@ function blocAffaires(d) {
 function ligneAffaire(a, calme) {
   const niv = calme ? 'gris' : a.niveau;
   const b0 = (a.blocs && a.blocs[0]) || {};
-  const resume = a.blocs.map(b => (b.nb ? b.nb + ' ' : '') + b.libelle).join(' · ');
+  // Le service fournit « resume » deja formule : avec un nombre pour ce qui se compte en
+  // references, sans nombre pour les faits uniques. La page ne recompose rien — sinon on
+  // relit « 1 rien de lance ».
+  const resume = a.blocs.map(b => b.resume || b.libelle).join(' · ');
   let h = '<div class="row ' + niv + (calme ? ' cache sup' : '') + '">';
   h += '<div class="l1"><span class="so">' + esc(a.so) + '</span>';
   if (a.client) h += '<span class="sep">·</span><span class="cli">' + esc(a.client) + '</span>';
@@ -396,8 +390,8 @@ function ligneAffaire(a, calme) {
   h += '<span class="quoi">' + esc(resume) + '</span>';
   h += '<span class="acts">';
   h += '<a class="btn-p" href="' + RACINE + 'achats/bom-sourcing/">Je m en occupe</a>';
-  h += '<button class="mini" title="Demander de l aide à Claude" onclick="aide(event)"><i class="ti ti-sparkles"></i></button>';
-  h += '<button class="mini" title="Voir le détail" onclick="plier(this)"><i class="ti ti-chevron-down"></i></button>';
+  h += '<button class="btn-s" onclick="aide(event)">Aide</button>';
+  h += '<button class="btn-s" onclick="plier(this)">Détail</button>';
   h += '</span></div>';
 
   h += '<div class="detail">';
@@ -443,7 +437,7 @@ function blocDevis(d) {
       h += '<span class="quoi">' + esc(v.objet) + '</span>';
       h += '<span class="acts">';
       h += '<a class="btn-p" href="' + GMAIL + esc(v.thread_id) + '">Ouvrir le mail</a>';
-      h += '<button class="mini" title="Voir le détail" onclick="plier(this)"><i class="ti ti-chevron-down"></i></button>';
+      h += '<button class="btn-s" onclick="plier(this)">Détail</button>';
       h += '</span></div>';
       h += '<div class="detail">reçu le ' + frDate(v.recu_le);
       h += '<div class="geste">' + esc(v.geste) + '</div></div></div>';
