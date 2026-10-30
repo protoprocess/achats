@@ -113,6 +113,11 @@ section{background:var(--surface);border:1px solid var(--border);border-radius:v
 .p-gris{background:#eef1f5;color:var(--text2)}
 .p-vert{background:var(--vert-bg);color:var(--vert)}
 .acts{display:flex;align-items:center;gap:5px;flex-shrink:0}
+/* Champ de date du bloc AR fournisseur : meme gabarit que les boutons, pour que la ligne
+   garde sa hauteur quand la date est proposee ou saisie a la main. */
+.acts input[type=date]{padding:4px 7px;border:1px solid var(--border);border-radius:var(--radius);
+  font-size:11.5px;font-family:var(--sans);color:var(--text);background:#fff}
+.acts input[type=date]:focus{outline:none;border-color:var(--orange)}
 .btn-p{padding:5px 11px;background:var(--orange);color:#fff;border:none;border-radius:var(--radius);
   font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;
   display:inline-block;font-family:var(--sans)}
@@ -197,7 +202,7 @@ section.replie .row,section.replie .vide,section.replie .plus{display:none}
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.6";
 const APP_DATE    = "30/10/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
@@ -330,13 +335,125 @@ function rendre() {
   h += blocDevis(d);
   h += '</div>';
 
-  h += '<div class="bientot"><strong>Bientôt ici :</strong> tes commandes fournisseur sans accusé de '
-     + 'réception, tes commandes à facturer, et les courbes (ta pile, tes devis dans les temps, tes '
-     + 'livraisons à l heure). Les mesures ont commencé aujourd hui — elles deviendront lisibles au '
-     + 'fil des jours.</div>';
+  // Le bloc AR ne concerne que ceux qui achètent. Il se remplit après coup, par son propre
+  // appel : la page reste lisible même si ce service-là ne répond pas.
+  if (voitLesAchats()) h += '<section id="bloc-ar"></section>';
+
+  h += '<div class="bientot"><strong>Bientôt ici :</strong> tes commandes à facturer, et les courbes '
+     + '(ta pile, tes devis dans les temps, tes livraisons à l heure). Les mesures ont commencé le '
+     + '29/10 — elles deviendront lisibles au fil des jours.</div>';
 
   h += outils();
   document.getElementById('app').innerHTML = h;
+  if (voitLesAchats()) chargerAR();
+}
+
+/* ---------- commandes fournisseur : la date de livraison ---------- *
+ * But du bloc (Olivier, 30/10/2026) : récupérer la DATE DE LIVRAISON du fournisseur,
+ * pour l inscrire et la confronter à la date promise au client. La liste n est que ce
+ * qui reste quand l automatique n a pas suffi.
+ *
+ * Rien n est jamais inscrit sans validation : « pas de règle, ça dépend du fournisseur,
+ * mais 95% des cas un PDF oui ». La date lue dans le PDF est une PROPOSITION — une lecture
+ * imparfaite n a donc aucune conséquence.
+ *
+ * Étape 1 (livrée) : on détecte, on propose, on valide. La date validée reste dans la base.
+ * Étape 2 (à venir) : elle part dans la sheet achat et en colonne L du planning
+ *                     (« Date recept cpts »), et se compare à la Date ARC de la colonne C.
+ * ------------------------------------------------------------------ */
+const AR_LIRE    = 'https://protoprocess.app.n8n.cloud/webhook/pp-ar-liste';
+const AR_VALIDER = 'https://protoprocess.app.n8n.cloud/webhook/pp-ar-valider';
+
+function voitLesAchats() {
+  const p = POLE_DE[MOI];
+  return p === 'direction' || p === 'commercial_achats';
+}
+
+async function chargerAR() {
+  const z = document.getElementById('bloc-ar');
+  if (!z) return;
+  z.innerHTML = '<div class="msg"><i class="ti ti-loader"></i> Lecture des accusés de réception…</div>';
+  try {
+    const r = await fetch(AR_LIRE, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                     body: JSON.stringify({ source: 'ma-gestion-de-projets', version: APP_VERSION }) });
+    if (!r.ok) throw new Error('réponse ' + r.status);
+    z.innerHTML = blocAR(await r.json());
+  } catch (e) {
+    z.innerHTML = '<div class="msg err">Les accusés de réception n ont pas pu être lus (' + esc(e.message)
+                + '). Le reste de la page est à jour.</div>';
+  }
+}
+
+function blocAR(d) {
+  const avec = (d && d.avec_ar) || [];
+  const sans = (d && d.sans_ar) || [];
+  const n = avec.length + sans.length;
+  let h = entete(avec.length ? 't-crit' : 't-ok', '', 'COMMANDES FOURNISSEUR — DATE DE LIVRAISON', n, '');
+  if (!n) {
+    h += '<div class="vide"><i class="ti ti-circle-check"></i> Toutes les commandes ont leur date.</div>';
+    return h;
+  }
+  if (avec.length) h += avec.map(ligneAR).join('');
+  if (sans.length) {
+    h += sans.map(ligneAR).join('');
+  }
+  return h;
+}
+
+function ligneAR(a) {
+  // confiance : sure (une date collée à un mot de livraison) · floue (plusieurs dates, ou un
+  // délai en semaines) · aucune (PDF illisible, ou seulement des dates de commande et de devis)
+  const niv = a.ar_trouve ? (a.date_lue ? 'bleu' : 'orange') : (a.age_j > 5 ? 'orange' : 'gris');
+  let h = '<div class="row ' + niv + '">';
+  h += '<div class="l1"><span class="so">' + esc(a.po_name) + '</span>';
+  if (a.fournisseur) h += '<span class="sep">·</span><span class="cli">' + esc(a.fournisseur) + '</span>';
+  h += '<span class="badge b-' + niv + '">' + (a.ar_trouve ? 'AR reçu le ' + frDate(a.ar_le)
+                                                           : 'commandé il y a ' + a.age_j + ' j') + '</span></div>';
+
+  h += '<div class="l2">';
+  if (a.ar_trouve && a.date_lue) {
+    h += '<span class="pastille p-bleu">livraison lue : ' + frDate(a.date_lue) + '</span>';
+    if (a.confiance !== 'sure') h += '<span class="pastille p-orange">à vérifier</span>';
+    h += '<span class="quoi">à confirmer avant de l inscrire</span>';
+  } else if (a.ar_trouve) {
+    h += '<span class="pastille p-orange">date illisible</span>';
+    h += '<span class="quoi">l AR est là, mais la date n a pas pu en être tirée</span>';
+  } else {
+    h += '<span class="pastille p-' + niv + '">pas d AR</span>';
+    h += '<span class="quoi">Tu en as reçu un ? Si oui, livraison prévue quand ?</span>';
+  }
+  h += '<span class="acts">';
+  h += '<input type="date" id="d-' + esc(a.po_name) + '" value="' + esc(a.date_lue || '') + '">';
+  h += '<button class="btn-p" onclick="deciderAR(\'' + esc(a.po_name) + '\',\'valider\')">Inscrire</button>';
+  h += '<button class="btn-s" onclick="deciderAR(\'' + esc(a.po_name) + '\',\'eteindre\')">Déjà reçu</button>';
+  h += '<button class="btn-s" onclick="plier(this)">Détail</button>';
+  h += '</span></div>';
+
+  h += '<div class="detail">';
+  if (a.piece_jointe) h += '<div class="refs">pièce jointe : ' + esc(a.piece_jointe) + '</div>';
+  if (a.extrait) h += '<div class="refs">' + esc(a.extrait) + '</div>';
+  if (a.commande_le) h += '<div class="refs">commandé le ' + frDate(a.commande_le) + '</div>';
+  h += '<div class="geste">La date inscrite ici ne part encore nulle part : elle est gardée en attendant '
+     + 'que l écriture vers la feuille achat et le planning soit posée.</div>';
+  h += '<div class="acts2"><button class="btn-s" onclick="deciderAR(\'' + esc(a.po_name) + '\',\'ignorer\')">'
+     + 'Laisser de côté</button></div>';
+  h += '</div></div>';
+  return h;
+}
+
+async function deciderAR(po, geste) {
+  const ch = document.getElementById('d-' + po);
+  const date = ch ? ch.value : '';
+  if (geste === 'valider' && !date) { toast('Il manque la date'); return; }
+  try {
+    const r = await fetch(AR_VALIDER, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ po_name: po, geste: geste, date: date }) });
+    if (!r.ok) throw new Error('réponse ' + r.status);
+    toast(geste === 'valider' ? 'Date retenue pour ' + po : po + ' retiré de la liste');
+    chargerAR();
+  } catch (e) {
+    toast('Pas enregistré : ' + e.message);
+  }
 }
 
 function chip(cl, n, lib) {
