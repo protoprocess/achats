@@ -202,7 +202,7 @@ section.replie .row,section.replie .vide,section.replie .plus{display:none}
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.7";
+const APP_VERSION = "1.8";
 const APP_DATE    = "30/10/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
@@ -426,6 +426,10 @@ function ligneAR(a) {
     h += '<span class="pastille p-' + niv + '">pas d AR</span>';
     h += '<span class="quoi">Tu en as reçu un ? Si oui, livraison prévue quand ?</span>';
   }
+  // Un PO peut servir plusieurs affaires (AB Broker en sert trois). On le dit sur la ligne :
+  // la commande est unique, donc la date l est aussi, et une seule validation suffit.
+  if (a.affaires && a.affaires.length > 1)
+    h += '<span class="pastille p-gris">' + a.affaires.length + ' affaires</span>';
   h += '<span class="acts">';
   h += '<input type="date" id="d-' + esc(a.po_name) + '" value="' + esc(a.date_lue || '') + '">';
   h += '<button class="btn-p" onclick="deciderAR(\'' + esc(a.po_name) + '\',\'valider\')">Inscrire</button>';
@@ -439,8 +443,15 @@ function ligneAR(a) {
   if (a.piece_jointe) h += '<div class="refs">pièce jointe : ' + esc(a.piece_jointe) + '</div>';
   if (a.extrait) h += '<div class="refs">' + esc(a.extrait) + '</div>';
   if (a.commande_le) h += '<div class="refs">commandé le ' + frDate(a.commande_le) + '</div>';
-  h += '<div class="geste">La date inscrite ici ne part encore nulle part : elle est gardée en attendant '
-     + 'que l écriture vers la feuille achat et le planning soit posée.</div>';
+  // Quand plusieurs personnes portent les affaires d un même PO, elles voient toutes la ligne.
+  // Mieux vaut le dire que de laisser quelqu un chercher pourquoi elle a disparu de son écran.
+  const autres = (a.responsables || []).filter(r => r !== MOI);
+  if (autres.length)
+    h += '<div class="refs">cette commande sert aussi ' + autres.map(esc).join(' et ')
+       + ' — la première date inscrite vaut pour tout le monde</div>';
+  h += '<div class="geste">La date inscrite ici part en colonne L du planning, sur le lot en cours '
+     + 'de chaque affaire, et se compare à la date promise au client. Une case déjà remplie à la '
+     + 'main n est jamais écrasée.</div>';
   h += '<div class="acts2"><button class="btn-s" onclick="deciderAR(\'' + esc(a.po_name) + '\',\'ignorer\')">'
      + 'Laisser de côté</button></div>';
   h += '</div></div>';
