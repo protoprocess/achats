@@ -111,6 +111,7 @@ section{background:var(--surface);border:1px solid var(--border);border-radius:v
 .p-orange{background:var(--ambre-bg);color:var(--ambre)}
 .p-bleu{background:var(--bleuf-bg);color:var(--bleuf)}
 .p-gris{background:#eef1f5;color:var(--text2)}
+.p-vert{background:var(--vert-bg);color:var(--vert)}
 .acts{display:flex;align-items:center;gap:5px;flex-shrink:0}
 .btn-p{padding:5px 11px;background:var(--orange);color:#fff;border:none;border-radius:var(--radius);
   font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;
@@ -196,8 +197,8 @@ section.replie .row,section.replie .vide,section.replie .plus{display:none}
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.3";
-const APP_DATE    = "29/10/2026";
+const APP_VERSION = "1.4";
+const APP_DATE    = "30/10/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
 
@@ -397,6 +398,14 @@ function ligneAffaire(a, calme) {
   h += '<span class="badge b-' + niv + '">' + esc(a.badge) + '</span></div>';
 
   h += '<div class="l2"><span class="pastille p-' + niv + '">' + esc(b0.titre || b0.libelle || '') + '</span>';
+  // Retour en stock constate par le check Luminovo (8h et 14h) ou le balayage large.
+  // Ne se voit sans deplier que si la piece est reellement ACHETABLE : un stock partiel
+  // ne debloque pas l affaire et n a donc rien a faire sur la premiere ligne.
+  const retAch = (a.retours || []).filter(r => r.achetable);
+  if (retAch.length) {
+    h += '<span class="pastille p-vert">' + retAch.length + ' revenue'
+       + (retAch.length > 1 ? 's' : '') + ' en stock</span>';
+  }
   h += '<span class="quoi">' + esc(resume) + '</span>';
   h += '<span class="acts">';
   h += '<a class="btn-p" href="' + RACINE + 'achats/bom-sourcing/">Je m en occupe</a>';
@@ -420,6 +429,27 @@ function ligneAffaire(a, calme) {
     if (b.question_depuis) h += '<div class="refs">question au client ouverte depuis le ' + frDate(b.question_depuis) + '</div>';
     if (b.motif) h += '<div class="refs">' + esc(b.motif) + '</div>';
     if (b.geste) h += '<div class="geste">' + esc(b.geste) + '</div>';
+    h += '</div>';
+  }
+  // Le detail dit CHEZ QUI la piece est revenue — ce que le mail Luminovo ne disait jamais.
+  if (a.retours && a.retours.length) {
+    h += '<div style="margin-top:8px">';
+    h += '<span class="pastille p-vert">retour en stock</span>';
+    for (const r of a.retours) {
+      const ou = esc(r.fournisseur || '?');
+      h += '<div class="refs">' + esc(r.mpn) + ' — ' + (r.achetable
+        ? 'commandable chez ' + ou + (r.ref_fournisseur ? ' (réf ' + esc(r.ref_fournisseur) + ')' : '')
+        : 'seulement ' + r.stock + ' chez ' + ou + ' pour ' + r.besoin + ' nécessaires')
+        + (r.vu_le ? ' · vu le ' + frDate(r.vu_le) : '') + '</div>';
+    }
+    if (retAch.length) {
+      h += '<div class="geste">Les références commandables ont déjà été remises à jour dans la feuille '
+         + 'Paniers en attente : le fournisseur et la référence y sont inscrits, la ligne est repartie '
+         + 'dans le panier.</div>';
+    } else {
+      h += '<div class="geste">Le stock trouvé ne couvre pas le besoin : rien n a été inscrit dans la '
+         + 'feuille. À toi de voir s il faut prendre ce qu il y a, chercher un équivalent, ou attendre.</div>';
+    }
     h += '</div>';
   }
   h += '<div class="acts2">';
