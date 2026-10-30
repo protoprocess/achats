@@ -202,7 +202,7 @@ section.replie .row,section.replie .vide,section.replie .plus{display:none}
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 const APP_DATE    = "30/10/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
@@ -374,8 +374,12 @@ async function chargerAR() {
   if (!z) return;
   z.innerHTML = '<div class="msg"><i class="ti ti-loader"></i> Lecture des accusés de réception…</div>';
   try {
+    // Chacun ne voit que les commandes des affaires dont il est responsable au planning
+    // (colonne N). Les PO sans affaire identifiée — usinage, consommables, outillage —
+    // vont à la direction, seule en mesure de les suivre.
     const r = await fetch(AR_LIRE, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                     body: JSON.stringify({ source: 'ma-gestion-de-projets', version: APP_VERSION }) });
+                                     body: JSON.stringify({ source: 'ma-gestion-de-projets', version: APP_VERSION,
+                                                            qui: MOI, direction: POLE_DE[MOI] === 'direction' }) });
     if (!r.ok) throw new Error('réponse ' + r.status);
     z.innerHTML = blocAR(await r.json());
   } catch (e) {
@@ -430,6 +434,8 @@ function ligneAR(a) {
   h += '</span></div>';
 
   h += '<div class="detail">';
+  if (a.affaires && a.affaires.length) h += '<div class="refs">pour ' + a.affaires.map(esc).join(' · ') + '</div>';
+  else h += '<div class="refs">aucune affaire rattachée — achat hors dossier</div>';
   if (a.piece_jointe) h += '<div class="refs">pièce jointe : ' + esc(a.piece_jointe) + '</div>';
   if (a.extrait) h += '<div class="refs">' + esc(a.extrait) + '</div>';
   if (a.commande_le) h += '<div class="refs">commandé le ' + frDate(a.commande_le) + '</div>';
