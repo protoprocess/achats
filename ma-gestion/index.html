@@ -146,6 +146,30 @@ section.replie .row,section.replie .vide,section.replie .plus{display:none}
 .plus:hover{color:var(--orange)}
 .cache{display:none}
 
+/* bloc Divers : le fil de la demande, la réponse écrite, le formulaire */
+.chip.d b{color:var(--ppblue)}
+.row.vert::before{background:#7aa84f} .row.vert{background:#fcfdfa}
+.b-vert{background:var(--vert)}
+.fil{margin-top:8px;padding:9px 11px;background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--radius);font-size:11.5px;line-height:1.6;color:var(--text2)}
+.fil.rep{border-left:3px solid var(--vert)}
+.fil .qui{font-weight:700;color:var(--text)}
+.fil .quand{color:var(--text3);font-size:10.5px;font-family:var(--mono);margin-left:6px}
+.detail textarea{width:100%;min-height:54px;resize:vertical;margin-top:8px;padding:7px 9px;
+  border:1px solid var(--border);border-radius:var(--radius);font-size:12px;
+  font-family:var(--sans);color:var(--text);background:#fff}
+.dform{padding:12px 14px;background:var(--surface2);border-top:1px solid var(--border)}
+.dform .ligne{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.dform label{font-size:11px;color:var(--text3);font-weight:600}
+.dform input[type=text],.dform select,.dform input[type=date],.dform textarea{
+  padding:6px 9px;border:1px solid var(--border);border-radius:var(--radius);
+  font-size:12px;font-family:var(--sans);color:var(--text);background:#fff}
+.dform input[type=text]{flex:1;min-width:200px}
+.dform textarea{width:100%;min-height:54px;resize:vertical}
+.dform input:focus,.dform select:focus,.dform textarea:focus,.detail textarea:focus{
+  outline:none;border-color:var(--orange)}
+.dform .aide{font-size:11px;color:var(--text3)}
+
 /* tuiles applis */
 .outils{margin-top:26px}
 .outils h3{font-size:11px;letter-spacing:.06em;color:var(--text3);font-weight:700;margin:0 0 10px}
@@ -202,7 +226,7 @@ section.replie .row,section.replie .vide,section.replie .plus{display:none}
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.8";
+const APP_VERSION = "1.9";
 const APP_DATE    = "30/10/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
@@ -328,6 +352,9 @@ function rendre() {
   h += chip('a', c.orange || 0, 'à surveiller');
   h += chip('b', c.bleu || 0, 'information manquante');
   h += chip('', c.devis || 0, 'devis à traiter');
+  // Le compteur des demandes est toujours affiché, même à zéro (décision Olivier 30/10/2026).
+  // Il part à zéro et se remplit quand le bloc Divers a répondu.
+  h += '<div class="chip d" id="chip-divers"><b>0</b> demandes</div>';
   h += '</div>';
 
   h += '<div class="grille">';
@@ -339,6 +366,10 @@ function rendre() {
   // appel : la page reste lisible même si ce service-là ne répond pas.
   if (voitLesAchats()) h += '<section id="bloc-ar"></section>';
 
+  // Le bloc Divers concerne tout le monde : c est le seul endroit où ce qui n a pas d autre
+  // maison peut être tracé. Il se remplit aussi par son propre appel.
+  h += '<section id="bloc-divers"></section>';
+
   h += '<div class="bientot"><strong>Bientôt ici :</strong> tes commandes à facturer, et les courbes '
      + '(ta pile, tes devis dans les temps, tes livraisons à l heure). Les mesures ont commencé le '
      + '29/10 — elles deviendront lisibles au fil des jours.</div>';
@@ -346,6 +377,7 @@ function rendre() {
   h += outils();
   document.getElementById('app').innerHTML = h;
   if (voitLesAchats()) chargerAR();
+  chargerDivers();
 }
 
 /* ---------- commandes fournisseur : la date de livraison ---------- *
@@ -471,6 +503,233 @@ async function deciderAR(po, geste) {
   } catch (e) {
     toast('Pas enregistré : ' + e.message);
   }
+}
+
+/* ---------- divers : ce qu on me demande, ce que je demande ---------- *
+ * Deux objets dans une seule table, distingués par « pour qui » :
+ *   pour_qui ≠ de_qui  →  une demande adressée à quelqu un
+ *   pour_qui = de_qui  →  un pense-bête personnel, que personne d autre ne voit
+ *
+ * La FERMETURE PAR RÉPONSE ÉCRITE est le point central (Olivier, 30/10/2026) :
+ * l objectif n est pas qu on coche « vu », c est qu on dise ce qu on a décidé et
+ * pourquoi. C est ce qui distingue ce bloc d une liste qui se vide sans laisser
+ * de trace. Une ligne réglée reste visible deux jours, puis sort du bloc ; le fil
+ * lui-même reste en base.
+ *
+ * Garde-fou : ce bloc n accueille QUE ce qui n a pas d autre maison. Une question
+ * client va dans FabStory, un achat dans Achats PP. Sinon il devient la poubelle
+ * où l on range ce qu on ne veut pas traiter.
+ * ------------------------------------------------------------------ */
+const DV_LIRE     = 'https://protoprocess.app.n8n.cloud/webhook/pp-divers-liste';
+const DV_CREER    = 'https://protoprocess.app.n8n.cloud/webhook/pp-divers-creer';
+const DV_REPONDRE = 'https://protoprocess.app.n8n.cloud/webhook/pp-divers-repondre';
+
+let DV_FORM = false;   // le formulaire reste ouvert d un rafraîchissement à l autre
+
+async function chargerDivers() {
+  const z = document.getElementById('bloc-divers');
+  if (!z) return;
+  try {
+    const r = await fetch(DV_LIRE, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                     body: JSON.stringify({ source: 'ma-gestion-de-projets',
+                                                            version: APP_VERSION, qui: MOI }) });
+    if (!r.ok) throw new Error('réponse ' + r.status);
+    const d = await r.json();
+    z.innerHTML = blocDivers(d);
+    // Le compteur du bandeau dit exactement ce que dit le bloc : ce qui attend un geste
+    // de MA part. Ce que j ai envoyé attend chez l autre, et ne se compte pas ici.
+    const ch = document.getElementById('chip-divers');
+    const n = ((d.on_me_demande || []).filter(x => !x.clos).length)
+            + ((d.pense_bete    || []).filter(x => !x.clos).length);
+    if (ch) ch.innerHTML = '<b>' + n + '</b> demande' + (n > 1 ? 's' : '');
+  } catch (e) {
+    z.innerHTML = '<div class="msg err">Le bloc Divers n a pas pu être lu (' + esc(e.message)
+                + '). Le reste de la page est à jour.</div>';
+  }
+}
+
+function nomDe(ini) {
+  if (!ini) return '—';
+  const d = (DONNEES || []).find(x => x.initiales === ini);
+  return d ? d.nom : ini;
+}
+
+function joursDe(x) {
+  return (x.jours === null || x.jours === undefined) ? null : Number(x.jours);
+}
+
+// Le résumé de ligne reste sur une ligne : le texte entier est dans le détail.
+function court(s, n) {
+  const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  return t.length > n ? t.slice(0, n - 1) + '…' : t;
+}
+
+// « Répondre » ouvre le détail sans se renommer : ce n est pas un bouton de pliage.
+function ouvrirLigne(btn) { btn.closest('.row').classList.add('ouverte'); }
+
+function etatDivers(x) {
+  const j = joursDe(x);
+  if (x.clos) return x.repondu_le ? 'répondu le ' + frDate(x.repondu_le) : 'réglé';
+  if (j === null) return 'sans échéance';
+  if (j < 0)  return 'échéance dépassée · J+' + (-j);
+  if (j === 0) return "pour aujourd hui";
+  return 'pour le ' + frDate(x.echeance);
+}
+
+function blocDivers(d) {
+  const amoi = (d && d.on_me_demande) || [];
+  const pb   = (d && d.pense_bete)    || [];
+  const moi  = (d && d.je_demande)    || [];
+  const amoiO = amoi.filter(x => !x.clos);
+  const pbO   = pb.filter(x => !x.clos);
+  // Ce que j ai envoyé et ce qui est déjà réglé ne doit pas occuper l écran : replié par défaut.
+  const reste = amoi.filter(x => x.clos).concat(pb.filter(x => x.clos)).concat(moi);
+  const depassee = x => { const j = joursDe(x); return j !== null && j < 0; };
+  const n = amoiO.length + pbO.length;
+  const cls = amoiO.some(depassee) ? 't-urg' : n ? 't-crit' : 't-ok';
+
+  let h = entete(cls, '', 'DIVERS — CE QU ON ME DEMANDE, CE QUE JE DEMANDE', n, '');
+  if (!n && !reste.length)
+    h += '<div class="vide"><i class="ti ti-circle-check"></i> Rien en attente, ni pour toi ni de toi.</div>';
+  h += amoiO.map(x => ligneDivers(x, false)).join('');
+  h += pbO.map(x => ligneDivers(x, false)).join('');
+  if (reste.length) {
+    h += reste.map(x => ligneDivers(x, true)).join('');
+    h += '<button class="plus" onclick="deplier(this)">Voir les ' + reste.length
+       + ' autre' + (reste.length > 1 ? 's' : '') + ' — ce que j ai envoyé, et ce qui est réglé</button>';
+  }
+  h += formDivers();
+  return h;
+}
+
+function ligneDivers(x, cache) {
+  const pb = x.nature === 'pense_bete';
+  const am = x.nature === 'on_me_demande';
+  const j  = joursDe(x);
+  const niv = x.clos ? 'vert' : (j !== null && j < 0) ? 'rouge' : am ? 'orange' : pb ? 'bleu' : 'gris';
+
+  let h = '<div class="row ' + niv + (cache ? ' cache sup' : '') + '">';
+  h += '<div class="l1"><span class="so">' + esc(x.objet) + '</span>';
+  h += '<span class="sep">·</span><span class="cli">'
+     + esc(pb ? 'pour moi' : am ? 'demandé par ' + nomDe(x.de_qui) : 'demandé à ' + nomDe(x.pour_qui))
+     + '</span>';
+  h += '<span class="badge b-' + niv + '">' + esc(etatDivers(x)) + '</span></div>';
+
+  h += '<div class="l2">';
+  h += '<span class="pastille p-' + niv + '">'
+     + (x.clos ? 'réglé' : pb ? 'pense-bête' : am ? 'on me demande' : 'je demande') + '</span>';
+  h += '<span class="quoi">' + esc(court(x.texte, 110)) + '</span>';
+  h += '<span class="acts">';
+  if (!x.clos && pb) h += '<button class="btn-s" onclick="gesteDivers(' + x.id + ',\'fait\')">C est fait</button>';
+  if (!x.clos && am) h += '<button class="btn-p" onclick="ouvrirLigne(this)">Répondre</button>';
+  if (!x.clos && !pb && !am) h += '<button class="btn-s" onclick="gesteDivers(' + x.id + ',\'relancer\')">Relancer</button>';
+  h += '<button class="btn-s" onclick="plier(this)">Détail</button>';
+  h += '</span></div>';
+
+  h += '<div class="detail">';
+  h += '<div class="fil"><div><span class="qui">' + esc(nomDe(x.de_qui)) + '</span>'
+     + '<span class="quand">' + frDate(x.cree_le) + '</span></div>'
+     + '<div>' + esc(x.texte || '(rien de plus que l objet)') + '</div></div>';
+  if (x.reponse)
+    h += '<div class="fil rep"><div><span class="qui">' + esc(nomDe(x.repondu_par || x.pour_qui)) + '</span>'
+       + '<span class="quand">' + frDate(x.repondu_le) + '</span></div>'
+       + '<div>' + esc(x.reponse) + '</div></div>';
+  if (x.relance_le) h += '<div class="refs">relancé le ' + frDate(x.relance_le) + '</div>';
+
+  if (!x.clos && am) {
+    h += '<div class="geste">Une case cochée ne ferme rien ici : écris ce que tu as décidé, et pourquoi. '
+       + 'C est ce texte qu on relira dans trois semaines.</div>';
+    h += '<textarea id="dv-' + x.id + '" placeholder="Ta réponse…"></textarea>';
+    h += '<div class="acts2">'
+       + '<button class="btn-p" onclick="gesteDivers(' + x.id + ',\'repondre\')">Répondre et clore</button>'
+       + '<button class="btn-s" onclick="gesteDivers(' + x.id + ',\'noter\')">Répondre sans clore</button></div>';
+  }
+  if (!x.clos && !pb && !am) {
+    h += '<div class="acts2">'
+       + '<button class="btn-s" onclick="gesteDivers(' + x.id + ',\'relancer\')">Relancer</button>'
+       + '<button class="btn-s" onclick="decalerDivers(' + x.id + ')">Décaler l échéance</button>'
+       + '<button class="btn-s" onclick="gesteDivers(' + x.id + ',\'annuler\')">Annuler la demande</button></div>';
+  }
+  if (!x.clos && pb) {
+    h += '<div class="acts2">'
+       + '<button class="btn-s" onclick="decalerDivers(' + x.id + ')">Décaler l échéance</button>'
+       + '<button class="btn-s" onclick="gesteDivers(' + x.id + ',\'annuler\')">Retirer</button></div>';
+  }
+  h += '</div></div>';
+  return h;
+}
+
+async function gesteDivers(id, geste) {
+  const z = document.getElementById('dv-' + id);
+  const rep = z ? z.value.trim() : '';
+  if ((geste === 'repondre' || geste === 'noter') && !rep) { toast('Écris ta réponse d abord'); return; }
+  try {
+    const r = await fetch(DV_REPONDRE, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                         body: JSON.stringify({ id: id, geste: geste, reponse: rep, qui: MOI }) });
+    if (!r.ok) throw new Error('réponse ' + r.status);
+    toast(geste === 'relancer' ? 'Relance notée'
+        : geste === 'fait'     ? "C est fait"
+        : geste === 'annuler'  ? 'Retirée'
+        : geste === 'noter'    ? 'Réponse notée, la demande reste ouverte'
+        : 'Réponse enregistrée');
+    chargerDivers();
+  } catch (e) { toast('Pas enregistré : ' + e.message); }
+}
+
+async function decalerDivers(id) {
+  const v = prompt('Nouvelle échéance, au format JJ/MM/AAAA :', '');
+  if (!v) return;
+  const m = String(v).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) { toast('Format attendu : JJ/MM/AAAA'); return; }
+  try {
+    const r = await fetch(DV_REPONDRE, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                         body: JSON.stringify({ id: id, geste: 'decaler',
+                                                                echeance: m[3] + '-' + m[2] + '-' + m[1] }) });
+    if (!r.ok) throw new Error('réponse ' + r.status);
+    toast('Échéance décalée'); chargerDivers();
+  } catch (e) { toast('Pas enregistré : ' + e.message); }
+}
+
+function formDivers() {
+  if (!DV_FORM)
+    return '<button class="plus" onclick="ouvrirFormDivers()">+ Une demande à quelqu un, ou un pense-bête</button>';
+  const gens = (DONNEES || []).filter(g => g.initiales).sort((a, b) => a.nom.localeCompare(b.nom));
+  let h = '<div class="dform"><div class="ligne">';
+  h += '<label>pour</label><select id="dv-pour">';
+  h += '<option value="' + esc(MOI) + '">moi (pense-bête)</option>';
+  for (const g of gens) if (g.initiales !== MOI)
+    h += '<option value="' + esc(g.initiales) + '">' + esc(g.nom) + '</option>';
+  h += '</select>';
+  h += '<label>objet</label><input type="text" id="dv-objet" placeholder="de quoi il s agit">';
+  h += '<label>pour le</label><input type="date" id="dv-ech">';
+  h += '</div>';
+  h += '<textarea id="dv-texte" placeholder="Ce que tu demandes, et pourquoi. Sois précis : '
+     + 'c est ce texte qui sera relu dans trois semaines."></textarea>';
+  h += '<div class="ligne" style="margin:8px 0 0">';
+  h += '<button class="btn-p" onclick="creerDivers()">Envoyer</button>';
+  h += '<button class="btn-s" onclick="fermerFormDivers()">Annuler</button>';
+  h += '<span class="aide">une demande, une personne — une responsabilité partagée n est portée par personne</span>';
+  h += '</div></div>';
+  return h;
+}
+function ouvrirFormDivers() { DV_FORM = true;  chargerDivers(); }
+function fermerFormDivers() { DV_FORM = false; chargerDivers(); }
+
+async function creerDivers() {
+  const val = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  const objet = val('dv-objet').trim();
+  if (!objet) { toast("Il manque l objet"); return; }
+  const pour = val('dv-pour') || MOI;
+  try {
+    const r = await fetch(DV_CREER, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ objet: objet, texte: val('dv-texte'),
+                                                             de_qui: MOI, pour_qui: pour,
+                                                             echeance: val('dv-ech') }) });
+    if (!r.ok) throw new Error('réponse ' + r.status);
+    DV_FORM = false;
+    toast(pour === MOI ? 'Pense-bête noté' : 'Demande envoyée à ' + nomDe(pour));
+    chargerDivers();
+  } catch (e) { toast('Pas enregistré : ' + e.message); }
 }
 
 function chip(cl, n, lib) {
