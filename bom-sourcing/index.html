@@ -460,7 +460,7 @@
 // Convention : X = nouvelle fonctionnalite, Y = correctif / reglage.
 // Un seul endroit a modifier a chaque mise a jour ; se repercute
 // automatiquement dans le titre d'onglet et le badge d'en-tete.
-const APP_VERSION = "15.44"; /* 15.44 (27/10/2026, constat Olivier sur RTSYS SO2610-575, diodes D2-D13) : LE STOCK D UN IPN A PLUSIEURS MPN DISPARAISSAIT. Dans STK PP un meme IPN porte legitimement plusieurs lignes, une par MPN (IPN BAT54S = Nexperia « BAT54S,215 » 1284 pcs + onsemi BAT54SLT1G 0 pc) et parfois une par emplacement. loadStockData ASSIGNAIT au lieu de cumuler : la derniere ligne lue ecrasait les precedentes. Et comme la recherche teste l IPN AVANT le MPN chez un client non MPN strict, stockByMPN["BAT54S,215"] = 1284, pourtant charge, n etait jamais consulte : l appli affichait « 0 ». Le repli flou ne rattrapait rien non plus, il ne se declenche qu en statut « na », pas « zero ». Mesure sur la sheet du 27/10 : 3 662 lignes, 69 IPN en doublon, 59 quantites sous-evaluees, 3 affichees a zero alors qu il y a du stock (BAT54S 1284, C100N-0402-50V-10P-X7R 6218, R12K-0805 500), 91 073 pieces invisibles. Correctif : stockByIPN et stockByMPN CUMULENT ; stockMpnByIPN retient le MPN qui PORTE LE PLUS DE STOCK et non le dernier lu, sinon on enverrait l acheteur sur la reference a zero. Un seul MPN en doublon dans la sheet (SS34, 125 + 100 au meme emplacement), le cumul par MPN est donc sans risque. Rien de change dans STK PP (decision Olivier : deux lignes, une par MPN, c est normal). */ /* 15.43 (23/10/2026, constat Olivier sur HORIBA SO2610-544 DARWIN TRIGGER) : ON NE PROPOSE PLUS UN EQUIVALENT QUI NE TIENT PAS. La regle partagee shared/equivalence.js passe en v1.2. Depuis la v1.1 (18/10), un champ que le client n avait pas ecrit dans sa remarque n etait plus contraint du tout : le motif valait pour les defauts PP (50V, X7R, 10 %) mais il a ete applique a TOUS les champs. On pouvait donc proposer une resistance 0,1 W a la place d une 1 W, ou un Y5V a la place d un X7R. La tension avait recu un plancher ce jour-la, la puissance et le dielectrique non. v1.2 distingue PRECISION (ppm, tolerance : non demande = on peut descendre, decision du 18/10 inchangee) et TENUE (puissance toujours contrainte car elle n est jamais un defaut PP ; tension plancher 16 V ; dielectrique plancher X5R, Y5V / Z5U / X7U refuses). 14 cas verifies avant publication. */  /* 15.42 (23/10/2026, demande Olivier) : LES TROIS GESTES IPN EN SEQUENCE, ET LE BOUTON POSE ENFIN SUR LA BOM. Les trois boutons du bloc IPN etaient cote a cote sans lien, et l ordre ne se devinait pas : il faut CREER l IPN dans l IPN manager avant de pouvoir la rattacher. Ils sont desormais numerotes et relies par des fleches (1 Copier -> 2 Ouvrir l IPN manager -> 3 Rattacher et poser), et chacun passe au vert quand il est fait (etat garde avec la sauvegarde de reprise, donc il survit a un F5, et remis a zero a chaque nouvelle analyse). Surtout : « Rattacher maintenant » n appelait que rattacher-ipn, donc la BIBLIOTHEQUE Luminovo ; une IPN creee dans l IPN manager APRES l analyse n arrivait jamais sur les LIGNES de la BOM et il fallait relancer une analyse entiere (constate par Olivier le 23/10 sur SO2609-516 et SO2610-565). Le bouton appelle maintenant rattacher-ipn PUIS poser-ipn-bom, meme quand il n y a plus rien a rattacher — c est le cas normal au retour de l IPN manager, qui cree l IPN et lie le MPN dans le meme geste. Le compte rendu dit les deux ecritures separement. */  /* 15.41 (22/10/2026, demande Olivier) : L IPN TAPEE A LA MAIN SE VOIT, ET NE PART PLUS DANS LUMINOVO. L ecran affichait l IPN courante sans jamais dire d ou elle venait : machine ou frappe humaine, meme colonne, meme bloc d aide. Le 22/10 sur SO2609-521 (QUOBLY), trois IPN saisies a la main ont ete prises pour des propositions du service, et on a cherche un bug la ou il n y en avait pas. Desormais : pastille "saisie" dans la colonne IPN et dans le bloc IPN - Luminovo, mention "SAISIE A LA MAIN" dans le bloc d aide Claude avec ce que le service avait propose (conserve a la premiere saisie), et surtout le bouton de rattachement ECARTE ces lignes. C etait le seul chemin par lequel une frappe pouvait ecrire dans la bibliotheque Luminovo sans relecture : la brique refuse une IPN inexistante, mais une faute de frappe tombant sur une IPN EXISTANTE passait (cf. le condensateur CL10C331JB8NNNC rattache sous l IPN de resistance R20K5-0603 le 22/10). */ /* 15.40 (22/10/2026, constate par Olivier sur SO2609-521) : LE TIRET « — » ETAIT PRIS POUR UNE IPN. Quand le service ne rend pas d'IPN, la case de l'onglet Analyse BOM affiche « — » : un symbole d'affichage, pas une donnee. Mais au moment d'ecrire la feuille achat, « Sync edited IPNs » recopiait la case telle quelle : le « — » devenait une vraie valeur en colonne C, puis partait dans les Paniers en attente via le bouton « Non dispo ». L'onglet Achats rapproche feuille et panier par MPN OU IPN : « — » == « — », donc les 2 vraies questions client posees le 22/10 (AHM250PS24, Si1012CR-T1-GE3) badgeaient TOUTES les lignes sans IPN du SO — grisees, bouton « question posee » a la place du vrai bouton, et surtout EXCLUES du panier a commander. Corrige aux deux bouts : (1) la fuite — une case qui vaut un tiret est ecrite vide ; (2) le blindage — un seul helper refIndexable() decide ce qui fait cle, et les 6 fonctions de rapprochement l'utilisent, ce qui protege aussi toutes les feuilles DEJA ecrites avec des « — ». Le tiret reste affiche a l'ecran (decision Olivier). */ /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
+const APP_VERSION = "15.45"; /* 15.45 (30/10/2026, constat Olivier sur IP2I SO2609-516) : LE CYCLE DE VIE DU COMPOSANT S AFFICHE, ET ON NE POSE PLUS D ALERTE SUR UNE PIECE MORTE. Trois des six lignes a traiter de cette affaire n etaient pas en rupture mais en FIN DE VIE : CMDSH-3 TR PBFREE obsolete (production arretee par Central Semiconductor), LS Q976-NR-1 declaree EndOfLife par ams-OSRAM avec un dernier achat possible au 02/07/2026, deja depasse. L ecran ne montrait que « pas de stock » : les trois ont ete traitees comme des ruptures, avec une question client sans la moindre proposition et une alerte de retour en stock posee sur une piece qui ne reviendra jamais. L information existait pourtant dans Luminovo (lifecycle_status, lifecycle_yteol, last_buy_date), l appli ne la lisait pas. Au chargement d une feuille, les MPN affiches partent en une fois dans la brique n8n « PP - Statut composant » (lecture seule) et la ligne porte une pastille : OBSOLETE (rouge, plus rien a acheter) ou FIN DE VIE (ambre, achat encore possible jusqu a la date indiquee -- et si elle est passee, c est dit). Le bouton « Alerte Luminovo » refuse ces lignes avec son motif. PIEGE DE LA GRAPHIE neutralise : Luminovo rend EndOfLife pour « LSQ976-NR-1 » et Unknown pour « LS Q976-NR-1 », la graphie du client -- la recherche et le cache travaillent donc en MPN normalise. PRUDENCE : si une seule fiche au MPN exact est encore active, aucune pastille (la piece reste achetable chez un autre fabricant) ; et un tiers des references sont inconnues de Luminovo, donc l absence de pastille ne veut PAS dire que la piece est saine -- l encart le rappelle. Appel en tache de fond : la feuille s affiche sans attendre, une panne Luminovo ne bloque rien. */ /* 15.45 (30/10/2026) : ENCART DES REGLES dans l onglet Achats -- les quatre reflexes avant de poser une question client, toujours visibles a droite du tableau. */ /* 15.44 (27/10/2026, constat Olivier sur RTSYS SO2610-575, diodes D2-D13) : LE STOCK D UN IPN A PLUSIEURS MPN DISPARAISSAIT. Dans STK PP un meme IPN porte legitimement plusieurs lignes, une par MPN (IPN BAT54S = Nexperia « BAT54S,215 » 1284 pcs + onsemi BAT54SLT1G 0 pc) et parfois une par emplacement. loadStockData ASSIGNAIT au lieu de cumuler : la derniere ligne lue ecrasait les precedentes. Et comme la recherche teste l IPN AVANT le MPN chez un client non MPN strict, stockByMPN["BAT54S,215"] = 1284, pourtant charge, n etait jamais consulte : l appli affichait « 0 ». Le repli flou ne rattrapait rien non plus, il ne se declenche qu en statut « na », pas « zero ». Mesure sur la sheet du 27/10 : 3 662 lignes, 69 IPN en doublon, 59 quantites sous-evaluees, 3 affichees a zero alors qu il y a du stock (BAT54S 1284, C100N-0402-50V-10P-X7R 6218, R12K-0805 500), 91 073 pieces invisibles. Correctif : stockByIPN et stockByMPN CUMULENT ; stockMpnByIPN retient le MPN qui PORTE LE PLUS DE STOCK et non le dernier lu, sinon on enverrait l acheteur sur la reference a zero. Un seul MPN en doublon dans la sheet (SS34, 125 + 100 au meme emplacement), le cumul par MPN est donc sans risque. Rien de change dans STK PP (decision Olivier : deux lignes, une par MPN, c est normal). */ /* 15.43 (23/10/2026, constat Olivier sur HORIBA SO2610-544 DARWIN TRIGGER) : ON NE PROPOSE PLUS UN EQUIVALENT QUI NE TIENT PAS. La regle partagee shared/equivalence.js passe en v1.2. Depuis la v1.1 (18/10), un champ que le client n avait pas ecrit dans sa remarque n etait plus contraint du tout : le motif valait pour les defauts PP (50V, X7R, 10 %) mais il a ete applique a TOUS les champs. On pouvait donc proposer une resistance 0,1 W a la place d une 1 W, ou un Y5V a la place d un X7R. La tension avait recu un plancher ce jour-la, la puissance et le dielectrique non. v1.2 distingue PRECISION (ppm, tolerance : non demande = on peut descendre, decision du 18/10 inchangee) et TENUE (puissance toujours contrainte car elle n est jamais un defaut PP ; tension plancher 16 V ; dielectrique plancher X5R, Y5V / Z5U / X7U refuses). 14 cas verifies avant publication. */  /* 15.42 (23/10/2026, demande Olivier) : LES TROIS GESTES IPN EN SEQUENCE, ET LE BOUTON POSE ENFIN SUR LA BOM. Les trois boutons du bloc IPN etaient cote a cote sans lien, et l ordre ne se devinait pas : il faut CREER l IPN dans l IPN manager avant de pouvoir la rattacher. Ils sont desormais numerotes et relies par des fleches (1 Copier -> 2 Ouvrir l IPN manager -> 3 Rattacher et poser), et chacun passe au vert quand il est fait (etat garde avec la sauvegarde de reprise, donc il survit a un F5, et remis a zero a chaque nouvelle analyse). Surtout : « Rattacher maintenant » n appelait que rattacher-ipn, donc la BIBLIOTHEQUE Luminovo ; une IPN creee dans l IPN manager APRES l analyse n arrivait jamais sur les LIGNES de la BOM et il fallait relancer une analyse entiere (constate par Olivier le 23/10 sur SO2609-516 et SO2610-565). Le bouton appelle maintenant rattacher-ipn PUIS poser-ipn-bom, meme quand il n y a plus rien a rattacher — c est le cas normal au retour de l IPN manager, qui cree l IPN et lie le MPN dans le meme geste. Le compte rendu dit les deux ecritures separement. */  /* 15.41 (22/10/2026, demande Olivier) : L IPN TAPEE A LA MAIN SE VOIT, ET NE PART PLUS DANS LUMINOVO. L ecran affichait l IPN courante sans jamais dire d ou elle venait : machine ou frappe humaine, meme colonne, meme bloc d aide. Le 22/10 sur SO2609-521 (QUOBLY), trois IPN saisies a la main ont ete prises pour des propositions du service, et on a cherche un bug la ou il n y en avait pas. Desormais : pastille "saisie" dans la colonne IPN et dans le bloc IPN - Luminovo, mention "SAISIE A LA MAIN" dans le bloc d aide Claude avec ce que le service avait propose (conserve a la premiere saisie), et surtout le bouton de rattachement ECARTE ces lignes. C etait le seul chemin par lequel une frappe pouvait ecrire dans la bibliotheque Luminovo sans relecture : la brique refuse une IPN inexistante, mais une faute de frappe tombant sur une IPN EXISTANTE passait (cf. le condensateur CL10C331JB8NNNC rattache sous l IPN de resistance R20K5-0603 le 22/10). */ /* 15.40 (22/10/2026, constate par Olivier sur SO2609-521) : LE TIRET « — » ETAIT PRIS POUR UNE IPN. Quand le service ne rend pas d'IPN, la case de l'onglet Analyse BOM affiche « — » : un symbole d'affichage, pas une donnee. Mais au moment d'ecrire la feuille achat, « Sync edited IPNs » recopiait la case telle quelle : le « — » devenait une vraie valeur en colonne C, puis partait dans les Paniers en attente via le bouton « Non dispo ». L'onglet Achats rapproche feuille et panier par MPN OU IPN : « — » == « — », donc les 2 vraies questions client posees le 22/10 (AHM250PS24, Si1012CR-T1-GE3) badgeaient TOUTES les lignes sans IPN du SO — grisees, bouton « question posee » a la place du vrai bouton, et surtout EXCLUES du panier a commander. Corrige aux deux bouts : (1) la fuite — une case qui vaut un tiret est ecrite vide ; (2) le blindage — un seul helper refIndexable() decide ce qui fait cle, et les 6 fonctions de rapprochement l'utilisent, ce qui protege aussi toutes les feuilles DEJA ecrites avec des « — ». Le tiret reste affiche a l'ecran (decision Olivier). */ /* 15.39 (22/10/2026, demande Olivier) : RATTRAPAGE DES IPN SUR LES LIGNES DE LA BOM LUMINOVO. Achats PP rattachait les MPN a leur IPN dans la bibliotheque Luminovo, mais rien ne redescendait sur les LIGNES de la BOM : la refab suivante repartait du MPN et recodifiait tout. A la fin de chaque analyse, l appli appelle desormais la brique n8n "PP - Poser les IPN sur la BOM" v1.1, qui retrouve le RfQ par le numero de commande (ems_internal_number, chiffres compares) puis par le nom de carte lu dans le nom du fichier d export ; ambigu ou introuvable, elle ne pose RIEN. Appel en tache de fond : l analyse est deja affichee, rien n attend ce retour, une panne Luminovo ne se voit pas a l ecran (trace en console). Jamais chez un client MPN strict, jamais une IPN identique au MPN. Teste le 22/10 sur les 1228 RfQ reels (R1 et R2 d une meme carte bien distingues). */ /* 15.38";
 /* 15.38 (21/10/2026, repéré par Olivier sur sa capture) : LA PASTILLE DE CONFIANCE DISAIT L'INVERSE DE LA VÉRITÉ.
    La voie codification envoyait la confiance en nombre (1 / 0.7 / 0.5 / 0), l'autre voie en chaîne, et l'écran
    n'acceptait que 'high' / 'medium' / 'low'. Rien ne correspondait : une ligne à la confiance MAXIMALE tombait
@@ -4685,6 +4685,85 @@ function aideClaude(mode) {
      repasse En attente, n ecrit jamais Commande. */
   /* attMenuACommander (« À commander chez… ») retirée en v14.1 : le changement de fournisseur passe par le pop-up. */
 
+  /* ---------- 15.45 : cycle de vie des composants ----------
+     La brique n8n « PP — Statut composant » (lecture seule) rend, pour un lot de MPN, le statut
+     Luminovo de chacun. On ne garde en memoire que la feuille en cours : l appli ne stocke rien,
+     le statut lu est donc toujours celui du jour.
+     Clé = MPN NORMALISE (majuscules, alphanumerique seul). C est indispensable : Luminovo rend
+     EndOfLife pour « LSQ976-NR-1 » et Unknown pour « LS Q976-NR-1 », qui est la graphie de la
+     BOM client. Sans normalisation, une ligne sur deux passerait au travers. */
+  const ATT_STATUT_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-statut-composant';
+  let attStatutsCycle = {};     /* MPN normalise -> { statut, statut_pp, yteol, last_buy_date, fabricant } */
+  let attStatutsSo = '';        /* la feuille a laquelle ce cache appartient */
+
+  function attNormMpn(s){ return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+  function attStatutDe(l){
+    const k = attNormMpn(l && l['MPN']);
+    return k ? (attStatutsCycle[k] || null) : null;
+  }
+
+  /* Date de dernier achat deja passee : la piece est aussi morte qu une obsolete, il n y a plus
+     rien a aller chercher. C est ce qui s est produit sur la LED d IP2I — dernier achat au
+     02/07/2026, personne ne l a vu passer. */
+  function attStatutDepasse(st){
+    if (!st || !st.last_buy_date) return false;
+    const d = Date.parse(st.last_buy_date);
+    return !!d && d < Date.now();
+  }
+
+  /* Vrai quand la ligne ne doit plus recevoir d alerte de retour en stock. */
+  function attStatutMort(l){
+    const st = attStatutDe(l);
+    if (!st || !st.statut_pp) return false;
+    return st.statut_pp === 'OBSOLETE' || attStatutDepasse(st);
+  }
+
+  function attStatutBadge(l){
+    const st = attStatutDe(l);
+    if (!st || !st.statut_pp) return '';
+    const obs = st.statut_pp === 'OBSOLETE';
+    const depasse = attStatutDepasse(st);
+    const jj = st.last_buy_date ? st.last_buy_date.split('-').reverse().join('/') : '';
+    const txt = obs ? 'Obsolète' : 'Fin de vie';
+    const aide = obs
+      ? 'Production arrêtée par ' + (st.fabricant || 'le fabricant') + ' : plus rien à acheter, il faut un équivalent. Inutile de poser une alerte de retour en stock.'
+      : (depasse
+          ? 'Fin de vie annoncée par ' + (st.fabricant || 'le fabricant') + ' — dernier achat possible le ' + jj + ', déjà dépassé. Il faut un équivalent.'
+          : 'Fin de vie annoncée par ' + (st.fabricant || 'le fabricant') + (jj ? ' — dernier achat possible le ' + jj + ' : c\'est le moment de couvrir les séries à venir.' : '.'));
+    const coul = (obs || depasse)
+      ? 'background:var(--red-bg); color:var(--red-badge);'
+      : 'background:var(--amber-bg); color:var(--amber-badge);';
+    const suffixe = (!obs && jj) ? ' <span style="opacity:.8">' + (depasse ? 'dernier achat ' + jj + ' — dépassé' : 'jusqu\'au ' + jj) + '</span>' : '';
+    return '<div style="margin-top:3px;"><span style="' + coul + ' font-size:10.5px; padding:2px 7px; border-radius:20px; white-space:nowrap;" title="' + attEsc(aide) + '"><i class="ti ti-' + (obs ? 'ban' : 'hourglass-low') + '" aria-hidden="true"></i> ' + txt + '</span>' + suffixe + '</div>';
+  }
+
+  /* Appel en tache de fond : la feuille est deja a l ecran quand on part chercher les statuts.
+     Une panne Luminovo ou n8n ne doit rien bloquer ici — au pire, pas de pastille. */
+  async function attChargerStatuts(so, lignes){
+    const vus = {};
+    const mpns = [];
+    (lignes || []).forEach(function(l){
+      const m = String(l['MPN'] || '').trim();
+      const k = attNormMpn(m);
+      if (!m || !k || vus[k]) return;
+      vus[k] = 1; mpns.push(m);
+    });
+    if (!mpns.length) return;
+    try {
+      const r = await fetch(ATT_STATUT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mpns: mpns.slice(0, 80) }) });
+      const d = await r.json();
+      if (!d || !d.ok || !d.statuts) return;
+      /* La feuille a pu changer pendant l appel : on n applique qu au bon SO. */
+      if (!attSheetData || attSheetData.so !== so) return;
+      attStatutsCycle = d.statuts;
+      attStatutsSo = so;
+      attSheetRender();
+    } catch (e) {
+      /* silence volontaire : l absence de pastille n est pas une panne visible pour l acheteur */
+    }
+  }
+
   /* 15.3 (06/10/2026) : alertes de stock Luminovo via n8n « Achats — alerte Luminovo » v1.0 */
   const ATT_ALERTE_URL = 'https://protoprocess.app.n8n.cloud/webhook/achats-alerte-luminovo';
   async function attAlerteAppel(ligne){
@@ -4724,8 +4803,25 @@ function aideClaude(mode) {
     const d = attSheetData;
     if (!d) return;
     const idx = Array.from(document.querySelectorAll('.att-dp-check:checked')).map(cb => parseInt(cb.dataset.i, 10)).filter(i => attSheetActives[i]);
-    const lignes = idx.map(i => attSheetActives[i]).filter(l => (l['MPN'] || '').trim());
-    if (!lignes.length) { alert('Aucune ligne cochée avec un MPN.'); return; }
+    const toutes = idx.map(i => attSheetActives[i]).filter(l => (l['MPN'] || '').trim());
+    if (!toutes.length) { alert('Aucune ligne cochée avec un MPN.'); return; }
+    /* 15.45 : une alerte de retour en stock sur une piece morte n arrivera jamais. On ecarte ces
+       lignes AVANT de poser quoi que ce soit, en disant pourquoi — c est exactement ce qui s est
+       passe le 30/10 sur la LED d IP2I (EndOfLife, dernier achat au 02/07/2026). */
+    const mortes = toutes.filter(attStatutMort);
+    const lignes = toutes.filter(l => !attStatutMort(l));
+    if (mortes.length) {
+      const detail = mortes.map(function(l){
+        const st = attStatutDe(l) || {};
+        const jj = st.last_buy_date ? st.last_buy_date.split('-').reverse().join('/') : '';
+        return '• ' + (l['MPN'] || '').trim() + ' — ' + (st.statut_pp === 'OBSOLETE' ? 'obsolète' : 'fin de vie, dernier achat ' + jj + ' dépassé');
+      }).join('\n');
+      if (!lignes.length) {
+        alert('Aucune alerte posée.\n\n' + mortes.length + ' pièce' + (mortes.length > 1 ? 's' : '') + ' en fin de vie : l\'alerte ne se déclenchera jamais, il faut un équivalent.\n\n' + detail);
+        return;
+      }
+      if (!confirm(mortes.length + ' ligne' + (mortes.length > 1 ? 's' : '') + ' écartée' + (mortes.length > 1 ? 's' : '') + ' — pièce en fin de vie, l\'alerte ne se déclenchera jamais :\n\n' + detail + '\n\nContinuer avec les ' + lignes.length + ' autre' + (lignes.length > 1 ? 's' : '') + ' ?')) return;
+    }
     if (!confirm('Créer ' + lignes.length + ' alerte' + (lignes.length > 1 ? 's' : '') + ' Luminovo (dès 1 pièce en stock) ?\n\n' + lignes.map(l => '• ' + l['MPN'].trim()).join('\n') + '\n\nNote : ' + d.so + ' · ' + d.fileName + ' · besoin\n\nChaque ligne passe aussi en attente, avec « ? » devant le fournisseur.')) return;
     const btn = document.getElementById('att-al-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Alertes en cours…'; }
@@ -4860,9 +4956,14 @@ function aideClaude(mode) {
         return;
       }
       attSheetData = d;
+      /* 15.45 : le cache de statuts appartient a UNE feuille. On le vide ici, sinon les pastilles
+         de l affaire precedente resteraient collees aux MPN communs de la suivante. */
+      if (attStatutsSo !== d.so) { attStatutsCycle = {}; attStatutsSo = ''; }
       const lien = document.getElementById('att-sheet-lien');
       lien.href = d.fileUrl; lien.style.display = 'inline';
       attSheetRender();
+      /* 15.45 : statuts de cycle de vie en tache de fond — la feuille est deja affichee */
+      attChargerStatuts(d.so, d.lignes);
       /* v10.2 : fiche FabStory de la carte, si le SO est rattache (commandes_so) */
       await attSoProduitsCharger();
       const pid = attProduitId(d.so);
@@ -5012,7 +5113,7 @@ function aideClaude(mode) {
         + '<td style="padding:5px 2px 5px 0;"><button class="btn" style="padding:2px 7px; font-size:12px; color:#7FDDF0; background:rgba(91,196,216,0.16); border-color:var(--pp-blue); font-weight:600;" onclick="attBasculer(' + i + ')" title="Changer fournisseur / réf pour cette ligne"><i class="ti ti-arrows-left-right" aria-hidden="true"></i></button></td>'
         + '<td style="padding:5px 8px; ' + (inv ? 'color:var(--amber);' : (sansSol ? 'color:var(--pink); font-weight:500;' : (consult ? 'color:var(--blue); font-weight:500;' : ''))) + '">' + fournHtml(fourn, (l['Supplier part number']||'').trim()) + (enAttente ? attBadgeAttente(pAtt) : '') + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Supplier part number']||'') + '</td>'
-        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['MPN']||'') + sigBadge + '</td>'
+        + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['MPN']||'') + sigBadge + attStatutBadge(l) + '</td>'
         + '<td style="padding:5px 8px; font-family:var(--mono); font-size:11px;">' + attEsc(l['Approved internal part number']||'') + attStockPermanentHtml(l, i) + '</td>'
         /* 15.11 (07/10/2026, demande Olivier) : colonne Scrap (lecture seule — se règle dans Analyse BOM) avant QTE Totale (bleu PP) */
         + '<td style="padding:5px 8px; color:var(--text3);" title="Scrap Luminovo inclus dans la quantité totale — modifiable dans l\'onglet Analyse BOM, avant d\'écrire la feuille">' + attEsc(String(l['Scrap qty'] == null ? '' : l['Scrap qty']).trim()) + '</td>'
@@ -5080,12 +5181,36 @@ function aideClaude(mode) {
       + '<span style="font-size:11px; color:var(--text3); align-self:center; margin-left:auto;">Coche une ou plusieurs lignes, puis choisis l\'action. Fournisseur déjà bon ? « J\'ai commandé » sur son panier suffit.</span>'
       + '</div>'
       + attFiltreHtml()
+      /* 15.45 : tableau a gauche, encart des regles a droite. L encart reste visible en
+         permanence (choix Olivier) : les reflexes ne s installent pas dans un volet replie. */
+      + '<div style="display:flex; gap:10px; align-items:flex-start;"><div style="flex:1; min-width:0;">'
       /* 13.1 : le tableau defile seul (la page ne bouge pas), en-tete fixe */
       + '<div style="overflow:auto; max-height:calc(100vh - 260px); min-height:200px; border:1px solid var(--border); border-radius:var(--radius);"><table style="width:100%; border-collapse:collapse; font-size:12px;">'
       + '<thead style="position:sticky; top:0; z-index:1; background:var(--surface2);"><tr style="color:var(--text3); text-align:left;">'
       + ['', '', 'Fournisseur', 'Réf. fourn.', 'MPN', 'IPN', 'Scrap', 'QTE Totale', 'Prix', 'Repères', ''].map(h => '<th style="padding:6px 8px; background:var(--surface2);' + (h === 'QTE Totale' ? ' color:var(--pp-blue);' : '') + '"' + (h === 'QTE Totale' ? ' title="Quantité à acheter = besoin + scrap (MOQ compris)"' : '') + '>' + h + '</th>').join('')
       + '</tr></thead>'
-      + '<tbody>' + rows + '</tbody></table></div>';
+      + '<tbody>' + rows + '</tbody></table></div>'
+      + '</div>' + attEncartRegles() + '</div>';
+  }
+
+  /* 15.45 : les quatre reflexes avant de poser une question client. Ils viennent des trois
+     questions posees le 30/10 sur IP2I SO2609-516 : aucune ne proposait d equivalent, deux
+     portaient sur des pieces mortes, et elles sont parties separement au meme client. */
+  function attEncartRegles(){
+    const r = [
+      'Regarder le statut : obsolète ou en rupture ?',
+      'Passif, LED, diode : chercher un équivalent avant de demander.',
+      'Pas d\'alerte sur une pièce obsolète : elle ne reviendra pas.',
+      'Plusieurs lignes, une même affaire : un seul envoi.'
+    ];
+    return '<aside style="width:230px; flex:none; border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; background:var(--surface2);">'
+      + '<div style="font-size:12px; font-weight:500; margin-bottom:8px;"><i class="ti ti-list-check" aria-hidden="true"></i> Avant de poser une question client</div>'
+      + '<ol style="margin:0; padding-left:16px; font-size:11px; color:var(--text2); line-height:1.65;">'
+      + r.map(function(x){ return '<li style="margin-bottom:4px;">' + x + '</li>'; }).join('')
+      + '</ol>'
+      + '<div style="margin-top:9px; padding-top:7px; border-top:1px solid var(--border); font-size:10px; color:var(--text3); line-height:1.5;">'
+      + 'Pas de pastille ne veut pas dire pièce saine : une référence sur trois est inconnue de Luminovo.'
+      + '</div></aside>';
   }
 
   window.attDpMaj = function(){
