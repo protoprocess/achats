@@ -146,6 +146,11 @@ section.replie .row,section.replie .vide,section.replie .plus{display:none}
 .plus:hover{color:var(--orange)}
 .cache{display:none}
 
+/* de quand datent les données d'un bloc, quand ce n'est pas d'aujourd'hui */
+.dater{padding:7px 14px;background:var(--ambre-bg);color:var(--ambre);font-size:11.5px;
+  line-height:1.5;border-bottom:1px solid var(--border)}
+section.replie .dater{display:none}
+
 /* bloc Divers : le fil de la demande, la réponse écrite, le formulaire */
 .chip.d b{color:var(--ppblue)}
 .row.vert::before{background:#7aa84f} .row.vert{background:#fcfdfa}
@@ -226,8 +231,8 @@ section.replie .row,section.replie .vide,section.replie .plus{display:none}
  *   - le code d'accès PP est exigé dans les deux cas : c'est lui qui protège
  *     les données client (NDA). Le jeton seul n'ouvre rien.
  * ------------------------------------------------------------------ */
-const APP_VERSION = "1.9";
-const APP_DATE    = "30/10/2026";
+const APP_VERSION = "1.10";
+const APP_DATE    = "01/11/2026";
 document.getElementById('vbadge').textContent = "v" + APP_VERSION + " — " + APP_DATE;
 document.title = "Ma gestion de projets v" + APP_VERSION;
 
@@ -266,6 +271,15 @@ let traites = 0;
 const esc = s => String(s == null ? '' : s)
   .replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' })[c]);
 const frDate = iso => { const s = String(iso || ''); return s.length >= 10 ? s.slice(8,10) + '/' + s.slice(5,7) : ''; };
+
+// « vendredi 30/10 » : le jour de la semaine fait plus pour situer une donnée qu'une date seule.
+const JOURS = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+function jourEtDate(iso) {
+  const s = String(iso || '');
+  if (s.length < 10) return '';
+  const d = new Date(s.slice(0, 10) + 'T00:00:00');
+  return (isNaN(d) ? '' : JOURS[d.getDay()] + ' ') + s.slice(8, 10) + '/' + s.slice(5, 7);
+}
 
 /* ---------- appel du service ---------- */
 async function charger() {
@@ -764,8 +778,17 @@ function blocAffaires(d) {
              : aff.length ? 't-crit' : 't-ok';
   let h = '<section id="bloc-appro">';
   h += entete(pire, 'ti-alert-triangle', 'CE QUI ATTEND UN GESTE', aff.length, repartition(aff));
+  // Ce bloc vient du balayage de 5h50, qui ne tourne que les jours ouvrables. Week-end, férié,
+  // lundi avant 5h50, ou matin où le balayage casse : on montre le dernier état connu, et on dit
+  // de quand il date. Un zéro qu'on ne distingue pas d'une bonne nouvelle est pire que rien.
+  const vieux = d && d.balayage_a_jour === false && d.balaye_le;
+  if (vieux)
+    h += '<div class="dater">État du <strong>' + esc(jourEtDate(d.balaye_le))
+       + '</strong> — le balayage tourne à 5h50 les jours ouvrables. Rien n\'a été relevé depuis.</div>';
   if (!aff.length) {
-    h += '<div class="vide"><i class="ti ti-circle-check"></i> Rien à faire ici. Tout est à jour.</div>';
+    h += '<div class="vide"><i class="ti ti-circle-check"></i> '
+       + (vieux ? 'Rien à faire ici au dernier balayage.' : 'Rien à faire ici. Tout est à jour.')
+       + '</div>';
   } else {
     h += aff.map(a => ligneAffaire(a, false)).join('');
   }
