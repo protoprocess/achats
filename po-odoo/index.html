@@ -191,12 +191,7 @@ td.num input{text-align:right}
       <div class="grid">
         <div class="field">
           <label for="fFamille">Qu'est-ce qu'on achète ?</label>
-          <select id="fFamille" style="width:100%">
-            <option value="composants">Des composants</option>
-            <option value="pcb">Des PCB</option>
-            <option value="mecanique">De la mécanique</option>
-            <option value="consommable">Du consommable ou du petit outillage</option>
-          </select>
+          <select id="fFamille" style="width:100%"></select>
           <div class="hint" id="hFamille">Décide l'article porté par les lignes dans Odoo, et donc la lecture des dépenses par nature. Un devis = une famille.</div>
         </div>
         <div class="field">
@@ -237,7 +232,7 @@ td.num input{text-align:right}
 
 <script>
 "use strict";
-const APP_VERSION = "1.5", APP_DATE = "02/11/2026";
+const APP_VERSION = "1.6", APP_DATE = "02/11/2026";
 const BASE = "https://protoprocess.app.n8n.cloud";
 const MODE_TEST = new URLSearchParams(location.search).get("test") === "1";
 const PREFIX = MODE_TEST ? "/webhook-test/" : "/webhook/";
@@ -303,8 +298,85 @@ const PERSONNES = {
   OC: "Olivier", MM: "Maura", DG: "Dorian", AC: "Ariel",
   FR: "Fred", SG: "Stéphane", JM: "Jérôme", VF: "Valérie"
 };
-const CLE_QUI = "pp_ma_gestion_qui";
+
+/* v1.6 : le tableau de bord ecrit les initiales, le hub ecrit le prenom. On lit les deux,
+   sinon l emetteur arrive vide quand la personne n est pas passee par son tableau de bord. */
+const CLE_QUI = "pp_ma_gestion_qui";     // initiales, ecrites par le tableau de bord
+const CLE_PERSONNE = "pp_personne";      // prenom, ecrit par l accueil
 const GRIS = "color:var(--text2,#94a3b8)";
+
+/* Les cinq familles d achat. L ordre est celui de la liste deroulante.
+   affaire: true  -> l affaire est exigee (c est elle qui rattache le P.O.)
+   affaire: false -> achat general, sans affaire (le consommable d atelier) */
+const FAMILLES = [
+  { cle: "composants",    libelle: "Des composants",                        affaire: true  },
+  { cle: "pcb",           libelle: "Des PCB",                               affaire: true  },
+  { cle: "mecanique",     libelle: "De la mécanique",                       affaire: true  },
+  { cle: "consommable",   libelle: "Du consommable ou du petit outillage",  affaire: false },
+  { cle: "soustraitance", libelle: "De la sous-traitance ou une prestation", affaire: true }
+];
+
+/* Ce que chacun a le droit de commander. Decision Olivier du 02/11/2026 : la production et
+   les methodes achetent leur consommable et leur sous-traitance, pas les composants ni les
+   PCB d une affaire — ca reste au commercial, qui tient les BOM.
+   Une personne absente d ici garde les cinq familles : on n invente pas une restriction. */
+const FAMILLES_DE = {
+  SG: ["consommable", "soustraitance"],
+  FR: ["consommable", "soustraitance"]
+};
+
+/* Les initiales de celui qui commande, lues sur les deux cles de l accueil. */
+function quiSuisJe() {
+  try {
+    const i = (localStorage.getItem(CLE_QUI) || "").trim().toUpperCase();
+    if (PERSONNES[i]) return i;
+  } catch (e) {}
+  try {
+    const p = (localStorage.getItem(CLE_PERSONNE) || "").trim().toLowerCase();
+    if (p) {
+      // « Stéphane » -> SG. On compare sans accents : le hub ecrit le prenom accentue.
+      const sansAccent = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+      const cible = sansAccent(p);
+      for (const k of Object.keys(PERSONNES)) {
+        if (sansAccent(PERSONNES[k].toLowerCase()) === cible) return k;
+      }
+    }
+  } catch (e) {}
+  return "";
+}
+
+/* La liste de familles ouverte a cette personne, dans l ordre de FAMILLES. */
+function famillesDe(qui) {
+  const permis = FAMILLES_DE[qui];
+  if (!permis) return FAMILLES.slice();
+  return FAMILLES.filter(f => permis.indexOf(f.cle) >= 0);
+}
+
+function familleCourante() {
+  return FAMILLES.find(f => f.cle === $("fFamille").value) || FAMILLES[0];
+}
+
+/* Remplit la liste des familles selon qui commande, en gardant le choix deja fait s il
+   reste permis. Le premier de la liste est pre-selectionne et grise. */
+function remplirFamilles() {
+  const sel = $("fFamille");
+  const avant = sel.value;
+  const liste = famillesDe($("fQui").value);
+  vide(sel);
+  liste.forEach(f => {
+    const o = document.createElement("option");
+    o.value = f.cle; o.textContent = f.libelle;
+    sel.appendChild(o);
+  });
+  const garde = liste.some(f => f.cle === avant);
+  sel.value = garde ? avant : liste[0].cle;
+  // Gris = « rempli tout seul ». Si on garde le choix humain, il reste en clair.
+  sel.setAttribute("style", "width:100%" + (garde ? "" : ";" + GRIS));
+  $("hFamille").textContent = liste.length < FAMILLES.length
+    ? "Les familles ouvertes à " + (PERSONNES[$("fQui").value] || "vous") + ". Les composants et les PCB d'une affaire restent au commercial."
+    : "Décide l'article porté par les lignes dans Odoo, et donc la lecture des dépenses par nature. Un devis = une famille.";
+  majAffaire();
+}
 
 (function initQui() {
   const sel = $("fQui");
@@ -317,12 +389,11 @@ const GRIS = "color:var(--text2,#94a3b8)";
     sel.appendChild(o);
   });
 
-  let qui = "";
-  try { qui = (localStorage.getItem(CLE_QUI) || "").toUpperCase(); } catch (e) { qui = ""; }
-  if (PERSONNES[qui]) {
+  const qui = quiSuisJe();
+  if (qui) {
     sel.value = qui;
     sel.setAttribute("style", "width:100%;" + GRIS);
-    $("hQui").textContent = "Repris de votre tableau de bord. Changez-le si vous commandez pour quelqu'un d'autre.";
+    $("hQui").textContent = "Repris de votre page d'accueil. Changez-le si vous commandez pour quelqu'un d'autre.";
   } else {
     $("hQui").textContent = "Décide sur quel tableau de bord le PO remonte, et qui reçoit les relances d'AR.";
   }
@@ -333,26 +404,26 @@ const GRIS = "color:var(--text2,#94a3b8)";
     $("hQui").textContent = sel.value
       ? "Le PO remontera sur le tableau de bord de " + PERSONNES[sel.value] + "."
       : "Décide sur quel tableau de bord le PO remonte, et qui reçoit les relances d'AR.";
+    remplirFamilles();   // changer de personne change les familles ouvertes
     preCheck();
   };
 })();
 
-/* Famille : pre-remplie sur « composants », grisee tant que personne n'y touche. */
-$("fFamille").setAttribute("style", "width:100%;" + GRIS);
 $("fFamille").onchange = () => {
   $("fFamille").setAttribute("style", "width:100%");
   majAffaire();
   preCheck();
 };
 
-/* Le consommable n'appartient a aucune affaire : on arrete de la reclamer. */
+/* Le consommable n'appartient a aucune affaire : on arrete de la reclamer.
+   La sous-traitance, si : on sous-traite toujours pour une carte precise. */
 function majAffaire() {
-  const conso = $("fFamille").value === "consommable";
-  $("hSo").textContent = conso
-    ? "Facultatif pour du consommable : ce n'est imputé à aucune affaire."
-    : "Reporté dans « Document d'origine » d'Odoo, c'est ce qui rattache le PO à l'affaire. Séparez par « + ».";
+  $("hSo").textContent = familleCourante().affaire
+    ? "Reporté dans « Document d'origine » d'Odoo, c'est ce qui rattache le PO à l'affaire. Séparez par « + »."
+    : "Facultatif pour du consommable : ce n'est imputé à aucune affaire.";
 }
-majAffaire();
+
+remplirFamilles();
 
 /* ---------- dépôt de fichiers ---------- */
 const drop = $("drop"), inputFile = $("file");
@@ -770,7 +841,7 @@ function preCheck() {
     manque.push("dire ce qui est commandé (référence ou désignation), avec quantité et prix, sur chaque ligne retenue");
   }
   if (!$("fQui").value) manque.push("dire qui passe la commande");
-  if ($("fFamille").value !== "consommable" && !$("fSo").value.trim()) {
+  if (familleCourante().affaire && !$("fSo").value.trim()) {
     manque.push("indiquer l'affaire — sans elle le PO ne se rattache à rien");
   }
   const el = $("preCheck");
