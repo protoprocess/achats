@@ -453,8 +453,14 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
    dans STK PP, et surtout lignes que le workflow n'a pas pu identifier dans la feuille
    (rien n'a ete ecrit pour elles). Un colis qui garde des lignes non ecrites reste
    affiche. Un succes muet est ce qui a fait passer inapercue la boulette du 28/10. */
-const APP_VERSION = "3.3";
-const APP_DATE = "28/10/2026";
+/* 3.4 (02/11/2026) : la validation recoit aussi le repere de chaque ligne.
+   POURQUOI : sur une feuille multi-cartes, la meme piece chez le meme fournisseur occupe
+   deux lignes identiques sur tous les autres champs (SO2609-521, connecteur 796638-2,
+   9 pcs sur J35 et 9 pcs sur J11). La validation ne pouvait pas savoir laquelle servir et
+   refusait d'ecrire les deux. Le repere est la seule donnee qui les distingue ; il vient
+   de Get Reception v1.2 et sert de dernier departage dans Valider Reception v1.9. */
+const APP_VERSION = "3.4";
+const APP_DATE = "02/11/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -919,7 +925,9 @@ function validerReceptionClick(cardId) {
   if (!c) return;
   // 3.2 : fournisseurRef transmise pour que la validation vise la bonne ligne de la feuille
   // quand deux lignes partagent IPN et MPN (ligne BOBINE et ligne carte en Inventory).
-  const lignes = c.lignes.map((l, idx) => ({ ipn: l.ipn, mpn: l.mpn, fournisseur: l.fournisseur, fournisseurRef: l.fournisseurRef || '', attendu: l.attendu, recu: getRecuActuel(cardId, idx, l) }));
+  // 3.4 : designators (le repere) transmis en plus — dernier departage quand deux lignes
+  // de la feuille partagent ref, MPN et quantite (meme piece sur deux cartes du meme SO).
+  const lignes = c.lignes.map((l, idx) => ({ ipn: l.ipn, mpn: l.mpn, fournisseur: l.fournisseur, fournisseurRef: l.fournisseurRef || '', designators: l.designators || '', attendu: l.attendu, recu: getRecuActuel(cardId, idx, l) }));
   const ecarts = lignes.filter(l => l.recu < l.attendu);
 
   if (ecarts.length > 0) {
@@ -963,7 +971,10 @@ function construireAvisReception(c, bobines, ignorees) {
     lignes.push(`<div style="margin-top:4px">✓ Stock PP : <strong>${b.ipn || b.mpn}</strong> +${b.qte} — ${b.mpn || '—'} (${ou})</div>`);
   });
   ignorees.forEach(i => {
-    lignes.push(`<div style="margin-top:4px">⚠ <strong>${i.ipn || i.mpn}</strong> — ${i.recu} reçu(s) non écrit(s) : ${i.motif}</div>`);
+    // 3.4 : le repere est affiche quand il est connu — sur une feuille multi-cartes,
+    // c'est la seule facon de savoir DE QUELLE ligne on parle.
+    const ou = i.repere ? ` <span style="color:var(--text-muted)">(${i.repere})</span>` : '';
+    lignes.push(`<div style="margin-top:4px">⚠ <strong>${i.ipn || i.mpn}</strong>${ou} — ${i.recu} reçu(s) non écrit(s) : ${i.motif}</div>`);
   });
   const styleOk = 'background:rgba(59,109,17,.10); border-color:var(--ok-t); color:var(--ok-t);';
   return `<div class="alrt" style="align-items:flex-start; ${erreur ? '' : styleOk}">
