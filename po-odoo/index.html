@@ -190,6 +190,21 @@ td.num input{text-align:right}
       <h2>5 · La commande</h2>
       <div class="grid">
         <div class="field">
+          <label for="fFamille">Qu'est-ce qu'on achète ?</label>
+          <select id="fFamille" style="width:100%">
+            <option value="composants">Des composants</option>
+            <option value="pcb">Des PCB</option>
+            <option value="mecanique">De la mécanique</option>
+            <option value="consommable">Du consommable ou du petit outillage</option>
+          </select>
+          <div class="hint" id="hFamille">Décide l'article porté par les lignes dans Odoo, et donc la lecture des dépenses par nature. Un devis = une famille.</div>
+        </div>
+        <div class="field">
+          <label for="fQui">Qui passe la commande ?</label>
+          <select id="fQui" style="width:100%"></select>
+          <div class="hint" id="hQui"></div>
+        </div>
+        <div class="field">
           <label for="fRef">Référence fournisseur</label>
           <input type="text" id="fRef">
           <div class="hint">Numéros de devis, séparés par « + » si le PO en couvre plusieurs.</div>
@@ -197,7 +212,7 @@ td.num input{text-align:right}
         <div class="field">
           <label for="fSo">Affaire(s) couverte(s)</label>
           <input type="text" id="fSo" placeholder="SO2607-410 + SO2607-412">
-          <div class="hint">Reporté dans « Document d'origine ». Séparez par « + ».</div>
+          <div class="hint" id="hSo">Reporté dans « Document d'origine ». Séparez par « + ».</div>
         </div>
         <div class="field">
           <label for="fDevise">Devise de la commande</label>
@@ -222,7 +237,7 @@ td.num input{text-align:right}
 
 <script>
 "use strict";
-const APP_VERSION = "1.4", APP_DATE = "21/10/2026";
+const APP_VERSION = "1.5", APP_DATE = "02/11/2026";
 const BASE = "https://protoprocess.app.n8n.cloud";
 const MODE_TEST = new URLSearchParams(location.search).get("test") === "1";
 const PREFIX = MODE_TEST ? "/webhook-test/" : "/webhook/";
@@ -277,6 +292,67 @@ $("bAuth").onclick = () => {
   $("cAuth").classList.add("hidden");
   chargerRegistre();
 };
+
+/* ---------- famille d'achat et émetteur (chantier 243) ----------
+   La famille decide l'article porte par les lignes dans Odoo, donc la lecture
+   des depenses par nature. L'emetteur decide sur quel tableau de bord le PO
+   remonte, et qui NE doit pas etre abonne : si Stephane commande, Olivier n'a
+   rien a recevoir. On le lit sur le tableau de bord quand il est connu, et on
+   grise le champ pour dire « c'est rempli tout seul, tu peux le changer ». */
+const PERSONNES = {
+  OC: "Olivier", MM: "Maura", DG: "Dorian", AC: "Ariel",
+  FR: "Fred", SG: "Stéphane", JM: "Jérôme", VF: "Valérie"
+};
+const CLE_QUI = "pp_ma_gestion_qui";
+const GRIS = "color:var(--text2,#94a3b8)";
+
+(function initQui() {
+  const sel = $("fQui");
+  const opt0 = document.createElement("option");
+  opt0.value = ""; opt0.textContent = "— à choisir —";
+  sel.appendChild(opt0);
+  Object.keys(PERSONNES).forEach(k => {
+    const o = document.createElement("option");
+    o.value = k; o.textContent = PERSONNES[k] + " (" + k + ")";
+    sel.appendChild(o);
+  });
+
+  let qui = "";
+  try { qui = (localStorage.getItem(CLE_QUI) || "").toUpperCase(); } catch (e) { qui = ""; }
+  if (PERSONNES[qui]) {
+    sel.value = qui;
+    sel.setAttribute("style", "width:100%;" + GRIS);
+    $("hQui").textContent = "Repris de votre tableau de bord. Changez-le si vous commandez pour quelqu'un d'autre.";
+  } else {
+    $("hQui").textContent = "Décide sur quel tableau de bord le PO remonte, et qui reçoit les relances d'AR.";
+  }
+
+  sel.onchange = () => {
+    sel.setAttribute("style", "width:100%");   // choix humain : plus de gris
+    try { if (sel.value) localStorage.setItem(CLE_QUI, sel.value); } catch (e) {}
+    $("hQui").textContent = sel.value
+      ? "Le PO remontera sur le tableau de bord de " + PERSONNES[sel.value] + "."
+      : "Décide sur quel tableau de bord le PO remonte, et qui reçoit les relances d'AR.";
+    preCheck();
+  };
+})();
+
+/* Famille : pre-remplie sur « composants », grisee tant que personne n'y touche. */
+$("fFamille").setAttribute("style", "width:100%;" + GRIS);
+$("fFamille").onchange = () => {
+  $("fFamille").setAttribute("style", "width:100%");
+  majAffaire();
+  preCheck();
+};
+
+/* Le consommable n'appartient a aucune affaire : on arrete de la reclamer. */
+function majAffaire() {
+  const conso = $("fFamille").value === "consommable";
+  $("hSo").textContent = conso
+    ? "Facultatif pour du consommable : ce n'est imputé à aucune affaire."
+    : "Reporté dans « Document d'origine » d'Odoo, c'est ce qui rattache le PO à l'affaire. Séparez par « + ».";
+}
+majAffaire();
 
 /* ---------- dépôt de fichiers ---------- */
 const drop = $("drop"), inputFile = $("file");
@@ -688,8 +764,14 @@ function preCheck() {
   if (!choisi) manque.push("choisir le fournisseur");
   const retenues = lignesUI.filter(l => l.retenue);
   if (!retenues.length) manque.push("retenir au moins une ligne");
-  if (retenues.some(l => !l.reference || l.quantite === null || l.prix_unitaire === null)) {
-    manque.push("compléter les références, quantités et prix des lignes retenues");
+  // Une ligne sans reference reste commandable si la designation dit ce qu'on achete :
+  // un PCB nu ou un consommable n'a souvent pas de reference fabricant.
+  if (retenues.some(l => (!l.reference && !l.designation) || l.quantite === null || l.prix_unitaire === null)) {
+    manque.push("dire ce qui est commandé (référence ou désignation), avec quantité et prix, sur chaque ligne retenue");
+  }
+  if (!$("fQui").value) manque.push("dire qui passe la commande");
+  if ($("fFamille").value !== "consommable" && !$("fSo").value.trim()) {
+    manque.push("indiquer l'affaire — sans elle le PO ne se rattache à rien");
   }
   const el = $("preCheck");
   el.textContent = creationFaite
@@ -699,6 +781,8 @@ function preCheck() {
       : "Tout est prêt. Le PO sera créé en brouillon : il faudra l'envoyer depuis Odoo.");
   $("bCreer").disabled = creationFaite || manque.length > 0;
 }
+
+$("fSo").oninput = preCheck;
 
 /* ---------- devise de la commande ---------- */
 $("fDevise").onchange = () => {
@@ -712,6 +796,8 @@ function corpsCommande(forcer) {
     partner_id: choisi.id,
     partner_ref: $("fRef").value.trim() || null,
     so: $("fSo").value.split("+").map(s => s.trim()).filter(Boolean),
+    famille: $("fFamille").value,
+    emetteur: $("fQui").value,
     devise: devise,
     forcer: forcer === true,
     lignes: lignesUI.filter(l => l.retenue).map(l => ({
