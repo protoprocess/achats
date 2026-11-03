@@ -33,7 +33,7 @@
 (function (g) {
   'use strict';
 
-  var VERSION = '1.0';
+  var VERSION = '1.1';
   var PROJET  = '019f6f80-4cd1-76bb-9d15-a5163b498d26';
 
   /* Au-dela de cette longueur l URL devient fragile (proxys, historique, navigateurs
@@ -52,9 +52,15 @@
      - pp_signaleur : le prenom, ecrit par le formulaire de signalement (plus ancien)
      On prend ce qu on trouve, dans cet ordre de fiabilite. Personne n est force de choisir
      son nom quelque part : si rien n est connu, on le DIT au lieu d inventer. */
-  function qui() {
-    var ini = lire('pp_moi').toUpperCase();
-    var nom = lire('pp_personne') || lire('pp_signaleur');
+  function qui(force) {
+    /* Une appli qui SAIT mieux que le localStorage peut imposer l identite : Mon tableau de
+       bord ouvert en ?qui=MM, par exemple, affiche la page d une personne sans rien
+       memoriser sur le poste — c est fait pour un ecran d atelier ou pour regarder la page
+       d un collegue. Sans ce passage de relais, le fil s ouvrait en disant qu on ne sait
+       pas qui parle, alors que la page l affichait en haut a droite. */
+    var ini = (force && force.initiales) || lire('pp_moi');
+    var nom = (force && force.nom) || lire('pp_personne') || lire('pp_signaleur');
+    ini = String(ini || '').toUpperCase();
     return { initiales: ini, nom: nom,
              libelle: ini ? (ini + (nom ? ' (' + nom + ')' : ''))
                           : (nom || '') };
@@ -64,7 +70,7 @@
      c est plus sur qu un fil anonyme traite comme s il venait de la direction. */
   function entete(o) {
     o = o || {};
-    var q = qui();
+    var q = qui(o.qui);
     var ou = (o.appli || 'une appli PP') + (o.version ? ' v' + o.version : '');
     return q.libelle
       ? "C'est " + q.libelle + ', depuis ' + ou + '.'
