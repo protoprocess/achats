@@ -1054,5 +1054,15 @@ function doublon(d) {
 </script>
 
 <script src="../shared/retour-accueil.js" defer></script>
+<script src="../shared/pp-aide-claude.js"></script>
+<script>
+/* 03/11/2026 : le bouton d aide vers Claude, pose par le module partage.
+   Il porte les initiales de qui le clique, l ecran et l affaire a l ecran :
+   le fil s ouvre deja ecrit, et Claude sait a qui il parle. */
+window.addEventListener('DOMContentLoaded', function () {
+  if (window.PPAide) PPAide.poserBouton({ appli: 'PO Odoo',
+    version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : '' });
+});
+</script>
 </body>
 </html>

@@ -33,7 +33,7 @@
 (function (g) {
   'use strict';
 
-  var VERSION = '1.1';
+  var VERSION = '1.2';
   var PROJET  = '019f6f80-4cd1-76bb-9d15-a5163b498d26';
 
   /* Au-dela de cette longueur l URL devient fragile (proxys, historique, navigateurs
@@ -135,6 +135,57 @@
     return texte;
   }
 
+  /* ------------------------------------------------------------------
+   * v1.2 : LE BOUTON, LUI AUSSI, VIT ICI.
+   * Demande d Olivier du 03/11/2026 : equiper appro-v2, po-odoo, fabstory, commande et les
+   * deux applis methodes. Six applis, six fois le meme bouton a dessiner, a placer et a
+   * maintenir — autant qu il soit dessine une fois. Equiper une appli devient : une balise
+   * script, un appel.
+   *
+   * CONTEXTE AUTOMATIQUE. Sans rien de plus, le fil porte deja le titre de la page, son
+   * chemin et ses parametres d URL — souvent l essentiel (?produit=xxx sur FabStory dit de
+   * quelle carte on parle). L appli peut faire mieux en passant « contexte » (texte ou
+   * fonction, evaluee au clic pour attraper l ecran tel qu il est a cet instant) et « so »
+   * (selecteur du champ qui porte le numero d affaire).
+   * ------------------------------------------------------------------ */
+  function auto(opts) {
+    var L = [];
+    var t = (document.title || '').trim();
+    if (t) L.push(t);
+    L.push('Page : ' + location.pathname + (location.search || ''));
+    if (opts && opts.so) {
+      var el = document.querySelector(opts.so);
+      var v = el ? (el.value || el.textContent || '').trim() : '';
+      if (v) L.push('Affaire à l écran : ' + v);
+    }
+    return L.join('\n');
+  }
+
+  function poserBouton(opts) {
+    opts = opts || {};
+    if (document.getElementById('pp-aide-btn')) return;
+    var b = document.createElement('button');
+    b.id = 'pp-aide-btn';
+    b.type = 'button';
+    b.innerHTML = '<span aria-hidden="true">&#128172;</span> Aide';
+    b.title = 'Ouvre un fil Claude avec cet écran et qui tu es';
+    /* Styles en dur : les applis PP n ont pas la meme charte (fond sombre pour les unes,
+       clair pour les autres) et ce bouton doit se voir sur les deux sans rien leur imposer.
+       En bas a droite, au-dessus de tout, et il ne couvre rien d important : les applis
+       posent leurs actions en haut ou dans le flux. */
+    b.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:99998;'
+      + 'background:#F07B1F;color:#fff;border:none;border-radius:999px;'
+      + 'padding:10px 16px;font:600 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,'
+      + 'Roboto,Helvetica,Arial,sans-serif;cursor:pointer;'
+      + 'box-shadow:0 2px 10px rgba(20,30,50,.28)';
+    b.onclick = function () {
+      var c = typeof opts.contexte === 'function' ? opts.contexte() : opts.contexte;
+      ouvrir(c || auto(opts), opts);
+    };
+    (document.body || document.documentElement).appendChild(b);
+    return b;
+  }
+
   g.PPAide = { version: VERSION, qui: qui, entete: entete, lien: lien, ouvrir: ouvrir,
-               projet: PROJET };
+               poserBouton: poserBouton, auto: auto, projet: PROJET };
 })(window);
