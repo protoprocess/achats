@@ -1,6 +1,13 @@
 /* =============================================================================
    Proto Process — Bouton « Retour à l'accueil »
-   Version 1.0 — 21/09/2026 (chantier 174, accueil unique)
+   Version 1.1 — 06/11/2026 (chantier 174, accueil unique)
+
+   v1.1 : LA MARQUE EST LUE DANS LES DEUX STOCKAGES.
+   Depuis le 04/11, le tableau de bord ouvre les applis dans un nouvel onglet
+   en rel="noopener" : cet onglet ne recoit aucune copie du sessionStorage, la
+   marque restait derriere et le bouton avait disparu des 6 applis. L accueil
+   (index.html v1.39) ecrit desormais la marque aussi dans localStorage, partage
+   par tous les onglets de l origine. On lit la session d abord, le local ensuite.
 
    POURQUOI CE FICHIER
    Quand on arrive dans une appli par le nouvel accueil (« Que veux-tu faire
@@ -22,9 +29,10 @@
    ========================================================================== */
 (function () {
   'use strict';
-  var VERSION = '1.0';
+  var VERSION = '1.1';
   var url = null;
   try { url = sessionStorage.getItem('pp_accueil_url'); } catch (e) { url = null; }
+  if (!url) { try { url = localStorage.getItem('pp_accueil_url'); } catch (e) { url = null; } }
   if (!url) return;
 
   var css = document.createElement('style');
