@@ -172,6 +172,39 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
 #toast.tok { border-color: var(--ok-b); color: var(--ok-t); }
 #toast.terr { border-color: var(--er-b); color: var(--er-t); }
 #toast.twarn { border-color: var(--wa-b); color: var(--wa-t); }
+
+/* 3.5 : panneau de controle du colis. Pleine largeur, dans la page existante :
+   l'ecran de reception est juge trop etroit pour comparer un bon de livraison
+   a un carton, mais la plomberie (memes webhooks, memes donnees) ne change pas. */
+.ovfull { position: fixed; inset: 0; background: rgba(0,0,0,.78); z-index: 300; display: none; overflow-y: auto; padding: 18px; }
+.ovfull.open { display: block; }
+.panel { background: var(--surface-0); border: 0.5px solid var(--border); border-radius: 12px; max-width: 1320px; margin: 0 auto; overflow: hidden; }
+.ph { display: flex; align-items: center; gap: 11px; padding: 14px 18px; background: var(--surface-1); border-bottom: 0.5px solid var(--border); flex-wrap: wrap; }
+.ph-t { font-size: 15px; font-weight: 600; }
+.ph-m { font-size: 12px; color: var(--text-muted); }
+.pband { padding: 10px 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; border-bottom: 0.5px solid var(--border); }
+.pband.bl { background: rgba(91,196,216,.07); }
+/* Sur fond sombre, --wa-t (brun) n'est pas lisible : on garde la teinte ambre
+   du reste de l'appli (.hs.wa) pour le texte, et la couleur de fond pour le fond. */
+.pband.nobl { background: rgba(133,79,11,.14); color: #eab676; }
+.pband b { font-family: var(--font-mono); font-weight: 600; }
+.pwatch { padding: 10px 18px; background: rgba(163,45,45,.10); border-bottom: 0.5px solid var(--border); font-size: 12px; color: #F5A0AE; }
+.pwatch ul { margin: 5px 0 0 16px; }
+.pwatch li { margin-top: 3px; }
+.lt3 { width: 100%; border-collapse: collapse; }
+.lt3 th { padding: 8px 14px; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); background: var(--surface-1); border-bottom: 0.5px solid var(--border); text-align: left; position: sticky; top: 0; }
+.lt3 td { padding: 9px 14px; border-bottom: 0.5px solid var(--border); font-size: 12px; vertical-align: middle; }
+.lt3 tr.ecart td { background: rgba(163,45,45,.13); }
+.lt3 tr.nonannoncee td { background: rgba(133,79,11,.10); }
+.srcp { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 7px; border-radius: 10px; white-space: nowrap; border: 0.5px solid; }
+.srcp.s-compte { color: var(--ok-t); border-color: var(--ok-b); background: rgba(59,109,17,.12); }
+.srcp.s-bl { color: var(--pp-blue); border-color: rgba(91,196,216,.5); background: rgba(91,196,216,.10); }
+.srcp.s-mail { color: var(--pp-blue); border-color: rgba(91,196,216,.35); background: rgba(91,196,216,.06); }
+.srcp.s-suppose { color: #eab676; border-color: var(--wa-b); background: rgba(133,79,11,.18); }
+.srcp.s-feuille { color: var(--text-secondary); border-color: var(--border); }
+.srcp.s-stock { color: var(--text-secondary); border-color: var(--border); }
+.pft { padding: 13px 18px; background: var(--surface-1); border-top: 0.5px solid var(--border); display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.pft .pfm { flex: 1; font-size: 11px; color: var(--text-muted); min-width: 160px; }
 </style>
 
 <style>
@@ -356,6 +389,9 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
   </div>
 </div>
 
+<!-- 3.5 : panneau de controle du colis contre le bon de livraison -->
+<div class="ovfull" id="ov-colis"><div class="panel" id="colis-panel"></div></div>
+
 <div class="ov" id="ov-declarer">
   <div class="modal" style="max-width:420px">
     <h3 style="color:var(--pp-orange)"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Déclarer un problème</h3>
@@ -459,8 +495,8 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
    9 pcs sur J35 et 9 pcs sur J11). La validation ne pouvait pas savoir laquelle servir et
    refusait d'ecrire les deux. Le repere est la seule donnee qui les distingue ; il vient
    de Get Reception v1.2 et sert de dernier departage dans Valider Reception v1.9. */
-const APP_VERSION = "3.4";
-const APP_DATE = "02/11/2026";
+const APP_VERSION = "3.5";
+const APP_DATE = "09/11/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -863,7 +899,10 @@ function renderCarteReception(c) {
         </table>
         <div class="cft">
           <span class="cfm">${c.statut || ''}${lienAppro}</span>
-          <button class="btn-p" id="vbtn-${cardId}" onclick="validerReceptionClick('${cardId}')"><i class="ti ti-check" aria-hidden="true"></i> Valider la réception</button>
+          <div class="cfb">
+            <button class="btn-s" onclick="ouvrirPanneauColis('${cardId}')"><i class="ti ti-package-import" aria-hidden="true"></i> J'ai le colis en main</button>
+            <button class="btn-p" id="vbtn-${cardId}" onclick="validerReceptionClick('${cardId}')"><i class="ti ti-check" aria-hidden="true"></i> Valider la réception</button>
+          </div>
         </div>
       </div>
     </div>`;
@@ -877,6 +916,164 @@ function chgQtyReception(cardId, idx, val, attendu) {
   const inp = document.getElementById('qi-' + cardId + '-' + idx);
   if (inp) inp.className = ok ? 'qok' : 'qerr';
   if (row) row.style.background = ok ? '' : 'rgba(163,45,45,.04)';
+}
+
+/* ===== 3.5 — Contrôler le colis contre le bon de livraison =================
+   Le geste visé (Olivier, 09/11) : « on te dit ok j'ai le colis en main, je vais
+   contrôler son contenu pendant que tu charges le BL à l'écran. Si tout ok on
+   valide tout, si souci on agit. »
+
+   Ce que ça change : le comptage humain reste, mais il devient une COMPARAISON
+   au lieu d'une recopie. « Le fournisseur annonce 50, j'en compte 50 » n'est pas
+   le même acte que « la case dit 50, je valide ».
+
+   D'où la colonne Annoncé, et surtout la colonne Source : la quantité enregistrée
+   est la même, mais on sait désormais ce qu'elle vaut. Valider depuis la carte sans
+   ouvrir ce panneau laisse les lignes en « supposé » ; les ouvrir et déclarer le
+   colis conforme les passe en « compté ». C'est la réponse au problème de départ :
+   savoir quand un chiffre peut être cru sans recompter.
+
+   Pas de nouvelle plomberie : mêmes webhooks, mêmes données, un panneau plus large. */
+
+let COLIS_OUVERT = null;
+const COLIS_COMPTE = {};   // cardId -> le colis a été contrôlé en main
+
+function sourceLigne(cardId, idx, l) {
+  if (RECEPTION_ETAT[cardId + '_' + idx] !== undefined) return { code: 'compte', label: 'compté' };
+  if (COLIS_COMPTE[cardId]) return { code: 'compte', label: 'compté' };
+  const sp = l.source_prefill;
+  if (sp === 'email') return l.bl_email
+    ? { code: 'bl', label: 'annoncé au BL' }
+    : { code: 'mail', label: 'lu dans un mail' };
+  if (sp === 'appro') return { code: 'feuille', label: 'déjà dans la feuille' };
+  if (sp === 'stock') return { code: 'stock', label: 'stock PP' };
+  return { code: 'suppose', label: 'supposé' };
+}
+
+function ouvrirPanneauColis(cardId) {
+  COLIS_OUVERT = cardId;
+  renderPanneauColis(cardId);
+  document.getElementById('ov-colis').classList.add('open');
+}
+
+function fermerPanneauColis() {
+  document.getElementById('ov-colis').classList.remove('open');
+  COLIS_OUVERT = null;
+  renderReception();
+}
+
+function renderPanneauColis(cardId) {
+  const c = RECEPTION_DATA.find(x => cardKeyReception(x) === cardId);
+  if (!c) return;
+  const lignes = c.lignes || [];
+  const total = lignes.length;
+
+  const bls = Array.from(new Set(lignes.map(l => l.bl_email).filter(Boolean)));
+  const colisN2 = c.colisN2 || [];
+  const nbAnnoncees = lignes.filter(l => l.annonce != null).length;
+  const avecBl = bls.length > 0 || nbAnnoncees > 0 || colisN2.length > 0;
+
+  const bandeau = avecBl
+    ? `<div class="pband bl">
+         <span><i class="ti ti-truck-delivery" aria-hidden="true"></i> Bon de livraison ${bls.length ? '<b>' + bls.join(' · ') + '</b>' : '<span style="color:var(--text-muted)">numéro inconnu</span>'}</span>
+         ${colisN2.length > 1 ? `<span style="color:var(--text-muted)">${colisN2.length} colis connus chez ce fournisseur</span>` : ''}
+         <span><b>${nbAnnoncees}</b> ligne${nbAnnoncees > 1 ? 's' : ''} annoncée${nbAnnoncees > 1 ? 's' : ''} sur ${total}</span>
+       </div>`
+    : `<div class="pband nobl"><i class="ti ti-mail-off" aria-hidden="true"></i> Aucun bon de livraison rattaché à ce colis — les quantités affichées sont celles <strong>commandées</strong>, pas celles annoncées par le fournisseur.</div>`;
+
+  // Les points à regarder : ce que le fournisseur annonce en moins, et ce qu'il
+  // n'annonce pas du tout alors qu'il annonce le reste. Rien d'autre : une liste
+  // qui signale tout ne signale plus rien.
+  const aRegarder = [];
+  lignes.forEach(l => {
+    const ref = l.ipn || l.mpn || l.fournisseurRef || '—';
+    if (l.annonce != null && l.annonce < l.attendu) {
+      aRegarder.push(`<strong>${ref}</strong> — le fournisseur annonce ${l.annonce} sur ${l.attendu} commandés`);
+    } else if (nbAnnoncees > 0 && l.annonce == null) {
+      aRegarder.push(`<strong>${ref}</strong> — non annoncée sur ce bon de livraison`);
+    }
+  });
+  const bandeauWatch = aRegarder.length
+    ? `<div class="pwatch"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ${aRegarder.length} point${aRegarder.length > 1 ? 's' : ''} à regarder dans le carton<ul>${aRegarder.map(t => '<li>' + t + '</li>').join('')}</ul></div>`
+    : '';
+
+  const rows = lignes.map((l, idx) => {
+    const recu = getRecuActuel(cardId, idx, l);
+    const s = sourceLigne(cardId, idx, l);
+    const ecart = recu < l.attendu;
+    const nonAnnoncee = nbAnnoncees > 0 && l.annonce == null;
+    const cls = ecart ? 'ecart' : (nonAnnoncee ? 'nonannoncee' : '');
+    const refFour = l.fournisseurRef || '—';
+    const piece = (c.mpnStrict === true) ? (l.mpn || l.ipn || '') : (l.ipn || l.mpn || '');
+    const secondaire = [(l.mpn && l.mpn !== piece) ? l.mpn : '', l.designators || ''].filter(Boolean).join(' · ');
+    return `
+      <tr id="pr-${cardId}-${idx}" class="${cls}">
+        <td><span style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)">${refFour}</span></td>
+        <td><div class="ipn">${piece}</div>${secondaire ? `<div class="mpn2">${secondaire}</div>` : ''}</td>
+        <td style="text-align:center"><span class="qatt" style="color:${l.annonce != null ? 'var(--pp-blue)' : 'var(--text-muted)'}">${l.annonce != null ? l.annonce : '—'}</span></td>
+        <td style="text-align:center"><span class="qatt">${l.attendu}</span></td>
+        <td style="text-align:center"><input type="number" id="pq-${cardId}-${idx}" class="${recu >= l.attendu ? 'qok' : 'qerr'}" value="${recu}"
+            onchange="chgQtyPanneau('${cardId}', ${idx}, this.value, ${l.attendu})"></td>
+        <td id="ps-${cardId}-${idx}"><span class="srcp s-${s.code}">${s.label}</span></td>
+      </tr>`;
+  }).join('');
+
+  const nbEcarts = lignes.filter((l, idx) => getRecuActuel(cardId, idx, l) < l.attendu).length;
+  const btnValider = nbEcarts
+    ? `<button class="btn-p" style="background:var(--er-t)" onclick="validerDepuisPanneau('${cardId}')"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Valider avec ${nbEcarts} écart${nbEcarts > 1 ? 's' : ''} saisi${nbEcarts > 1 ? 's' : ''}</button>`
+    : `<button class="btn-p" onclick="validerDepuisPanneau('${cardId}')"><i class="ti ti-check" aria-hidden="true"></i> Tout conforme — valider le colis</button>`;
+
+  document.getElementById('colis-panel').innerHTML = `
+    <div class="ph">
+      <span class="fb ${badgeClass(c.fournisseur)}">${(c.fournisseur || 'INCONNU').toUpperCase()}</span>
+      <div style="flex:1;min-width:180px">
+        <div class="ph-t">${c.so}</div>
+        <div class="ph-m">${[c.client, c.carte].filter(Boolean).join(' · ') || '—'}</div>
+      </div>
+      ${c.urlAppro ? `<a href="${c.urlAppro}" target="_blank" class="btn-s" style="text-decoration:none"><i class="ti ti-external-link" aria-hidden="true"></i> Feuille achat</a>` : ''}
+      <button class="btn-s" onclick="fermerPanneauColis()"><i class="ti ti-x" aria-hidden="true"></i> Fermer</button>
+    </div>
+    ${bandeau}
+    ${bandeauWatch}
+    <table class="lt3">
+      <thead><tr>
+        <th>Réf. fournisseur</th><th>Pièce</th>
+        <th style="text-align:center">Annoncé</th><th style="text-align:center">Commandé</th><th style="text-align:center">Compté</th>
+        <th>Source</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="pft">
+      <span class="pfm">Valider depuis ce panneau enregistre les quantités comme <strong>comptées</strong> : vous avez le colis en main.</span>
+      <button class="btn-s" onclick="fermerPanneauColis()">Annuler</button>
+      ${btnValider}
+    </div>`;
+}
+
+function chgQtyPanneau(cardId, idx, val, attendu) {
+  const v = parseInt(val) || 0;
+  RECEPTION_ETAT[cardId + '_' + idx] = v;
+  const c = RECEPTION_DATA.find(x => cardKeyReception(x) === cardId);
+  if (!c) return;
+  const inp = document.getElementById('pq-' + cardId + '-' + idx);
+  if (inp) inp.className = v >= attendu ? 'qok' : 'qerr';
+  const row = document.getElementById('pr-' + cardId + '-' + idx);
+  if (row) row.className = v < attendu ? 'ecart' : '';
+  const cell = document.getElementById('ps-' + cardId + '-' + idx);
+  if (cell) {
+    const s = sourceLigne(cardId, idx, c.lignes[idx]);
+    cell.innerHTML = `<span class="srcp s-${s.code}">${s.label}</span>`;
+  }
+}
+
+function validerDepuisPanneau(cardId) {
+  // Le colis a été contrôlé en main : toutes ses lignes passent en « compté ».
+  // C'est une déclaration humaine, et c'est exactement ce qui la distingue d'une
+  // validation faite depuis la carte sans ouvrir le panneau.
+  COLIS_COMPTE[cardId] = true;
+  document.getElementById('ov-colis').classList.remove('open');
+  COLIS_OUVERT = null;
+  validerReceptionClick(cardId);
 }
 
 function renderReception() {
@@ -927,7 +1124,17 @@ function validerReceptionClick(cardId) {
   // quand deux lignes partagent IPN et MPN (ligne BOBINE et ligne carte en Inventory).
   // 3.4 : designators (le repere) transmis en plus — dernier departage quand deux lignes
   // de la feuille partagent ref, MPN et quantite (meme piece sur deux cartes du meme SO).
-  const lignes = c.lignes.map((l, idx) => ({ ipn: l.ipn, mpn: l.mpn, fournisseur: l.fournisseur, fournisseurRef: l.fournisseurRef || '', designators: l.designators || '', attendu: l.attendu, recu: getRecuActuel(cardId, idx, l) }));
+  // 3.5 : la source de chaque quantité part avec la ligne — d'où vient ce chiffre
+  // (annoncé au BL, lu dans un mail, compté à la main, supposé). Un vide se voit,
+  // un faux passe : une quantité « supposée » doit rester reconnaissable comme telle
+  // en aval, pour qu'on sache quand un chiffre peut être cru sans recompter.
+  const lignes = c.lignes.map((l, idx) => ({
+    ipn: l.ipn, mpn: l.mpn, fournisseur: l.fournisseur,
+    fournisseurRef: l.fournisseurRef || '', designators: l.designators || '',
+    attendu: l.attendu, recu: getRecuActuel(cardId, idx, l),
+    annonce: (l.annonce != null ? l.annonce : ''),
+    source: sourceLigne(cardId, idx, l).code
+  }));
   const ecarts = lignes.filter(l => l.recu < l.attendu);
 
   if (ecarts.length > 0) {
