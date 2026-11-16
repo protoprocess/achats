@@ -495,8 +495,8 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
    9 pcs sur J35 et 9 pcs sur J11). La validation ne pouvait pas savoir laquelle servir et
    refusait d'ecrire les deux. Le repere est la seule donnee qui les distingue ; il vient
    de Get Reception v1.2 et sert de dernier departage dans Valider Reception v1.9. */
-const APP_VERSION = "3.5";
-const APP_DATE = "09/11/2026";
+const APP_VERSION = "3.6";
+const APP_DATE = "16/11/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -876,6 +876,25 @@ function renderCarteReception(c) {
       ? ''
       : `<span class="stkinfo" style="color:var(--text-muted)" title="Contrainte MPN non renseignée pour ce client dans Odoo — à vérifier avant de sortir un équivalent">MPN non vérifié</span>`;
 
+  /* 3.6 — 16/11/2026 : l'écart entre ce qui est commandé et ce que le bon de livraison
+     annonce existait déjà, mais SEULEMENT dans le panneau — donc invisible pour qui
+     valide directement depuis la carte. C'est la demande de Fred du 15/09 (« commande
+     10 lignes, BL 9 lignes ») : elle n'a de valeur que si elle se voit AVANT de valider.
+     Sobre volontairement : rien ne s'affiche quand le bon de livraison concorde, et rien
+     non plus quand aucun bon de livraison n'est rattaché — ce cas est déjà dit dans le
+     panneau, et le colis se compte à la main comme d'habitude. Le dénominateur est le
+     même que celui du panneau (c.lignes.length), pour qu'on ne lise pas deux chiffres
+     différents selon l'endroit où on regarde. */
+  const nbAnnoncees = c.lignes.filter(l => l.annonce != null).length;
+  const blIncomplet = nbAnnoncees > 0 && nbAnnoncees < total;
+  const blEnMoins = c.lignes.some(l => l.annonce != null && l.annonce < l.attendu);
+  const alerteBl = blIncomplet || blEnMoins;
+  const badgeBl = blIncomplet
+    ? `<span class="stkinfo" style="color:var(--wa-t);background:rgba(133,79,11,.14)" title="Le bon de livraison n'annonce pas toutes les lignes attendues — ouvrir « J'ai le colis en main » pour voir lesquelles">BL : ${nbAnnoncees} ligne${nbAnnoncees > 1 ? 's' : ''} sur ${total}</span>`
+    : blEnMoins
+      ? `<span class="stkinfo" style="color:var(--wa-t);background:rgba(133,79,11,.14)" title="Le fournisseur annonce moins que la quantité commandée sur au moins une ligne — ouvrir « J'ai le colis en main » pour voir laquelle">BL : quantité en moins</span>`
+      : '';
+
   const metaBits = [c.client, c.carte, c.datePrevu && c.datePrevu !== '—' ? ('Prévu le ' + c.datePrevu) : null].filter(Boolean).join(' · ');
   const lignesHtml = c.lignes.map((l, idx) => renderLigneReception(c, cardId, idx)).join('');
   const lienAppro = c.urlAppro ? `<a href="${c.urlAppro}" target="_blank" style="color:var(--pp-blue);text-decoration:none;font-size:11px;margin-left:8px"><i class="ti ti-external-link" style="font-size:10px" aria-hidden="true"></i> GSheet</a>` : '';
@@ -885,7 +904,7 @@ function renderCarteReception(c) {
       <div class="ch" onclick="this.closest('.card').classList.toggle('open')">
         <span class="fb ${badge}">${(c.fournisseur || 'INCONNU').toUpperCase()}</span>
         <div class="ci">
-          <div class="cso">${c.so} ${pillHtml} ${badgeMpn}</div>
+          <div class="cso">${c.so} ${pillHtml} ${badgeMpn} ${badgeBl}</div>
           <div class="cm">${metaBits || '—'}</div>
         </div>
         <div class="pw"><div class="pb"><div class="pf ${pfClass}" style="width:${pct}%"></div></div><span class="pp2">${recues}/${total}</span></div>
@@ -900,8 +919,8 @@ function renderCarteReception(c) {
         <div class="cft">
           <span class="cfm">${c.statut || ''}${lienAppro}</span>
           <div class="cfb">
-            <button class="btn-s" onclick="ouvrirPanneauColis('${cardId}')"><i class="ti ti-package-import" aria-hidden="true"></i> J'ai le colis en main</button>
-            <button class="btn-p" id="vbtn-${cardId}" onclick="validerReceptionClick('${cardId}')"><i class="ti ti-check" aria-hidden="true"></i> Valider la réception</button>
+            <button class="${alerteBl ? 'btn-p' : 'btn-s'}" onclick="ouvrirPanneauColis('${cardId}')"><i class="ti ti-package-import" aria-hidden="true"></i> J'ai le colis en main</button>
+            <button class="${alerteBl ? 'btn-s' : 'btn-p'}" id="vbtn-${cardId}" onclick="validerReceptionClick('${cardId}')"><i class="ti ti-check" aria-hidden="true"></i> Valider la réception</button>
           </div>
         </div>
       </div>
