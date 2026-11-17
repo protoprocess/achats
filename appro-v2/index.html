@@ -495,8 +495,15 @@ input[type="number"].qerr { border-color: var(--er-t); background: rgba(163,45,4
    9 pcs sur J35 et 9 pcs sur J11). La validation ne pouvait pas savoir laquelle servir et
    refusait d'ecrire les deux. Le repere est la seule donnee qui les distingue ; il vient
    de Get Reception v1.2 et sert de dernier departage dans Valider Reception v1.9. */
-const APP_VERSION = "3.6";
-const APP_DATE = "16/11/2026";
+/* 3.7 (17/11/2026) : garde-fou backorder a la reception.
+   POURQUOI : quand un fournisseur annonce qu'une reference ne part pas, Suivi N3 garde une
+   quantite recue a 0 (elle n'est alimentee que par un mail d'expedition). L'ecran retombait
+   donc sur l'estimation, c'est-a-dire la quantite commandee : le colis arrivait sans la piece
+   et la ligne affichait quand meme 14 sur 14. Valider sans y toucher la soldait, et la piece
+   manquante disparaissait du radar. Get Reception v1.4 envoie desormais source_prefill
+   'backorder' avec la date annoncee ; la ligne arrive a 0 et porte un badge qui dit pourquoi. */
+const APP_VERSION = "3.7";
+const APP_DATE = "17/11/2026";
 document.title = `Proto Process — Appro V2 — v${APP_VERSION} — ${APP_DATE}`;
 document.getElementById('hdr-version').textContent = `v${APP_VERSION} — ${APP_DATE}`;
 
@@ -804,7 +811,12 @@ function renderLigneReception(c, cardId, idx) {
   const mpnEnc = encodeURIComponent(l.mpn || l.ipn || '');
   const dsUrl = 'https://www.google.com/search?q=' + mpnEnc + '+datasheet+filetype:pdf';
 
-  const badgeConfiance = (!touche && l.source_prefill === 'email')
+  // 3.7 : le backorder passe en premier. C'est la seule situation ou le fournisseur
+  // nous a dit lui-meme que la piece n'est pas dans le colis : la case arrive a 0,
+  // et le badge doit dire pourquoi, sinon un 0 ressemble a une erreur de l'outil.
+  const badgeConfiance = (!touche && l.source_prefill === 'backorder')
+    ? `<span class="stkinfo" style="color:var(--wa-t);background:rgba(176,106,0,.12)" title="${l.backorder_date ? 'Le fournisseur a annoncé un retard sur cette référence — rien n’est parti. Expédition annoncée : ' + l.backorder_date : 'Le fournisseur a annoncé un retard sur cette référence — rien n’est parti, sans date annoncée'}">⏳ en attente${l.backorder_date ? ' · ' + l.backorder_date : ''}</span>`
+    : (!touche && l.source_prefill === 'email')
     ? `<span class="stkinfo" style="color:var(--ok-t);background:rgba(59,109,17,.12)" title="${l.confirme_email_date ? 'Confirm\u00e9 par email le ' + l.confirme_email_date : 'Confirm\u00e9 par email'}">✉️ confirmé</span>`
     : (!touche && l.source_prefill === 'estimation')
       ? `<span class="stkinfo" style="color:var(--wa-t)" title="Aucune donn\u00e9e r\u00e9elle disponible \u2014 valeur suppos\u00e9e \u00e0 v\u00e9rifier">? à vérifier</span>`
